@@ -3,7 +3,10 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:uni_swap/view/user/home_page.dart';
+import 'package:uni_swap/view/user/orders_page.dart';
+import 'package:uni_swap/view/user/profile_page.dart';
 import 'package:uni_swap/view/user/search_page.dart';
+import 'package:uni_swap/view/user/sell_page.dart';
 
 class _C {
   static const bg = Color(0xFFFAF9F6);
@@ -12,13 +15,13 @@ class _C {
   static const border = Color(0xFFE6E4DD);
 }
 
-// ===== ค่าปรับแต่งหน้าตาแถบเมนู =====
-const _blurAmount = 30.0; // เพิ่มความเบลอให้พื้นหลังฟุ้งละมุนขึ้น
-const _barOpacity = 0.1; // ลดความขาวทึบลง (ค่ายิ่งน้อยยิ่งใส 0.3 คือทึบ 30%)
-const _barTop = 16.0;
-const _areaHeight = 80.0;
+// ===== ค่าปรับแต่งหน้าตาแถบเมนู (มินิมอล + กระจกฝ้า) =====
+const _blurAmount = 30.0; // ความเบลอของพื้นหลัง (ยิ่งมากยิ่งฟุ้ง)
+const _barOpacity = 0.3; // ความขาวทึบ (0.3 คือโปร่งแสง 70% ให้เห็นพื้นหลัง)
+const _barTop = 16.0; // ระยะที่แถบลดระดับลงมาให้ปุ่ม Sell ลอยเหนือขอบ
+const _areaHeight = 80.0; // ความสูงรวมของพื้นที่แถบ
 const _btnTop = 1.0;
-const _btnRadius = 26.0;
+const _btnRadius = 26.0; // ขยายปุ่มนิดนึงให้ลอยเด่นสวยๆ
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -29,14 +32,15 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
+
   final int _ordersBadge = 0;
 
   final List<Widget> _pages = const [
     HomePage(),
     SearchPage(),
-    Center(child: Text('Sell Page')),
-    Center(child: Text('Orders Page')),
-    Center(child: Text('Profile Page')),
+    SellPage(),
+    OrdersPage(),
+    ProfilePage(isAdmin: true),
   ];
 
   void _onTap(int index) {
@@ -49,7 +53,7 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _C.bg,
-      extendBody: true,
+      extendBody: true, // สำคัญมาก: ให้เนื้อหาไหลไปใต้แถบเพื่อทำเอฟเฟกต์เบลอ
       body: IndexedStack(index: _selectedIndex, children: _pages),
       bottomNavigationBar: _BottomBar(
         currentIndex: _selectedIndex,
@@ -65,7 +69,7 @@ class _BarBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ใช้พื้นหลังเรียบๆ ตัดเส้นขอบบางๆ ให้ดูคลีนที่สุด (ไม่มีรอยเว้าให้รก)
+    // แถบเรียบๆ ไม่มีรอยเว้า พร้อมเอฟเฟกต์กระจกฝ้าและขอบบนสะท้อนแสงสีขาว
     return Positioned.fill(
       top: _barTop,
       child: ClipRect(
@@ -74,8 +78,11 @@ class _BarBackground extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: _barOpacity),
-              border: const Border(
-                top: BorderSide(color: _C.border, width: 1.0),
+              border: Border(
+                top: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  width: 1.0,
+                ),
               ),
             ),
           ),
@@ -171,7 +178,6 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // กลับมาใช้โทน ขาว-ดำ-เทา แบบต้นฉบับ
     final color = active ? _C.ink : _C.muted;
 
     return Expanded(
@@ -199,9 +205,7 @@ class _NavItem extends StatelessWidget {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: active
-                            ? _C.ink.withValues(
-                                alpha: 0.06,
-                              ) // ไฮไลท์ตอน Active สีเทาอ่อนๆ
+                            ? _C.ink.withValues(alpha: 0.06)
                             : Colors.transparent,
                         borderRadius: BorderRadius.circular(15),
                       ),
@@ -303,9 +307,7 @@ class _SellButtonState extends State<_SellButton> {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: _C.ink.withValues(
-                              alpha: 0.20,
-                            ), // เงาปุ่มนุ่มๆ
+                            color: _C.ink.withValues(alpha: 0.20),
                             blurRadius: 16,
                             offset: const Offset(0, 6),
                           ),

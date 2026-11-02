@@ -195,7 +195,7 @@ class _ChatPageState extends State<ChatPage> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${widget.productTitle} · \$${widget.price}',
+                      '${widget.productTitle} · ${widget.price} THB',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(

@@ -339,7 +339,7 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
             ),
             const SizedBox(height: 2),
             Text(
-              '\$${l.price}',
+              '${l.price} THB',
               style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,

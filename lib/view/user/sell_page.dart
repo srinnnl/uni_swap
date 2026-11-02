@@ -161,7 +161,7 @@ class _SellPageState extends State<SellPage> {
                       ),
                       SizedBox(height: 4),
                       Text(
-                        'Set the price to \$0',
+                        'Set the price to 0 THB',
                         style: TextStyle(fontSize: 12, color: _cMuted),
                       ),
                     ],

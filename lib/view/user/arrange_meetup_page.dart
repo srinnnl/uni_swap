@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-// ไฟล์นี้ใช้งานได้ด้วยตัวเอง: หน้านัดรับสินค้า (เปิดหลังกด Request to buy)
-// กด Confirm แล้วจะ pop กลับพร้อมจุดนัดพบและเวลา (MeetupChoice)
 
 typedef MeetupChoice = ({String spot, DateTime when});
 
@@ -171,7 +169,7 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
               ),
               const SizedBox(height: 4),
               Text(
-                '${widget.productTitle} · \$${widget.price}',
+                '${widget.productTitle} · ${widget.price} THB',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 13, color: _C.muted),

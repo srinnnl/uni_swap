@@ -172,7 +172,7 @@ class _SearchPageState extends State<SearchPage> {
 
   String get _priceLabel => (_price.start == 0 && _price.end == _maxPrice)
       ? 'Any price'
-      : '\$${_price.start.round()} – \$${_price.end.round()}';
+      : '${_price.start.round()} THB – ${_price.end.round()} THB';
 
   String get _locationLabel {
     if (_locations.isEmpty) return 'All campus';
@@ -714,7 +714,7 @@ class _SearchPageState extends State<SearchPage> {
           Row(
             children: [
               Text(
-                '\$${p.price}',
+                '${p.price} THB',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -724,7 +724,7 @@ class _SearchPageState extends State<SearchPage> {
               if (p.oldPrice != null) ...[
                 const SizedBox(width: 8),
                 Text(
-                  '\$${p.oldPrice}',
+                  '${p.oldPrice} THB',
                   style: const TextStyle(
                     fontSize: 12,
                     color: _C.faint,

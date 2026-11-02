@@ -174,7 +174,7 @@ class _OrdersPageState extends State<OrdersPage> {
 
   Widget _tile(_Order o, {bool dimmed = false}) {
     final (label, bg, fg) = _statusStyle(o.status);
-    final priceText = o.price == 0 ? 'Free' : '\$${o.price.toStringAsFixed(0)}';
+    final priceText = o.price == 0 ? 'Free' : '${o.price.toStringAsFixed(0)} THB';
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

@@ -79,7 +79,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   bool get _cancelled => _stage == OrderStage.cancelled;
   bool get _completed => _stage == OrderStage.completed;
   String get _priceText =>
-      widget.price == 0 ? 'Free' : '\$${widget.price.toStringAsFixed(0)}';
+      widget.price == 0 ? 'Free' : '${widget.price.toStringAsFixed(0)} THB';
 
   void _toast(String m) => ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()

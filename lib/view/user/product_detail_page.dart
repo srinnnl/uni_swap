@@ -367,7 +367,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           textBaseline: TextBaseline.alphabetic,
           children: [
             Text(
-              '\$${_p.price}',
+              '${_p.price} THB',
               style: const TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.w700,
@@ -377,7 +377,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             if (_p.oldPrice != null) ...[
               const SizedBox(width: 10),
               Text(
-                '\$${_p.oldPrice}',
+                '${_p.oldPrice} THB',
                 style: const TextStyle(
                   fontSize: 14,
                   color: _C.faint,
@@ -594,7 +594,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     style: TextStyle(fontSize: 12, color: _C.muted),
                   ),
                   Text(
-                    '\$${_p.price}',
+                    '${_p.price} THB',
                     style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w700,

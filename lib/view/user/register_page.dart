@@ -13,6 +13,7 @@ const _residences = [
   'North Campus · Maple Hall',
   'North Campus · Oak Hall',
   'South Campus · Cedar Hall',
+  'Off campus',
 ];
 
 /// ตัวเลือกสำหรับคนที่หาที่พักของตัวเองไม่เจอ (ส่งให้ admin ตรวจสอบ)
@@ -231,13 +232,14 @@ class _RegisterPageState extends State<RegisterPage> {
               controller: _studentIdCtrl,
               icon: Icons.badge_outlined,
               keyboardType: TextInputType.number,
-              validator: (v) => (v == null || v.trim().isEmpty)
-                  ? 'Enter your student ID'
-                  : null,
+              // DB: student_id เป็น CHAR(10)
+              validator: (v) => RegExp(r'^\d{10}$').hasMatch(v?.trim() ?? '')
+                  ? null
+                  : 'Student ID must be 10 digits',
             ),
             _buildField(
               label: 'Email',
-              hint: 'you@university.edu',
+              hint: 'Your Email',
               controller: _emailCtrl,
               icon: Icons.mail_outline,
               keyboardType: TextInputType.emailAddress,

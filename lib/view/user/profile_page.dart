@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:uni_swap/view/admin/admin_page.dart';
+import 'bank_account_page.dart';
+import 'package:uni_swap/view/login.dart';
+import 'package:uni_swap/view/user/messages_page.dart';
+import 'package:uni_swap/view/user/my_listings_page.dart';
+import 'package:uni_swap/view/user/request_location_page.dart';
 
 // ---- colors (local to this file) ----
 const _cBg = Color(0xFFFAF9F6);
@@ -136,30 +140,24 @@ class _ProfilePageState extends State<ProfilePage> {
           Icons.inventory_2_outlined,
           'My listings',
           '3 active listings',
-          () => _showSnack(context, 'My listings (coming soon)'),
+          () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const MyListingsPage()),
+            );
+          },
         ),
         _menuTile(
           Icons.chat_bubble_outline,
           'Messages',
           '2 unread conversations',
-          () => _showSnack(context, 'Messages (coming soon)'),
-          last: !widget.isAdmin,
+          () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const MessagesPage()),
+            );
+          },
         ),
-        if (widget.isAdmin)
-          _menuTile(
-            Icons.groups_outlined,
-            'Admin dashboard',
-            'Manage marketplace',
-            () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => AdminPage(displayName: _displayName),
-                ),
-              );
-            },
-            last: true,
-          ),
 
         const SizedBox(height: 22),
 
@@ -215,7 +213,12 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   const SizedBox(width: 12),
                   InkWell(
-                    onTap: () => _showSnack(context, 'Edit bank (coming soon)'),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const BankAccountPage(),
+                      ),
+                    ),
                     child: const Text(
                       'Edit',
                       style: TextStyle(
@@ -325,7 +328,7 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
       builder: (ctx) => DraggableScrollableSheet(
         expand: false,
-        initialChildSize: 0.6,
+        initialChildSize: 0.65, // ปรับให้สูงขึ้นนิดนึงเพื่อรองรับเมนูที่เพิ่มมา
         maxChildSize: 0.9,
         builder: (_, scroll) => ListView(
           controller: scroll,
@@ -358,6 +361,52 @@ class _ProfilePageState extends State<ProfilePage> {
                   },
                 ),
             ],
+
+            // --- ส่วนที่เพิ่มเข้ามาใหม่: ปุ่ม Request a location ---
+            const SizedBox(height: 8),
+            const Divider(color: _cBorder),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: _cChip,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.add_location_alt_outlined,
+                  color: _cInk,
+                  size: 20,
+                ),
+              ),
+              title: const Text(
+                'Request a location',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: _cInk,
+                ),
+              ),
+              subtitle: const Text(
+                "Can't find where you live?",
+                style: TextStyle(fontSize: 12, color: _cMuted),
+              ),
+              trailing: const Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: _cMuted,
+              ),
+              onTap: () {
+                Navigator.pop(ctx); // ปิด BottomSheet ก่อน
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const RequestLocationPage(), // ลิงก์ไปยังหน้าที่สร้างไว้
+                  ),
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -381,8 +430,11 @@ class _ProfilePageState extends State<ProfilePage> {
             style: FilledButton.styleFrom(backgroundColor: _cRedFg),
             onPressed: () {
               Navigator.pop(ctx);
-              _showSnack(context, 'Logged out (mock)');
-              // TODO: clear token + go to Login page later.
+              // TODO: ลบ token ที่เก็บไว้
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginPage()),
+                (_) => false,
+              );
             },
             child: const Text('Log out'),
           ),

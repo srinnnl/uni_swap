@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/view/user/arrange_meetup_page.dart';
+import 'package:uni_swap/view/user/chat_page.dart';
+import 'package:uni_swap/view/user/report_product_page.dart';
+import 'package:uni_swap/view/user/seller_profile_page.dart';
 
 class _C {
   static const bg = Color(0xFFFAF9F6);
@@ -127,48 +131,73 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   // ===== จุดเชื่อมต่อ API: ให้เพื่อนแก้ฟังก์ชันนี้ =====
   Future<void> _requestToBuy() async {
     final sellerName = _p.seller?.name ?? 'the seller';
-    _noteCtrl.clear();
 
-    final send = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: Colors.white,
-        title: const Text('Request to buy'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Send a request to $sellerName for \$${_p.price}?'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _noteCtrl,
-              maxLines: 2,
-              decoration: const InputDecoration(
-                hintText: 'Add a note (optional)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
+    // เปิดหน้านัดรับ ถ้ากด Confirm จะได้ true กลับมา
+    final confirmed = await Navigator.push<MeetupChoice>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ArrangeMeetupPage(
+          productTitle: _p.title,
+          price: _p.price,
+          sellerName: sellerName,
+          sellerLocation: _p.place,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: _C.ink),
-            child: const Text('Send request'),
-          ),
-        ],
       ),
     );
 
-    if (send != true || !mounted) return;
+    if (confirmed == null || !mounted) return;
 
-    // TODO: ส่งคำขอซื้อไปที่ API (productId: _p.id, note: _noteCtrl.text)
+    // TODO: ส่งคำขอซื้อ + ข้อมูลนัดรับไปที่ API (productId: _p.id)
     setState(() => _requested = true);
     _toast('Request sent to $sellerName');
+  }
+
+  void _openSeller() {
+    final s = _p.seller;
+    if (s == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SellerProfilePage(
+          name: s.name,
+          location: _p.place,
+          rating: s.rating,
+          sales: s.sales,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openReport() async {
+    final sent = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ReportProductPage(
+          productTitle: _p.title,
+          price: _p.price,
+          sellerName: _p.seller?.name ?? 'Seller',
+          imageUrl: _p.imageUrls.isEmpty ? null : _p.imageUrls.first,
+        ),
+      ),
+    );
+    if (sent == true && mounted) {
+      _toast('Report submitted. Thank you for helping keep UniSwap safe.');
+    }
+  }
+
+  void _openChat() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatPage(
+          sellerName: _p.seller?.name ?? 'Seller',
+          productTitle: _p.title,
+          price: _p.price,
+          urgent: _p.urgent,
+          imageUrl: _p.imageUrls.isEmpty ? null : _p.imageUrls.first,
+        ),
+      ),
+    );
   }
 
   @override
@@ -267,10 +296,10 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   }
 
   Widget _imagePlaceholder() => Container(
-    color: _C.surface,
-    alignment: Alignment.center,
-    child: const Icon(Icons.image_outlined, size: 48, color: _C.faint),
-  );
+        color: _C.surface,
+        alignment: Alignment.center,
+        child: const Icon(Icons.image_outlined, size: 48, color: _C.faint),
+      );
 
   Widget _circleButton({
     required IconData icon,
@@ -308,8 +337,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               padding: EdgeInsets.zero,
               color: Colors.white,
               onSelected: (v) {
-                // TODO: เชื่อมฟังก์ชันแชร์/รายงานจริง
-                _toast(v == 'share' ? 'Share coming soon' : 'Report sent');
+                // TODO: เชื่อมฟังก์ชันแชร์จริง
+                if (v == 'share') {
+                  _toast('Share coming soon');
+                } else {
+                  _openReport();
+                }
               },
               itemBuilder: (_) => const [
                 PopupMenuItem(value: 'share', child: Text('Share')),
@@ -383,10 +416,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               child: SizedBox(
                 height: 52,
                 child: OutlinedButton.icon(
-                  onPressed: () {
-                    // TODO: เปิดห้องแชทกับผู้ขาย
-                    _toast('Chat coming soon');
-                  },
+                  onPressed: _openChat,
                   icon: const Icon(Icons.chat_bubble_outline, size: 18),
                   label: const Text('Chat with seller'),
                   style: OutlinedButton.styleFrom(
@@ -406,10 +436,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             ),
             const SizedBox(width: 8),
             TextButton.icon(
-              onPressed: () {
-                // TODO: ส่งรายงานประกาศนี้
-                _toast('Report sent');
-              },
+              onPressed: _openReport,
               icon: const Icon(Icons.outlined_flag, size: 18),
               label: const Text('Report'),
               style: TextButton.styleFrom(
@@ -443,13 +470,13 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   }
 
   IconData _categoryIcon(String? category) => switch (category) {
-    'Furniture' => Icons.chair_alt_outlined,
-    'Books' => Icons.menu_book_outlined,
-    'Tech' => Icons.computer_outlined,
-    'Music' => Icons.music_note_outlined,
-    'Transport' => Icons.pedal_bike_outlined,
-    _ => Icons.sell_outlined,
-  };
+        'Furniture' => Icons.chair_alt_outlined,
+        'Books' => Icons.menu_book_outlined,
+        'Tech' => Icons.computer_outlined,
+        'Music' => Icons.music_note_outlined,
+        'Transport' => Icons.pedal_bike_outlined,
+        _ => Icons.sell_outlined,
+      };
 
   Widget _buildMeta() {
     return Wrap(
@@ -479,10 +506,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
   Widget _buildSeller(SellerInfo s) {
     return InkWell(
-      onTap: () {
-        // TODO: เปิดหน้าโปรไฟล์ผู้ขาย
-        _toast('Seller profile coming soon');
-      },
+      onTap: _openSeller,
       borderRadius: BorderRadius.circular(12),
       child: Row(
         children: [

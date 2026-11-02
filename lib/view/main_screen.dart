@@ -40,7 +40,7 @@ class _MainScreenState extends State<MainScreen> {
     SearchPage(),
     SellPage(),
     OrdersPage(),
-    ProfilePage(isAdmin: true),
+    ProfilePage(),
   ];
 
   void _onTap(int index) {

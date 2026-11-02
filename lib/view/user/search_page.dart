@@ -317,8 +317,9 @@ class _SearchPageState extends State<SearchPage> {
             for (final s in _Sort.values)
               ListTile(
                 title: Text(s.label),
-                trailing:
-                    s == _sort ? const Icon(Icons.check, color: _C.ink) : null,
+                trailing: s == _sort
+                    ? const Icon(Icons.check, color: _C.ink)
+                    : null,
                 onTap: () => Navigator.pop(context, s),
               ),
           ],
@@ -421,9 +422,9 @@ class _SearchPageState extends State<SearchPage> {
 
   Widget _buildSearchBar() {
     OutlineInputBorder border(Color c, [double w = 1]) => OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: c, width: w),
-        );
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: c, width: w),
+    );
 
     return TextField(
       controller: _searchCtrl,
@@ -608,7 +609,10 @@ class _SearchPageState extends State<SearchPage> {
           ),
           if (_hasFilters) ...[
             const SizedBox(height: 16),
-            OutlinedButton(onPressed: _clearAll, child: const Text('Clear all')),
+            OutlinedButton(
+              onPressed: _clearAll,
+              child: const Text('Clear all'),
+            ),
           ],
         ],
       ),

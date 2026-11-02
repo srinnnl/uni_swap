@@ -3,6 +3,7 @@ import 'admin_categories_page.dart';
 import 'admin_locations_page.dart';
 import 'admin_reports_page.dart';
 import 'admin_users_page.dart';
+import 'package:uni_swap/view/login.dart';
 
 // ---- colors (local to this file) ----
 const _cBg = Color(0xFFFAF9F6);
@@ -41,10 +42,6 @@ class AdminPage extends StatelessWidget {
           children: [
             Row(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () => Navigator.pop(context),
-                ),
                 const Expanded(
                   child: _PageHeader(
                     title: 'Admin',
@@ -207,15 +204,43 @@ class AdminPage extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => _confirmLogout(context),
               child: const Text(
-                'Open marketplace',
+                'Log out',
                 style: TextStyle(color: _cInk, fontWeight: FontWeight.w700),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _confirmLogout(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _cBg,
+        title: const Text('Log out?'),
+        content: const Text('You will need to sign in again.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: _cRedFg),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Log out'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    // TODO: ลบ token ที่เก็บไว้
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+      (_) => false,
     );
   }
 

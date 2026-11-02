@@ -106,7 +106,9 @@ class _SellPageState extends State<SellPage> {
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
         children: [
           const _PageHeader(
-              title: 'Sell an item', subtitle: 'Takes less than 2 minutes'),
+            title: 'Sell an item',
+            subtitle: 'Takes less than 2 minutes',
+          ),
           const SizedBox(height: 28),
 
           const _FieldLabel('Photos'),
@@ -126,40 +128,53 @@ class _SellPageState extends State<SellPage> {
           const _FieldLabel('Category'),
           _TapField(
             onTap: _pickCategory,
-            child: Row(children: [
-              Icon(cat.$2, size: 18, color: const Color(0xFF8B4A3C)),
-              const SizedBox(width: 10),
-              Text(cat.$1,
+            child: Row(
+              children: [
+                Icon(cat.$2, size: 18, color: const Color(0xFF8B4A3C)),
+                const SizedBox(width: 10),
+                Text(
+                  cat.$1,
                   style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w600)),
-            ]),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 24),
 
           _AppCard(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(children: [
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Give away for free',
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Give away for free',
                         style: TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w700)),
-                    SizedBox(height: 4),
-                    Text('Set the price to \$0',
-                        style:
-                            TextStyle(fontSize: 12, color: _cMuted)),
-                  ],
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Set the price to \$0',
+                        style: TextStyle(fontSize: 12, color: _cMuted),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              Switch(
-                value: _isFree,
-                onChanged: _toggleFree,
-                activeColor: Colors.white,
-                activeTrackColor: _cSageDark,
-              ),
-            ]),
+                Switch(
+                  value: _isFree,
+                  onChanged: _toggleFree,
+                  activeColor: Colors.white,
+                  activeTrackColor: _cSageDark,
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 24),
 
@@ -179,9 +194,10 @@ class _SellPageState extends State<SellPage> {
               '0.00',
               prefix: const Padding(
                 padding: EdgeInsets.only(left: 16, right: 8),
-                child: Text('\$',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700, color: _cMuted)),
+                child: Text(
+                  '\$',
+                  style: TextStyle(fontWeight: FontWeight.w700, color: _cMuted),
+                ),
               ),
             ),
           ),
@@ -196,26 +212,29 @@ class _SellPageState extends State<SellPage> {
                     icon: const Icon(Icons.close, size: 18),
                     onPressed: () => setState(() => _deadline = null),
                   ),
-            child: Row(children: [
-              const Icon(Icons.calendar_today_outlined, size: 18),
-              const SizedBox(width: 10),
-              Text(
-                _deadline == null ? 'Select a date' : _formatDate(_deadline!),
-                style: const TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.w600),
-              ),
-              if (_deadline != null) ...[
+            child: Row(
+              children: [
+                const Icon(Icons.calendar_today_outlined, size: 18),
                 const SizedBox(width: 10),
-                const _StatusBadge(
-                    label: 'Urgent',
-                    bg: _cRedBg,
-                    fg: _cRedFg),
+                Text(
+                  _deadline == null ? 'Select a date' : _formatDate(_deadline!),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (_deadline != null) ...[
+                  const SizedBox(width: 10),
+                  const _StatusBadge(label: 'Urgent', bg: _cRedBg, fg: _cRedFg),
+                ],
               ],
-            ]),
+            ),
           ),
           const SizedBox(height: 6),
-          const Text('Adding a deadline marks your listing as Urgent.',
-              style: TextStyle(fontSize: 12, color: _cMuted)),
+          const Text(
+            'Adding a deadline marks your listing as Urgent.',
+            style: TextStyle(fontSize: 12, color: _cMuted),
+          ),
           const SizedBox(height: 24),
 
           const _FieldLabel('Description'),
@@ -238,7 +257,8 @@ class _SellPageState extends State<SellPage> {
       context: context,
       backgroundColor: _cBg,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => SafeArea(
         child: ListView(
           shrinkWrap: true,
@@ -288,12 +308,15 @@ class _SellPageState extends State<SellPage> {
               children: [
                 Icon(Icons.photo_camera_outlined, size: 26),
                 SizedBox(height: 8),
-                Text('Add up to 6 photos',
-                    style:
-                        TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                Text(
+                  'Add up to 6 photos',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                ),
                 SizedBox(height: 4),
-                Text('First photo will be the cover',
-                    style: TextStyle(fontSize: 11, color: _cMuted)),
+                Text(
+                  'First photo will be the cover',
+                  style: TextStyle(fontSize: 11, color: _cMuted),
+                ),
               ],
             ),
           ),
@@ -315,53 +338,62 @@ class _SellPageState extends State<SellPage> {
               child: Container(
                 width: 96,
                 decoration: BoxDecoration(
-                    color: _cChip,
-                    borderRadius: BorderRadius.circular(12)),
+                  color: _cChip,
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: const Icon(Icons.add_a_photo_outlined),
               ),
             );
           }
-          return Stack(children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: FutureBuilder(
-                future: _photos[i].readAsBytes(),
-                builder: (_, snap) => Container(
-                  width: 96,
-                  height: 96,
-                  color: _cChip,
-                  child: snap.hasData
-                      ? Image.memory(snap.data!, fit: BoxFit.cover)
-                      : null,
+          return Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: FutureBuilder(
+                  future: _photos[i].readAsBytes(),
+                  builder: (_, snap) => Container(
+                    width: 96,
+                    height: 96,
+                    color: _cChip,
+                    child: snap.hasData
+                        ? Image.memory(snap.data!, fit: BoxFit.cover)
+                        : null,
+                  ),
                 ),
               ),
-            ),
-            if (i == 0)
-              Positioned(
-                left: 6,
-                bottom: 6,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
+              if (i == 0)
+                Positioned(
+                  left: 6,
+                  bottom: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
                       color: _cInk,
-                      borderRadius: BorderRadius.circular(6)),
-                  child: const Text('Cover',
-                      style: TextStyle(color: Colors.white, fontSize: 10)),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text(
+                      'Cover',
+                      style: TextStyle(color: Colors.white, fontSize: 10),
+                    ),
+                  ),
                 ),
-              ),
-            Positioned(
-              right: 4,
-              top: 4,
-              child: GestureDetector(
-                onTap: () => setState(() => _photos.removeAt(i)),
-                child: const CircleAvatar(
+              Positioned(
+                right: 4,
+                top: 4,
+                child: GestureDetector(
+                  onTap: () => setState(() => _photos.removeAt(i)),
+                  child: const CircleAvatar(
                     radius: 10,
                     backgroundColor: _cInk,
-                    child: Icon(Icons.close, size: 12, color: Colors.white)),
+                    child: Icon(Icons.close, size: 12, color: Colors.white),
+                  ),
+                ),
               ),
-            ),
-          ]);
+            ],
+          );
         },
       ),
     );
@@ -379,11 +411,12 @@ class _TapField extends StatelessWidget {
     return _AppCard(
       onTap: onTap,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(children: [
-        Expanded(child: child),
-        trailing ??
-            const Icon(Icons.chevron_right, size: 20, color: _cInk),
-      ]),
+      child: Row(
+        children: [
+          Expanded(child: child),
+          trailing ?? const Icon(Icons.chevron_right, size: 20, color: _cInk),
+        ],
+      ),
     );
   }
 }
@@ -396,8 +429,9 @@ class _DashedBorderPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
     final path = Path()
-      ..addRRect(RRect.fromRectAndRadius(
-          Offset.zero & size, const Radius.circular(14)));
+      ..addRRect(
+        RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(14)),
+      );
     for (final metric in path.computeMetrics()) {
       double d = 0;
       while (d < metric.length) {
@@ -413,9 +447,9 @@ class _DashedBorderPainter extends CustomPainter {
 
 InputDecoration _dec(String hint, {Widget? prefix}) {
   OutlineInputBorder b(Color c) => OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: c),
-      );
+    borderRadius: BorderRadius.circular(12),
+    borderSide: BorderSide(color: c),
+  );
   return InputDecoration(
     hintText: hint,
     hintStyle: const TextStyle(color: Color(0xFFB0AFA8), fontSize: 14),
@@ -473,20 +507,20 @@ class _DarkButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SizedBox(
-        width: double.infinity,
-        height: 52,
-        child: FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: _cInk,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-          onPressed: onPressed,
-          child: Text(label,
-              style:
-                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-        ),
-      );
+    width: double.infinity,
+    height: 52,
+    child: FilledButton(
+      style: FilledButton.styleFrom(
+        backgroundColor: _cInk,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      onPressed: onPressed,
+      child: Text(
+        label,
+        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+      ),
+    ),
+  );
 }
 
 class _FieldLabel extends StatelessWidget {
@@ -495,13 +529,16 @@ class _FieldLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(text,
-            style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: _cInk)),
-      );
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(
+      text,
+      style: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: _cInk,
+      ),
+    ),
+  );
 }
 
 class _PageHeader extends StatelessWidget {
@@ -511,16 +548,22 @@ class _PageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(children: [
-      Text(title,
+    return Column(
+      children: [
+        Text(
+          title,
           style: const TextStyle(
-              fontSize: 20, fontWeight: FontWeight.w700, color: _cInk)),
-      if (subtitle != null) ...[
-        const SizedBox(height: 6),
-        Text(subtitle!,
-            style: const TextStyle(fontSize: 13, color: _cMuted)),
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: _cInk,
+          ),
+        ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 6),
+          Text(subtitle!, style: const TextStyle(fontSize: 13, color: _cMuted)),
+        ],
       ],
-    ]);
+    );
   }
 }
 
@@ -528,24 +571,41 @@ class _StatusBadge extends StatelessWidget {
   final String label;
   final Color bg;
   final Color fg;
-  const _StatusBadge(
-      {super.key, required this.label, required this.bg, required this.fg});
+  const _StatusBadge({
+    super.key,
+    required this.label,
+    required this.bg,
+    required this.fg,
+  });
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration:
-            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w600, color: fg)),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fg),
+    ),
+  );
 }
 
 String _formatDate(DateTime d) {
   const m = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   return '${m[d.month - 1]} ${d.day}, ${d.year}';
 }
@@ -553,9 +613,11 @@ String _formatDate(DateTime d) {
 void _showSnack(BuildContext context, String msg) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(
-      content: Text(msg),
-      behavior: SnackBarBehavior.floating,
-      backgroundColor: _cInk,
-    ));
+    ..showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: _cInk,
+      ),
+    );
 }

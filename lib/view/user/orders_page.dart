@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/view/user/order_details_page.dart';
 
 // ---- colors (local to this file) ----
 const _cBg = Color(0xFFFAF9F6);
@@ -175,7 +176,10 @@ class _OrdersPageState extends State<OrdersPage> {
     final (label, bg, fg) = _statusStyle(o.status);
     final priceText = o.price == 0 ? 'Free' : '\$${o.price.toStringAsFixed(0)}';
 
-    return Container(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _openDetails(o),
+      child: Container(
       padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: _cBorder))),
@@ -226,7 +230,31 @@ class _OrdersPageState extends State<OrdersPage> {
           ),
         ]),
       ),
+    ));
+  }
+
+  // เปิดหน้ารายละเอียด แล้วอัปเดตสถานะตามที่ผู้ใช้ทำในหน้านั้น
+  // (OrderStage กับ _Status เรียงลำดับเหมือนกัน จึงแปลงด้วย index ได้)
+  Future<void> _openDetails(_Order o) async {
+    final result = await Navigator.push<OrderStage>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OrderDetailsPage(
+          orderId: '#US-${o.id.toUpperCase()}',
+          title: o.title,
+          price: o.price,
+          person: o.person,
+          isBuying: o.isBuying,
+          stage: OrderStage.values[o.status.index],
+          requestedLabel: o.timeLabel,
+          meetupPlace: o.meetupPlace,
+          meetupAt: o.meetupAt,
+        ),
+      ),
     );
+    if (result != null && result.index != o.status.index && mounted) {
+      setState(() => o.status = _Status.values[result.index]);
+    }
   }
 
   Widget _link(String text, VoidCallback? onTap, {bool arrow = false}) {

@@ -5,4 +5,3 @@ void main() {
   // debugShowCheckedModeBanner
   runApp(MaterialApp(debugShowCheckedModeBanner: false, home: LoginPage()));
 }
-

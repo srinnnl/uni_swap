@@ -40,6 +40,15 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
     'Condo',
   ];
 
+  // ที่พักที่อนุมัติแล้ว (ตัวอย่าง) ไว้เป็นปลายทางของการ Merge
+  // TODO: ดึงจาก API (ควรใช้ locationId ไม่ใช่ชื่อ)
+  static const _existing = [
+    'North Campus · Maple Hall',
+    'North Campus · Oak Hall',
+    'South Campus · Cedar Hall',
+    'East Campus · Willow Hall',
+  ];
+
   // Mock data (UI only)
   final List<_Loc> _locs = [
     _Loc(
@@ -134,6 +143,21 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
             },
           ),
           const SizedBox(height: 10),
+          // ใช้กรณีผู้ใช้พิมพ์ชื่อไม่ตรงกับที่พักที่มีอยู่ (สะกดผิด/ชื่อเรียกต่างกัน)
+          _ActionButton(
+            filled: false,
+            label: 'Merge into existing location',
+            onPressed: () async {
+              final target = await _pickExisting(ctx);
+              if (target == null || !mounted) return;
+              setState(() => _locs.remove(l));
+              if (ctx.mounted) Navigator.pop(ctx);
+              // TODO: backend: ย้ายผู้ใช้ทุกคนที่ผูกกับคำขอนี้ไปที่ locationId
+              // ของ target แล้วปิดคำขอ (ผู้ใช้ไม่ต้องทำอะไร)
+              _snack(context, '${l.name} merged into $target (mock)');
+            },
+          ),
+          const SizedBox(height: 10),
           if (l.status == _LStatus.pending) ...[
             _ActionButton(
               filled: false,
@@ -158,6 +182,34 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
         ],
       );
     });
+  }
+
+  Future<String?> _pickExisting(BuildContext context) {
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: _cBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
+              child: Text(
+                'Merge into which location?',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+              ),
+            ),
+            for (final e in _existing)
+              ListTile(title: Text(e), onTap: () => Navigator.pop(ctx, e)),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   void _addLocation() {

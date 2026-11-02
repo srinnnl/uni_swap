@@ -1,17 +1,72 @@
-# uni_swap
+# 🛒 UniSwap Campus Marketplace
 
-A new Flutter project.
+---
 
-## Getting Started
+## 🛠️ สิ่งที่ต้องเตรียมพร้อม (Prerequisites)
+ก่อนเริ่มทำงานกับโปรเจกต์ ตรวจสอบให้แน่ใจว่าในเครื่องติดตั้งเครื่องมือเหล่านี้เรียบร้อยแล้ว:
+* [Flutter SDK](https://docs.flutter.dev/get-started/install)
+* [Git](https://git-scm.com/downloads)
+* Editor เช่น VS Code หรือ Android Studio
 
-This project is a starting point for a Flutter application.
+---
 
-A few resources to get you started if this is your first Flutter project:
+## 🚀 วิธีเริ่มต้นการใช้งาน (Getting Started)
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+**1. Clone โปรเจกต์ลงเครื่อง**
+เปิด Terminal แล้วพิมพ์คำสั่งนี้เพื่อดึงโปรเจกต์:
+```bash
+git clone [https://github.com/srinnnl/uni_swap.git](https://github.com/srinnnl/uni_swap.git)
+cd uni_swap
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+**2. ติดตั้งแพ็กเกจที่จำเป็น**
+```bash
+flutter pub get
+```
+
+**3. ทดสอบรันแอปพลิเคชัน**
+```bash
+flutter run
+```
+
+---
+
+## 🔄 คู่มือการใช้ Git สำหรับทีม (Git Workflow)
+
+เพื่อป้องกันปัญหาโค้ดตีกัน (Conflict) และไฟล์หาย ขอให้เพื่อนๆ ทุกคนทำตามสเต็ปนี้อย่างเคร่งครัดนะคะ ✌️
+
+### สเต็ปที่ 1: อัปเดตโค้ดให้ใหม่ล่าสุดเสมอ (สำคัญมาก!)
+ก่อนเริ่มเขียนโค้ดทุกครั้ง (หรือก่อนเริ่มงานในแต่ละวัน) ต้องดึงโค้ดล่าสุดจากกิ่ง `main` มาอัปเดตในเครื่องเสมอ:
+```bash
+git checkout main
+git pull origin main
+```
+
+### สเต็ปที่ 2: สร้างกิ่ง (Branch) ของตัวเอง
+**ห้ามเขียนโค้ดลงในกิ่ง `main` หรือกิ่งคนอื่นโดยตรงเด็ดขาด!** ให้สร้างกิ่งใหม่สำหรับงานของตัวเอง:
+```bash
+git checkout -b <ชื่อเรา>-<ชื่อฟีเจอร์>
+# ตัวอย่าง: git checkout -b serene-payment-ui
+```
+
+### สเต็ปที่ 3: เซฟและยืนยันโค้ด (Add & Commit)
+เมื่อเขียนโค้ดเสร็จหรือหมดวัน ให้บันทึกการเปลี่ยนแปลง:
+```bash
+git add .
+git commit -m "อธิบายสั้นๆ ว่าวันนี้ทำอะไรไปบ้าง"
+# ตัวอย่าง: git commit -m "feat: เพิ่มหน้า Payment และปุ่มกดยืนยัน"
+```
+
+### สเต็ปที่ 4: ดันโค้ดขึ้น GitHub (Push)
+เมื่อพร้อมส่งงาน ให้ดันกิ่งของเราขึ้นไปบน Server:
+```bash
+git push -u origin <ชื่อกิ่งของเรา>
+# ตัวอย่าง: git push -u origin serene-payment-ui
+```
+*(หมายเหตุ: ถ้าเคย push กิ่งนี้ขึ้นไปแล้ว ครั้งต่อไปพิมพ์แค่ `git push` เฉยๆ ก็พอ)*
+
+### สเต็ปที่ 5: ขอรวมโค้ด (Pull Request)
+1. เข้าไปที่หน้าเว็บ GitHub ของโปรเจกต์
+2. จะเห็นแถบแจ้งเตือนกิ่งของเราเด้งขึ้นมา ให้กดปุ่ม **Compare & pull request**
+3. เช็คให้ชัวร์ว่ากำลังขอรวมกิ่งของเรา ➡️ ไปที่ `main`
+4. พิมพ์รายละเอียดว่าฟีเจอร์นี้ทำอะไร แล้วกด **Create pull request** เพื่อให้เพื่อนช่วยรีวิวและรวมร่าง (Merge) 🚀

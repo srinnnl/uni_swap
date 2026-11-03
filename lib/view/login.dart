@@ -291,10 +291,11 @@ class _LoginPageState extends State<LoginPage> {
             boxShadow: [
               // เงาตกกระทบด้านล่าง (Depth) ช่วยให้ฟอร์มดูลอยขึ้นมานิดๆ
               BoxShadow(
-                color: _C.ink.withValues(alpha: 0.04),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
+                color: _C.ink.withValues(alpha: 0.015),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
               ),
+
               // แสงสะท้อนด้านบนซ้าย (Glossy Highlight) ทำให้ดูวาว
               BoxShadow(
                 color: const Color.fromARGB(
@@ -302,9 +303,9 @@ class _LoginPageState extends State<LoginPage> {
                   240,
                   240,
                   240,
-                ).withValues(alpha: 0.9),
-                blurRadius: 8,
-                offset: const Offset(-2, -2),
+                ).withValues(alpha: 0.4),
+                blurRadius: 4,
+                offset: const Offset(-1, -1),
               ),
             ],
           ),
@@ -321,16 +322,14 @@ class _LoginPageState extends State<LoginPage> {
               prefixIcon: Icon(icon, size: 20, color: _C.muted),
               suffixIcon: suffix,
               filled: true,
-              // ปรับสีพื้นหลังให้เป็นขาวกึ่งโปร่งแสง ช่วยรับกับแสงสะท้อน
-              fillColor: Colors.white.withValues(alpha: 0.85),
+              fillColor: const Color(0xFFF8F7F2),
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 16,
                 vertical: 16,
               ),
-              // ปรับสีกรอบตอนยังไม่โฟกัสให้เป็นสีขาวจางๆ เพื่อไม่ให้ดูแข็งเกินไป
               border: border(Colors.transparent),
-              enabledBorder: border(Colors.white.withValues(alpha: 0.6)),
-              focusedBorder: border(_C.ink, 1.2),
+              enabledBorder: border(const Color(0xFFE5E0D6)),
+              focusedBorder: border(_C.ink, 1.5),
               errorBorder: border(Colors.red.shade300),
               focusedErrorBorder: border(Colors.red.shade400, 1.2),
             ),

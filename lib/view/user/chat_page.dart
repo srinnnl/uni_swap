@@ -170,16 +170,22 @@ class _ChatPageState extends State<ChatPage> {
                   child: widget.imageUrl == null
                       ? Container(
                           color: _C.surface,
-                          child: const Icon(Icons.image_outlined,
-                              size: 22, color: _C.faint),
+                          child: const Icon(
+                            Icons.image_outlined,
+                            size: 22,
+                            color: _C.faint,
+                          ),
                         )
                       : Image.network(
                           widget.imageUrl!,
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => Container(
                             color: _C.surface,
-                            child: const Icon(Icons.image_outlined,
-                                size: 22, color: _C.faint),
+                            child: const Icon(
+                              Icons.image_outlined,
+                              size: 22,
+                              color: _C.faint,
+                            ),
                           ),
                         ),
                 ),
@@ -195,7 +201,7 @@ class _ChatPageState extends State<ChatPage> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${widget.productTitle} · \$${widget.price}',
+                      '${widget.productTitle} · ${widget.price} THB',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -210,8 +216,10 @@ class _ChatPageState extends State<ChatPage> {
               if (widget.urgent) ...[
                 const SizedBox(width: 8),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFFFE5E5),
                     borderRadius: BorderRadius.circular(6),
@@ -305,8 +313,10 @@ class _ChatPageState extends State<ChatPage> {
                 hintStyle: const TextStyle(color: _C.faint),
                 filled: true,
                 fillColor: Colors.white,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 14,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(26),
                   borderSide: const BorderSide(color: _C.border),

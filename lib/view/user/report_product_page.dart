@@ -208,7 +208,7 @@ class _ReportProductPageState extends State<ReportProductPage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '\$${widget.price} · ${widget.sellerName}',
+                  '${widget.price} THB · ${widget.sellerName}',
                   style: const TextStyle(fontSize: 11, color: _C.muted),
                 ),
               ],

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'admin_categories_page.dart';
+import 'admin_listings_page.dart';
 import 'admin_locations_page.dart';
 import 'admin_reports_page.dart';
 import 'admin_users_page.dart';
 import 'package:uni_swap/view/login.dart';
 
-// ---- colors (local to this file) ----
+// ---- colors ----
 const _cBg = Color(0xFFFAF9F6);
 const _cCard = Color(0xFFFFFFFF);
 const _cInk = Color(0xFF2B2B26);
@@ -23,6 +23,7 @@ const _cRedFg = Color(0xFFB3402F);
 
 class AdminPage extends StatelessWidget {
   final String displayName;
+
   const AdminPage({super.key, this.displayName = 'Admin'});
 
   String get _greeting {
@@ -38,60 +39,85 @@ class AdminPage extends StatelessWidget {
       backgroundColor: _cBg,
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
           children: [
+            // Header
             Row(
               children: [
+                const SizedBox(width: 40),
                 const Expanded(
                   child: _PageHeader(
                     title: 'Admin',
                     subtitle: 'Marketplace overview',
                   ),
                 ),
-                const SizedBox(
-                  width: 48,
-                  child: Icon(Icons.circle, size: 10, color: _cSageDark),
+                Container(
+                  width: 40,
+                  alignment: Alignment.centerRight,
+                  child: const Icon(Icons.circle, size: 10, color: _cSageDark),
                 ),
               ],
             ),
-            const SizedBox(height: 22),
 
+            const SizedBox(height: 26),
+
+            // Greeting
             Text(
               _formatDate(DateTime.now()),
               style: const TextStyle(fontSize: 11, color: _cMuted),
             ),
             const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '$_greeting, $displayName',
-                    style: const TextStyle(
-                      fontFamily: 'serif',
-                      fontSize: 26,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-                const _StatusBadge(
-                  label: 'All systems normal',
-                  bg: _cSage,
-                  fg: _cSageDark,
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
 
+            Text(
+              '$_greeting, $displayName',
+              style: const TextStyle(
+                fontFamily: 'serif',
+                fontSize: 26,
+                fontWeight: FontWeight.w500,
+                color: _cInk,
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: _StatusBadge(
+                label: 'All systems normal',
+                bg: _cSage,
+                fg: _cSageDark,
+              ),
+            ),
+
+            const SizedBox(height: 28),
+
+            // Overview
+            const Text(
+              'Overview',
+              style: TextStyle(
+                fontFamily: 'serif',
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: _cInk,
+              ),
+            ),
+            const SizedBox(height: 5),
+            const Text(
+              'A quick look at your marketplace',
+              style: TextStyle(fontSize: 11, color: _cMuted),
+            ),
+            const SizedBox(height: 16),
+
+            // Statistics
             GridView(
-              // ความสูงการ์ดตายตัว ไม่ขึ้นกับความกว้างจอ (กันตัวเลขล้นบนจอเล็ก)
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
                 mainAxisExtent: 140,
               ),
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
               children: [
                 _StatCard(
                   icon: Icons.group_outlined,
@@ -115,25 +141,36 @@ class AdminPage extends StatelessWidget {
                   onTap: () => _open(context, const AdminLocationsPage()),
                 ),
                 _StatCard(
-                  icon: Icons.sell_outlined,
-                  label: 'Categories',
-                  value: '12',
-                  note: 'Updated',
-                  onTap: () => _open(context, const AdminCategoriesPage()),
+                  icon: Icons.inventory_2_outlined,
+                  label: 'Listings',
+                  value: '4',
+                  note: 'All items',
+                  onTap: () => _open(context, const AdminListingsPage()),
                 ),
               ],
             ),
-            const SizedBox(height: 26),
 
-            _sectionHeader('Needs attention', 'View all'),
             const SizedBox(height: 12),
+
+            // Pending approval - highlighted card
+            _PendingApprovalCard(
+              count: '4',
+              onTap: () => _open(context, const AdminListingsPage()),
+            ),
+
+            const SizedBox(height: 30),
+
+            // Needs attention
+            _sectionHeader('Needs attention', 'View all'),
+            const SizedBox(height: 14),
+
             _AppCard(
               onTap: () => _open(context, const AdminReportsPage()),
               child: Row(
                 children: [
                   Container(
-                    width: 48,
-                    height: 48,
+                    width: 46,
+                    height: 46,
                     decoration: const BoxDecoration(
                       color: _cRedBg,
                       shape: BoxShape.circle,
@@ -152,11 +189,12 @@ class AdminPage extends StatelessWidget {
                         Text(
                           '3 reported products',
                           style: TextStyle(
-                            fontSize: 14,
+                            fontSize: 13,
                             fontWeight: FontWeight.w700,
+                            color: _cInk,
                           ),
                         ),
-                        SizedBox(height: 3),
+                        SizedBox(height: 4),
                         Text(
                           'Review community reports',
                           style: TextStyle(fontSize: 11, color: _cMuted),
@@ -164,14 +202,62 @@ class AdminPage extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const Icon(Icons.chevron_right),
+                  const Icon(Icons.chevron_right, color: _cMuted),
                 ],
               ),
             ),
-            const SizedBox(height: 26),
 
+            const SizedBox(height: 12),
+
+            _AppCard(
+              onTap: () => _open(context, const AdminListingsPage()),
+              child: Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: const BoxDecoration(
+                      color: _cAmberBg,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.fact_check_outlined,
+                      color: _cAmberFg,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '4 listings awaiting review',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: _cInk,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Approve new items before they go live',
+                          style: TextStyle(fontSize: 11, color: _cMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, color: _cMuted),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 30),
+
+            // Recent activity
             _sectionHeader('Recent activity', 'See log'),
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
+
             const _ActivityRow(
               title: 'New location approved',
               subtitle: 'Westwood Condos · 12 min ago',
@@ -193,8 +279,10 @@ class AdminPage extends StatelessWidget {
               bg: _cAmberBg,
               fg: _cAmberFg,
             ),
-            const SizedBox(height: 22),
 
+            const SizedBox(height: 28),
+
+            // Logout
             OutlinedButton(
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(52),
@@ -216,6 +304,7 @@ class AdminPage extends StatelessWidget {
     );
   }
 
+  // Logout confirmation
   Future<void> _confirmLogout(BuildContext context) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -236,35 +325,138 @@ class AdminPage extends StatelessWidget {
         ],
       ),
     );
+
     if (ok != true || !context.mounted) return;
-    // TODO: ลบ token ที่เก็บไว้
+
+    // TODO: Remove stored token
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginPage()),
       (_) => false,
     );
   }
 
-  void _open(BuildContext context, Widget page) =>
-      Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+  // Navigation
+  void _open(BuildContext context, Widget page) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+  }
 
-  Widget _sectionHeader(String title, String action) => Row(
-    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-    children: [
-      Text(
-        title,
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-      ),
-      Text(
-        action,
-        style: const TextStyle(
-          fontSize: 12,
-          decoration: TextDecoration.underline,
-          color: _cInk,
+  // Section header
+  Widget _sectionHeader(String title, String action) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: _cInk,
+          ),
+        ),
+        Text(
+          action,
+          style: const TextStyle(
+            fontSize: 12,
+            decoration: TextDecoration.underline,
+            color: _cInk,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ---- Pending approval card ----
+
+class _PendingApprovalCard extends StatelessWidget {
+  final String count;
+  final VoidCallback onTap;
+
+  const _PendingApprovalCard({required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _cAmberBg,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFEEDDAF)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFFF5D9),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.pending_actions_outlined,
+                  color: _cAmberFg,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Pending Approval',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: _cInk,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Listings waiting for your review',
+                      style: TextStyle(fontSize: 11, color: _cAmberFg),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '$count submissions need approval',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: _cInk,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                children: [
+                  Text(
+                    count,
+                    style: const TextStyle(
+                      fontFamily: 'serif',
+                      fontSize: 28,
+                      fontWeight: FontWeight.w600,
+                      color: _cInk,
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, color: _cAmberFg),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
-    ],
-  );
+    );
+  }
 }
+
+// ---- Stat card ----
 
 class _StatCard extends StatelessWidget {
   final IconData icon;
@@ -272,6 +464,7 @@ class _StatCard extends StatelessWidget {
   final String value;
   final String note;
   final VoidCallback onTap;
+
   const _StatCard({
     required this.icon,
     required this.label,
@@ -296,16 +489,20 @@ class _StatCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  fontFamily: 'serif',
-                  fontSize: 26,
-                  fontWeight: FontWeight.w600,
+              Flexible(
+                child: Text(
+                  value,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: 'serif',
+                    fontSize: 26,
+                    fontWeight: FontWeight.w600,
+                    color: _cInk,
+                  ),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.only(bottom: 4, left: 4),
                 child: Text(
                   note,
                   style: const TextStyle(fontSize: 10, color: _cMuted),
@@ -319,12 +516,15 @@ class _StatCard extends StatelessWidget {
   }
 }
 
+// ---- Activity row ----
+
 class _ActivityRow extends StatelessWidget {
   final String title;
   final String subtitle;
   final IconData icon;
   final Color bg;
   final Color fg;
+
   const _ActivityRow({
     required this.title,
     required this.subtitle,
@@ -358,6 +558,7 @@ class _ActivityRow extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
+                    color: _cInk,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -374,11 +575,13 @@ class _ActivityRow extends StatelessWidget {
   }
 }
 
-// ---- small shared widgets (local to this file) ----
+// ---- App card ----
+
 class _AppCard extends StatelessWidget {
   final Widget child;
   final EdgeInsets padding;
   final VoidCallback? onTap;
+
   const _AppCard({
     super.key,
     required this.child,
@@ -407,26 +610,34 @@ class _AppCard extends StatelessWidget {
   }
 }
 
+// ---- Icon box ----
+
 class _IconBox extends StatelessWidget {
   final IconData icon;
   final double size;
+
   const _IconBox({super.key, required this.icon, this.size = 44});
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: size,
-    height: size,
-    decoration: BoxDecoration(
-      color: _cChip,
-      borderRadius: BorderRadius.circular(12),
-    ),
-    child: Icon(icon, size: size * 0.45, color: _cInk),
-  );
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: _cChip,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(icon, size: size * 0.45, color: _cInk),
+    );
+  }
 }
+
+// ---- Page header ----
 
 class _PageHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
+
   const _PageHeader({super.key, required this.title, this.subtitle});
 
   @override
@@ -450,10 +661,13 @@ class _PageHeader extends StatelessWidget {
   }
 }
 
+// ---- Status badge ----
+
 class _StatusBadge extends StatelessWidget {
   final String label;
   final Color bg;
   final Color fg;
+
   const _StatusBadge({
     super.key,
     required this.label,
@@ -462,18 +676,22 @@ class _StatusBadge extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-    decoration: BoxDecoration(
-      color: bg,
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Text(
-      label,
-      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fg),
-    ),
-  );
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: fg),
+      ),
+    );
+  }
 }
+
+// ---- Helpers ----
 
 String _formatDate(DateTime d) {
   const m = [
@@ -490,6 +708,7 @@ String _formatDate(DateTime d) {
     'Nov',
     'Dec',
   ];
+
   return '${m[d.month - 1]} ${d.day}, ${d.year}';
 }
 

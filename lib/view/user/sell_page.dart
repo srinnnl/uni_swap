@@ -85,7 +85,12 @@ class _SellPageState extends State<SellPage> {
       _categoryIndex = 0;
     });
     _formKey.currentState?.reset();
-    _showSnack(context, 'Listing published (mock)');
+    // ลงขายแล้วต้องรอแอดมินตรวจสอบก่อนขึ้นหน้าร้าน (ดู Admin > Listings review)
+    // TODO: ส่งไป API ให้สถานะสินค้าเป็น pending_review
+    _showSnack(
+      context,
+      'Submitted for review. We will notify you once approved.',
+    );
   }
 
   @override
@@ -161,7 +166,7 @@ class _SellPageState extends State<SellPage> {
                       ),
                       SizedBox(height: 4),
                       Text(
-                        'Set the price to \$0',
+                        'Set the price to 0 THB',
                         style: TextStyle(fontSize: 12, color: _cMuted),
                       ),
                     ],
@@ -195,7 +200,7 @@ class _SellPageState extends State<SellPage> {
               prefix: const Padding(
                 padding: EdgeInsets.only(left: 16, right: 8),
                 child: Text(
-                  '\$',
+                  'THB',
                   style: TextStyle(fontWeight: FontWeight.w700, color: _cMuted),
                 ),
               ),

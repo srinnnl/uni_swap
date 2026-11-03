@@ -478,7 +478,7 @@ class _HomePageState extends State<HomePage> {
           Row(
             children: [
               Text(
-                '\$${p.price}',
+                '${p.price} THB',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -488,7 +488,7 @@ class _HomePageState extends State<HomePage> {
               if (p.oldPrice != null) ...[
                 const SizedBox(width: 8),
                 Text(
-                  '\$${p.oldPrice}',
+                  '${p.oldPrice} THB',
                   style: const TextStyle(
                     fontSize: 12,
                     color: _C.faint,

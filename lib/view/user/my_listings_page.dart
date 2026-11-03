@@ -6,6 +6,18 @@ const _cMuted = Color(0xFF8A8A82);
 const _cBorder = Color(0xFFE6E4DE);
 const _cLink = Color(0xFF4A5C8F);
 
+// เพิ่มสีสำหรับ Badge สถานะต่างๆ ให้ตรงกับหน้า Admin
+const _cAmberBg = Color(0xFFFBEBC2);
+const _cAmberFg = Color(0xFF8A6410);
+const _cRedBg = Color(0xFFF8DADA);
+const _cRedFg = Color(0xFFB3402F);
+const _cSageBg = Color(0xFFD8E4DC);
+const _cSageFg = Color(0xFF3F6B52);
+const _cBlueBg = Color(0xFFE3ECF7);
+const _cBlueFg = Color(0xFF3B5E8C);
+
+enum ListingStatus { active, urgent, pending, actionRequired }
+
 class MyListingsPage extends StatelessWidget {
   const MyListingsPage({super.key});
 
@@ -28,7 +40,7 @@ class MyListingsPage extends StatelessWidget {
               ),
             ),
             Text(
-              '3 active listings',
+              '4 active listings',
               style: TextStyle(fontSize: 12, color: _cMuted),
             ),
           ],
@@ -58,7 +70,7 @@ class MyListingsPage extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _buildStat('3', 'Active'),
+                _buildStat('4', 'Active'),
                 Container(width: 1, height: 40, color: _cBorder),
                 _buildStat('8', 'Sold'),
                 Container(width: 1, height: 40, color: _cBorder),
@@ -68,36 +80,41 @@ class MyListingsPage extends StatelessWidget {
           ),
           const SizedBox(height: 24),
 
-          // Listings
-          _ListingItem(
-            status: 'Urgent',
-            statusColor: Colors.red.shade100,
-            statusTextColor: Colors.red.shade700,
-            views: '48 views',
-            title: 'Oak study desk',
-            subtitle: '\$45 · Maple Hall',
-            imageUrl: 'https://via.placeholder.com/80', // ใส่รูปจริงที่นี่
+          // 1. สถานะ: แอดมินตีกลับให้แก้ไข (Action Required)
+          const _ListingItem(
+            status: ListingStatus.actionRequired,
+            title: 'Bean bag chair',
+            subtitle: '15 THB · Maple Hall',
+            imageUrl: 'https://via.placeholder.com/80',
+            adminNote: 'Please add clearer photos of the front.',
           ),
           const Divider(color: _cBorder, height: 32),
 
-          _ListingItem(
-            status: 'Active',
-            statusColor: Colors.green.shade100,
-            statusTextColor: Colors.green.shade700,
-            views: '31 views',
-            title: 'Acoustic guitar',
-            subtitle: '\$80 · Maple Hall',
+          // 2. สถานะ: รอแอดมินอนุมัติ (Pending Review) - ยังไม่โชว์ยอดวิว
+          const _ListingItem(
+            status: ListingStatus.pending,
+            title: 'Mini fridge',
+            subtitle: '60 THB · Oak Hall',
             imageUrl: 'https://via.placeholder.com/80',
           ),
           const Divider(color: _cBorder, height: 32),
 
-          _ListingItem(
-            status: 'Free',
-            statusColor: Colors.teal.shade100,
-            statusTextColor: Colors.teal.shade700,
-            views: '45 views',
-            title: 'City bike',
-            subtitle: '\$0 · Oak Residence',
+          // 3. สถานะ: ด่วน (Urgent) อนุมัติแล้ว
+          const _ListingItem(
+            status: ListingStatus.urgent,
+            views: 48,
+            title: 'Oak study desk',
+            subtitle: '45 THB · Maple Hall',
+            imageUrl: 'https://via.placeholder.com/80',
+          ),
+          const Divider(color: _cBorder, height: 32),
+
+          // 4. สถานะ: ปกติ (Active) อนุมัติแล้ว
+          const _ListingItem(
+            status: ListingStatus.active,
+            views: 31,
+            title: 'Acoustic guitar',
+            subtitle: '80 THB · Maple Hall',
             imageUrl: 'https://via.placeholder.com/80',
           ),
         ],
@@ -120,21 +137,56 @@ class MyListingsPage extends StatelessWidget {
 }
 
 class _ListingItem extends StatelessWidget {
-  final String status, views, title, subtitle, imageUrl;
-  final Color statusColor, statusTextColor;
+  final String title, subtitle, imageUrl;
+  final ListingStatus status;
+  final int? views;
+  final String? adminNote;
 
   const _ListingItem({
-    required this.status,
-    required this.views,
     required this.title,
     required this.subtitle,
     required this.imageUrl,
-    required this.statusColor,
-    required this.statusTextColor,
+    required this.status,
+    this.views,
+    this.adminNote,
   });
 
   @override
   Widget build(BuildContext context) {
+    // กำหนดสีและข้อความของ Badge ตามสถานะ
+    String badgeLabel;
+    Color badgeBg;
+    Color badgeFg;
+
+    switch (status) {
+      case ListingStatus.pending:
+        badgeLabel = 'Pending review';
+        badgeBg = _cAmberBg;
+        badgeFg = _cAmberFg;
+        break;
+      case ListingStatus.actionRequired:
+        badgeLabel = 'Action required';
+        badgeBg = _cRedBg;
+        badgeFg = _cRedFg;
+        break;
+      case ListingStatus.urgent:
+        badgeLabel = 'Urgent';
+        badgeBg = _cRedBg;
+        badgeFg = _cRedFg;
+        break;
+      case ListingStatus.active:
+      default:
+        badgeLabel = 'Active';
+        badgeBg = _cSageBg;
+        badgeFg = _cSageFg;
+        break;
+    }
+
+    // ซ่อนยอดวิวถ้ายังไม่ผ่านการอนุมัติ
+    final showViews =
+        (status == ListingStatus.active || status == ListingStatus.urgent) &&
+        views != null;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -161,29 +213,35 @@ class _ListingItem extends StatelessWidget {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: statusColor,
-                      borderRadius: BorderRadius.circular(4),
+                      color: badgeBg,
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      status,
+                      badgeLabel,
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
-                        color: statusTextColor,
+                        color: badgeFg,
                       ),
                     ),
                   ),
-                  Text(
-                    views,
-                    style: const TextStyle(fontSize: 11, color: _cMuted),
-                  ),
+                  if (showViews)
+                    Text(
+                      '$views views',
+                      style: const TextStyle(fontSize: 11, color: _cMuted),
+                    )
+                  else if (status == ListingStatus.pending)
+                    const Text(
+                      'Not visible yet',
+                      style: TextStyle(fontSize: 11, color: _cMuted),
+                    ),
                 ],
               ),
               const SizedBox(height: 8),
               Text(
                 title,
                 style: const TextStyle(
-                  fontSize: 14,
+                  fontSize: 15,
                   fontWeight: FontWeight.bold,
                   color: _cInk,
                 ),
@@ -193,18 +251,61 @@ class _ListingItem extends StatelessWidget {
                 subtitle,
                 style: const TextStyle(fontSize: 12, color: _cMuted),
               ),
-              const SizedBox(height: 8),
+
+              // กล่องแจ้งเตือนจากแอดมิน (แสดงเฉพาะตอนสถานะ Action Required)
+              if (status == ListingStatus.actionRequired &&
+                  adminNote != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _cRedBg.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: _cRedBg),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.info_outline, size: 14, color: _cRedFg),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          adminNote!,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: _cRedFg,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 10),
               Row(
                 children: [
-                  const Text(
-                    'Edit listing',
+                  Text(
+                    status == ListingStatus.actionRequired
+                        ? 'Fix listing'
+                        : 'Edit listing',
                     style: TextStyle(
                       fontSize: 12,
-                      color: _cLink,
+                      color: status == ListingStatus.actionRequired
+                          ? _cRedFg
+                          : _cLink,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const Icon(Icons.chevron_right, size: 16, color: _cLink),
+                  Icon(
+                    Icons.chevron_right,
+                    size: 16,
+                    color: status == ListingStatus.actionRequired
+                        ? _cRedFg
+                        : _cLink,
+                  ),
                 ],
               ),
             ],

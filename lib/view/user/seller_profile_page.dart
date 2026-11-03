@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 
-// ไฟล์นี้ใช้งานได้ด้วยตัวเอง: โปรไฟล์ผู้ขาย (เปิดจากแถบผู้ขายในหน้าสินค้า)
-// แสดงสถิติ สินค้าที่กำลังขาย และรีวิวจากผู้ซื้อ
-
 class _C {
   static const bg = Color(0xFFFAF9F6);
   static const ink = Color(0xFF2F2F2B);
@@ -26,13 +23,11 @@ class _Review {
     required this.rating,
     required this.product,
     required this.date,
-    this.comment, // อาจว่างได้ (ผู้ซื้อให้ดาวอย่างเดียว)
   });
   final String reviewer;
   final int rating;
   final String product;
   final String date;
-  final String? comment;
 }
 
 class SellerProfilePage extends StatefulWidget {
@@ -56,10 +51,6 @@ class SellerProfilePage extends StatefulWidget {
 }
 
 class _SellerProfilePageState extends State<SellerProfilePage> {
-  // TODO: ดึงจาก API
-  //  - listings: สินค้าที่ผู้ขายกำลังขาย (products ของ seller_id)
-  //  - reviews: รีวิวจากออเดอร์ที่เสร็จสิ้น (reviews ผูกกับ order_id)
-  //    แสดงชื่อผู้รีวิวแบบย่อ เช่น "Noah P." เพื่อความเป็นส่วนตัว
   static const _listings = [
     _Listing('Oak study desk', 45),
     _Listing('Desk lamp', 12),
@@ -73,14 +64,12 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
       rating: 5,
       product: 'Acoustic guitar',
       date: 'May 18',
-      comment: 'Great seller. The item was exactly as described.',
     ),
     _Review(
       reviewer: 'Alex S.',
       rating: 5,
       product: 'City bike',
       date: 'May 10',
-      comment: 'Quick reply and easy pickup. Thanks again!',
     ),
     _Review(
       reviewer: 'Priya N.',
@@ -90,7 +79,7 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
     ),
   ];
 
-  int _tab = 0; // 0 = Listings, 1 = Reviews
+  int _tab = 0;
 
   String get _initials {
     final parts = widget.name.trim().split(RegExp(r'\s+'));
@@ -362,7 +351,6 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
 
     return Column(
       children: [
-        // สรุปคะแนนเฉลี่ย
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
@@ -433,13 +421,6 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
           ),
           const SizedBox(height: 6),
           _Stars(r.rating),
-          if (r.comment != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              r.comment!,
-              style: const TextStyle(fontSize: 13, height: 1.45, color: _C.ink),
-            ),
-          ],
           const SizedBox(height: 8),
           Text(
             'Bought: ${r.product}',

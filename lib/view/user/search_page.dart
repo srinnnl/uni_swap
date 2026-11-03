@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:uni_swap/view/user/product_detail_page.dart';
 
-// ไฟล์นี้ใช้งานได้ด้วยตัวเอง
-
 class _C {
   static const bg = Color(0xFFFAF9F6);
   static const ink = Color(0xFF2F2F2B);
@@ -19,8 +17,6 @@ class _Product {
     required this.price,
     required this.category,
     required this.place,
-    required this.minutes,
-    this.oldPrice,
     this.imageUrl,
     this.urgent = false,
   });
@@ -28,10 +24,8 @@ class _Product {
   final String id;
   final String title;
   final int price;
-  final int? oldPrice;
   final String category;
   final String place;
-  final int minutes;
   final String? imageUrl;
   final bool urgent;
 
@@ -39,7 +33,6 @@ class _Product {
 }
 
 enum _Sort {
-  closest('Closest first'),
   priceLow('Price: low to high'),
   priceHigh('Price: high to low');
 
@@ -47,7 +40,6 @@ enum _Sort {
   final String label;
 }
 
-// ===== ข้อมูลตัวอย่าง: TODO แทนด้วยข้อมูลจาก API =====
 const _categories = <(String, IconData?)>[
   ('All', null),
   ('Furniture', Icons.chair_alt_outlined),
@@ -69,10 +61,8 @@ const _products = [
     id: '1',
     title: 'Oak study desk',
     price: 45,
-    oldPrice: 70,
     category: 'Furniture',
     place: 'North Campus · Maple Hall',
-    minutes: 2,
     urgent: true,
   ),
   _Product(
@@ -81,7 +71,6 @@ const _products = [
     price: 80,
     category: 'Music',
     place: 'North Campus · Maple Hall',
-    minutes: 4,
   ),
   _Product(
     id: '3',
@@ -89,7 +78,6 @@ const _products = [
     price: 20,
     category: 'Books',
     place: 'North Campus · Maple Hall',
-    minutes: 3,
   ),
   _Product(
     id: '4',
@@ -97,7 +85,6 @@ const _products = [
     price: 12,
     category: 'Furniture',
     place: 'North Campus · Oak Hall',
-    minutes: 6,
   ),
   _Product(
     id: '5',
@@ -105,16 +92,13 @@ const _products = [
     price: 18,
     category: 'Tech',
     place: 'North Campus · Oak Hall',
-    minutes: 7,
   ),
   _Product(
     id: '6',
     title: 'City bike',
     price: 120,
-    oldPrice: 150,
     category: 'Transport',
     place: 'South Campus · Cedar Hall',
-    minutes: 12,
   ),
 ];
 
@@ -131,8 +115,8 @@ class _SearchPageState extends State<SearchPage> {
   final _searchCtrl = TextEditingController();
   String _category = 'All';
   RangeValues _price = const RangeValues(0, _maxPrice);
-  final Set<String> _locations = {}; // ว่าง = ทุกที่
-  _Sort _sort = _Sort.closest;
+  final Set<String> _locations = {};
+  _Sort _sort = _Sort.priceLow;
   final Set<String> _favorites = {};
 
   @override
@@ -141,7 +125,6 @@ class _SearchPageState extends State<SearchPage> {
     super.dispose();
   }
 
-  // ===== ตรรกะค้นหา/กรอง/เรียง (ให้เพื่อนย้ายไปทำที่ backend ได้ภายหลัง) =====
   List<_Product> get _results {
     final q = _searchCtrl.text.trim().toLowerCase();
     final list = _products.where((p) {
@@ -153,8 +136,6 @@ class _SearchPageState extends State<SearchPage> {
     }).toList();
 
     switch (_sort) {
-      case _Sort.closest:
-        list.sort((a, b) => a.minutes.compareTo(b.minutes));
       case _Sort.priceLow:
         list.sort((a, b) => a.price.compareTo(b.price));
       case _Sort.priceHigh:
@@ -189,7 +170,6 @@ class _SearchPageState extends State<SearchPage> {
     });
   }
 
-  // ===== หน้าต่างเลือกตัวกรอง =====
   Future<void> _pickPrice() async {
     var temp = _price;
     final result = await showModalBottomSheet<RangeValues>(
@@ -329,7 +309,6 @@ class _SearchPageState extends State<SearchPage> {
     if (picked != null) setState(() => _sort = picked);
   }
 
-  // ===== UI =====
   @override
   Widget build(BuildContext context) {
     final items = _results;
@@ -463,7 +442,6 @@ class _SearchPageState extends State<SearchPage> {
             color: _C.ink,
           ),
         ),
-        // แสดงเฉพาะตอนมีตัวกรองอยู่
         if (_hasFilters)
           GestureDetector(
             onTap: _clearAll,
@@ -627,12 +605,10 @@ class _SearchPageState extends State<SearchPage> {
         context,
         MaterialPageRoute(
           builder: (_) => ProductDetailPage(
-            // TODO: ส่งแค่ id แล้วให้หน้ารายละเอียดดึงข้อมูลจาก API เอง
             product: ProductDetail.mock(
               id: p.id,
               title: p.title,
               price: p.price,
-              oldPrice: p.oldPrice,
               place: p.place,
               category: p.category,
               urgent: p.urgent,
@@ -711,32 +687,17 @@ class _SearchPageState extends State<SearchPage> {
             ),
           ),
           const SizedBox(height: 4),
-          Row(
-            children: [
-              Text(
-                '${p.price} THB',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: _C.ink,
-                ),
-              ),
-              if (p.oldPrice != null) ...[
-                const SizedBox(width: 8),
-                Text(
-                  '${p.oldPrice} THB',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: _C.faint,
-                    decoration: TextDecoration.lineThrough,
-                  ),
-                ),
-              ],
-            ],
+          Text(
+            '${p.price} THB',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: _C.ink,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
-            '${p.building} · ${p.minutes} min',
+            p.building,
             style: const TextStyle(fontSize: 12, color: _C.muted),
           ),
         ],

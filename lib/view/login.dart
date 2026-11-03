@@ -20,20 +20,20 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-  final _usernameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   bool _obscure = true;
 
   @override
   void dispose() {
-    _usernameCtrl.dispose();
+    _emailCtrl.dispose();
     _passwordCtrl.dispose();
     super.dispose();
   }
 
   // ===== จำลองการ login (mock) =====
-  ({String token, String role}) _mockLogin(String username) {
-    final role = username.toLowerCase() == 'admin' ? 'admin' : 'user';
+  ({String token, String role}) _mockLogin(String email) {
+    final role = email.toLowerCase() == 'admin' ? 'admin' : 'user';
     return (token: 'mock-token-$role', role: role);
   }
 
@@ -41,9 +41,9 @@ class _LoginPageState extends State<LoginPage> {
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
 
-    final username = _usernameCtrl.text.trim();
-    final session = _mockLogin(username);
-    debugPrint('login: $username as ${session.role}');
+    final email = _emailCtrl.text.trim();
+    final session = _mockLogin(email);
+    debugPrint('login: $email as ${session.role}');
 
     final Widget home = session.role == 'admin'
         ? const AdminPage()
@@ -176,12 +176,11 @@ class _LoginPageState extends State<LoginPage> {
             _buildField(
               label: 'Email',
               hint: 'Email',
-              controller: _usernameCtrl,
+              controller: _emailCtrl,
               icon: Icons.person_outline,
               textInputAction: TextInputAction.next,
-              validator: (v) => (v == null || v.trim().isEmpty)
-                  ? 'Enter your username'
-                  : null,
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Enter your email' : null,
             ),
             _buildField(
               label: 'Password',

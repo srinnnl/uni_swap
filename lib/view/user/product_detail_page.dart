@@ -13,7 +13,6 @@ class _C {
   static const surface = Color(0xFFF3F2EE);
 }
 
-/// ข้อมูลผู้ขาย
 class SellerInfo {
   const SellerInfo({
     required this.name,
@@ -33,16 +32,13 @@ class SellerInfo {
   }
 }
 
-/// ข้อมูลสินค้าสำหรับหน้ารายละเอียด: ให้เพื่อน backend ใช้เป็นแบบ JSON ได้เลย
 class ProductDetail {
   const ProductDetail({
     required this.id,
     required this.title,
     required this.price,
     required this.place,
-    this.oldPrice,
     this.category,
-    this.condition,
     this.description,
     this.urgent = false,
     this.daysLeft,
@@ -53,24 +49,19 @@ class ProductDetail {
   final String id;
   final String title;
   final int price;
-  final int? oldPrice;
   final String place;
   final String? category;
-  final String? condition;
   final String? description;
   final bool urgent;
   final int? daysLeft;
   final List<String> imageUrls;
   final SellerInfo? seller;
 
-  /// ข้อมูลจำลองสำหรับเดโม
-  /// TODO: ลบทิ้งเมื่อมี API แล้ว และดึงข้อมูลจริงด้วย id แทน
   factory ProductDetail.mock({
     required String id,
     required String title,
     required int price,
     required String place,
-    int? oldPrice,
     String? category,
     bool urgent = false,
   }) {
@@ -78,10 +69,8 @@ class ProductDetail {
       id: id,
       title: title,
       price: price,
-      oldPrice: oldPrice,
       place: place,
       category: category,
-      condition: 'Good condition',
       description:
           'Solid ${title.toLowerCase()} in great condition. A few small marks, '
           'but sturdy and ready for a new home. Must go soon.',
@@ -110,7 +99,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   final _pageCtrl = PageController();
   final _noteCtrl = TextEditingController();
   int _imageIndex = 0;
-  bool _isFavorite = false; // TODO: เชื่อมกับรายการโปรดจริง
+  bool _isFavorite = false;
   bool _requested = false;
 
   ProductDetail get _p => widget.product;
@@ -128,11 +117,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  // ===== จุดเชื่อมต่อ API: ให้เพื่อนแก้ฟังก์ชันนี้ =====
   Future<void> _requestToBuy() async {
     final sellerName = _p.seller?.name ?? 'the seller';
-
-    // เปิดหน้านัดรับ ถ้ากด Confirm จะได้ true กลับมา
     final confirmed = await Navigator.push<MeetupChoice>(
       context,
       MaterialPageRoute(
@@ -146,8 +132,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     );
 
     if (confirmed == null || !mounted) return;
-
-    // TODO: ส่งคำขอซื้อ + ข้อมูลนัดรับไปที่ API (productId: _p.id)
     setState(() => _requested = true);
     _toast('Request sent to $sellerName');
   }
@@ -226,7 +210,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     );
   }
 
-  // ===== รูปสินค้า =====
   Widget _buildGallery() {
     final topInset = MediaQuery.of(context).padding.top;
     final count = _p.imageUrls.length;
@@ -296,10 +279,10 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   }
 
   Widget _imagePlaceholder() => Container(
-        color: _C.surface,
-        alignment: Alignment.center,
-        child: const Icon(Icons.image_outlined, size: 48, color: _C.faint),
-      );
+    color: _C.surface,
+    alignment: Alignment.center,
+    child: const Icon(Icons.image_outlined, size: 48, color: _C.faint),
+  );
 
   Widget _circleButton({
     required IconData icon,
@@ -320,7 +303,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     );
   }
 
-  // ===== เนื้อหา =====
   Widget _buildContent() {
     final seller = _p.seller;
 
@@ -337,7 +319,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               padding: EdgeInsets.zero,
               color: Colors.white,
               onSelected: (v) {
-                // TODO: เชื่อมฟังก์ชันแชร์จริง
                 if (v == 'share') {
                   _toast('Share coming soon');
                 } else {
@@ -362,33 +343,15 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           ),
         ),
         const SizedBox(height: 14),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Text(
-              '${_p.price} THB',
-              style: const TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w700,
-                color: _C.ink,
-              ),
-            ),
-            if (_p.oldPrice != null) ...[
-              const SizedBox(width: 10),
-              Text(
-                '${_p.oldPrice} THB',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: _C.faint,
-                  decoration: TextDecoration.lineThrough,
-                ),
-              ),
-            ],
-          ],
+        Text(
+          '${_p.price} THB',
+          style: const TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w700,
+            color: _C.ink,
+          ),
         ),
         const SizedBox(height: 14),
-        _buildMeta(),
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 20),
           child: Divider(height: 1, color: _C.border),
@@ -470,40 +433,15 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   }
 
   IconData _categoryIcon(String? category) => switch (category) {
-        'Furniture' => Icons.chair_alt_outlined,
-        'Books' => Icons.menu_book_outlined,
-        'Tech' => Icons.computer_outlined,
-        'Music' => Icons.music_note_outlined,
-        'Transport' => Icons.pedal_bike_outlined,
-        _ => Icons.sell_outlined,
-      };
+    'Furniture' => Icons.chair_alt_outlined,
+    'Books' => Icons.menu_book_outlined,
+    'Tech' => Icons.computer_outlined,
+    'Music' => Icons.music_note_outlined,
+    'Transport' => Icons.pedal_bike_outlined,
+    _ => Icons.sell_outlined,
+  };
 
-  Widget _buildMeta() {
-    return Wrap(
-      spacing: 16,
-      runSpacing: 6,
-      children: [
-        if (_p.category != null)
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(_categoryIcon(_p.category), size: 16, color: _C.muted),
-              const SizedBox(width: 6),
-              Text(
-                _p.category!,
-                style: const TextStyle(fontSize: 13, color: _C.muted),
-              ),
-            ],
-          ),
-        if (_p.condition != null)
-          Text(
-            _p.condition!,
-            style: const TextStyle(fontSize: 13, color: _C.muted),
-          ),
-      ],
-    );
-  }
-
+ 
   Widget _buildSeller(SellerInfo s) {
     return InkWell(
       onTap: _openSeller,
@@ -572,7 +510,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     );
   }
 
-  // ===== แถบด้านล่าง (ราคา + ปุ่มขอซื้อ) =====
   Widget _buildBottomBar() {
     return Container(
       decoration: const BoxDecoration(

@@ -226,6 +226,11 @@ class _SearchPageState extends State<SearchPage> {
     final result = await showModalBottomSheet<Set<String>>(
       context: context,
       showDragHandle: true,
+      isScrollControlled:
+          true, // ให้สูงเกิน 9/16 ของจอได้ ไม่งั้นรายการยาวแล้ว overflow
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.8,
+      ),
       backgroundColor: Colors.white,
       builder: (_) => StatefulBuilder(
         builder: (context, setSheet) => SafeArea(
@@ -240,17 +245,26 @@ class _SearchPageState extends State<SearchPage> {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 4),
-                for (final p in _places)
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    activeColor: _C.ink,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    title: Text(p),
-                    value: temp.contains(p),
-                    onChanged: (on) => setSheet(() {
-                      on == true ? temp.add(p) : temp.remove(p);
-                    }),
+                // รายการที่พักเลื่อนได้ (ปุ่มด้านล่างคงที่) รองรับรายการยาวจาก API
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    children: [
+                      for (final p in _places)
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          activeColor: _C.ink,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: Text(p),
+                          value: temp.contains(p),
+                          onChanged: (on) => setSheet(() {
+                            on == true ? temp.add(p) : temp.remove(p);
+                          }),
+                        ),
+                    ],
                   ),
+                ),
                 const SizedBox(height: 8),
                 Row(
                   children: [

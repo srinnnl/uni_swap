@@ -28,8 +28,17 @@ function auth(req, res, next) {
     const token = header.substring(7);
     jwt.verify(token, JWT_KEY, (err, decoded) => {
         if (err) return res.status(401).json({ success: false, message: 'Invalid or expired token' });
-        req.user = decoded;
-        next();
+
+        // The token alone is not enough: a suspended/deleted user, or a changed role,
+        // must take effect immediately instead of when the 1-day token expires.
+        con.query('SELECT role, status FROM users WHERE user_id = ?', [decoded.user_id], (err, rows) => {
+            if (err) return queryError(res, err);
+            if (rows.length === 0 || rows[0].status !== 'active') {
+                return res.status(403).json({ success: false, message: 'Account is not active' });
+            }
+            req.user = { ...decoded, role: rows[0].role };
+            next();
+        });
     });
 }
 
@@ -72,6 +81,13 @@ app.post('/api/register', (req, res) => {
     }
 
     const cleanEmail = String(email).trim().toLowerCase();
+    if (cleanEmail.length > 254 || !/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(cleanEmail)) {
+        return res.status(400).json({ success: false, message: 'Invalid email format' });
+    }
+    const cleanName = String(display_name).trim();
+    if (!cleanName) {
+        return res.status(400).json({ success: false, message: 'display_name must not be blank' });
+    }
     const hash = argon2.hashSync(String(password));
 
     const universitySql = 'SELECT university_id FROM universities WHERE university_id = ? AND is_active = 1';
@@ -84,7 +100,7 @@ app.post('/api/register', (req, res) => {
         const sql = `INSERT INTO users
             (university_id, student_id, email, password_hash, display_name, role, status)
             VALUES (?, ?, ?, ?, ?, 'member', 'pending_verification')`;
-        con.query(sql, [university_id, student_id, cleanEmail, hash, String(display_name).trim()], (err, result) => {
+        con.query(sql, [university_id, student_id, cleanEmail, hash, cleanName], (err, result) => {
             if (err) {
                 if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ success: false, message: 'Email or student ID already exists' });
                 return queryError(res, err);
@@ -272,11 +288,16 @@ app.post('/api/products', auth, (req, res) => {
         return res.status(400).json({ success: false, message: 'Invalid category, price or item_condition' });
     }
 
+    const cleanTitle = String(title).trim();
+    if (!cleanTitle) {
+        return res.status(400).json({ success: false, message: 'title must not be blank' });
+    }
+
     const sql = `INSERT INTO products
         (seller_id, category_id, title, description, price, item_condition, clearance_deadline, is_urgent)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
     con.query(sql, [
-        req.user.user_id, category_id, String(title).trim(), description,
+        req.user.user_id, category_id, cleanTitle, description,
         Number(price), item_condition, clearance_deadline || null, is_urgent ? 1 : 0
     ], (err, result) => {
         if (err) {
@@ -293,20 +314,25 @@ app.put('/api/products/:product_id', auth, (req, res) => {
     const allowedVisibility = ['active', 'hidden', 'removed'];
 
     if (!isPositiveId(req.params.product_id)) return res.status(400).json({ success: false, message: 'Invalid product_id' });
-    if (!category_id || !title || !description || price === undefined || !allowedCondition.includes(item_condition) || !allowedVisibility.includes(visibility)) {
+    if (!isPositiveId(category_id) || !title || !description || price === undefined || !allowedCondition.includes(item_condition) || !allowedVisibility.includes(visibility)) {
         return res.status(400).json({ success: false, message: 'Invalid or missing product fields' });
     }
     if (Number(price) <= 0 || isNaN(Number(price))) return res.status(400).json({ success: false, message: 'Price must be greater than 0' });
+    const cleanTitle = String(title).trim();
+    if (!cleanTitle) return res.status(400).json({ success: false, message: 'title must not be blank' });
 
     const sql = `UPDATE products SET category_id=?, title=?, description=?, price=?,
                  item_condition=?, visibility=?, clearance_deadline=?, is_urgent=?
                  WHERE product_id=? AND seller_id=?`;
     con.query(sql, [
-        category_id, String(title).trim(), description, Number(price), item_condition,
+        category_id, cleanTitle, description, Number(price), item_condition,
         visibility, clearance_deadline || null, is_urgent ? 1 : 0,
         req.params.product_id, req.user.user_id
     ], (err, result) => {
-        if (err) return queryError(res, err);
+        if (err) {
+            if (err.code === 'ER_NO_REFERENCED_ROW_2') return res.status(400).json({ success: false, message: 'Category not found' });
+            return queryError(res, err);
+        }
         if (result.affectedRows === 0) return res.status(404).json({ success: false, message: 'Product not found or not owned by you' });
         res.json({ success: true, message: 'Product updated' });
     });
@@ -330,18 +356,33 @@ app.post('/api/products/:product_id/images', auth, (req, res) => {
     const { storage_key, sort_order } = req.body;
     if (!storage_key) return res.status(400).json({ success: false, message: 'storage_key is required' });
 
+    const hasOrder = sort_order !== undefined && sort_order !== null && sort_order !== '';
+    if (hasOrder && (!Number.isInteger(Number(sort_order)) || Number(sort_order) < 0 || Number(sort_order) > 65535)) {
+        return res.status(400).json({ success: false, message: 'sort_order must be an integer between 0 and 65535' });
+    }
+
     con.query('SELECT product_id FROM products WHERE product_id = ? AND seller_id = ?', [req.params.product_id, req.user.user_id], (err, rows) => {
         if (err) return queryError(res, err);
         if (rows.length === 0) return res.status(404).json({ success: false, message: 'Product not found or not owned by you' });
 
-        con.query(
-            'INSERT INTO product_images (product_id, storage_key, sort_order) VALUES (?, ?, ?)',
-            [req.params.product_id, storage_key, sort_order || 0],
-            (err, result) => {
-                if (err) return queryError(res, err);
-                res.status(201).json({ success: true, image_id: result.insertId });
-            }
-        );
+        // product_images has UNIQUE (product_id, sort_order), so when the client sends no
+        // sort_order, append after the current last image instead of always using 0.
+        con.query('SELECT COALESCE(MAX(sort_order) + 1, 0) AS next_order FROM product_images WHERE product_id = ?', [req.params.product_id], (err, next) => {
+            if (err) return queryError(res, err);
+            const order = hasOrder ? Number(sort_order) : Number(next[0].next_order);
+
+            con.query(
+                'INSERT INTO product_images (product_id, storage_key, sort_order) VALUES (?, ?, ?)',
+                [req.params.product_id, storage_key, order],
+                (err, result) => {
+                    if (err) {
+                        if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ success: false, message: 'sort_order already used for this product' });
+                        return queryError(res, err);
+                    }
+                    res.status(201).json({ success: true, image_id: result.insertId });
+                }
+            );
+        });
     });
 });
 
@@ -437,51 +478,61 @@ app.post('/api/orders', auth, (req, res) => {
         return res.status(400).json({ success: false, message: 'product_id and platform_bank_account_id are required' });
     }
 
-    con.beginTransaction((err) => {
+    // A transaction needs its own connection from the pool. If requests shared one
+    // connection they would run inside the same transaction and could roll each other back.
+    con.getConnection((err, conn) => {
         if (err) return queryError(res, err);
 
-        const productSql = `SELECT p.product_id, p.seller_id, p.title, p.price
-                            FROM products p WHERE p.product_id = ? AND p.visibility = 'active' FOR UPDATE`;
-        con.query(productSql, [product_id], (err, products) => {
-            if (err) return con.rollback(() => queryError(res, err));
-            if (products.length === 0) return con.rollback(() => res.status(404).json({ success: false, message: 'Product not available' }));
+        // Always hand the connection back, whichever way the request ends.
+        const finish = (send) => { conn.release(); send(); };
+        const abort = (send) => conn.rollback(() => finish(send));
 
-            const p = products[0];
-            if (Number(p.seller_id) === Number(req.user.user_id)) {
-                return con.rollback(() => res.status(400).json({ success: false, message: 'Cannot buy your own product' }));
-            }
+        conn.beginTransaction((err) => {
+            if (err) return finish(() => queryError(res, err));
 
-            con.query('SELECT platform_bank_account_id FROM platform_bank_accounts WHERE platform_bank_account_id = ? AND is_active = 1', [platform_bank_account_id], (err, banks) => {
-                if (err) return con.rollback(() => queryError(res, err));
-                if (banks.length === 0) return con.rollback(() => res.status(400).json({ success: false, message: 'Platform bank account not found or inactive' }));
+            const productSql = `SELECT p.product_id, p.seller_id, p.title, p.price
+                                FROM products p WHERE p.product_id = ? AND p.visibility = 'active' FOR UPDATE`;
+            conn.query(productSql, [product_id], (err, products) => {
+                if (err) return abort(() => queryError(res, err));
+                if (products.length === 0) return abort(() => res.status(404).json({ success: false, message: 'Product not available' }));
 
-                const insertSql = `INSERT INTO orders
-                    (product_id, buyer_id, platform_bank_account_id, product_title_snapshot,
-                     total_amount, receiving_bank_name_snapshot, receiving_bank_number_snapshot,
-                     receiving_bank_holder_snapshot, payment_due_at)
-                    SELECT ?, ?, ?, ?, ?, bank_name, account_number, account_holder_name,
-                           DATE_ADD(UTC_TIMESTAMP(3), INTERVAL 30 MINUTE)
-                    FROM platform_bank_accounts WHERE platform_bank_account_id = ?`;
-                con.query(insertSql, [product_id, req.user.user_id, platform_bank_account_id, p.title, p.price, platform_bank_account_id], (err, result) => {
-                    if (err) {
-                        return con.rollback(() => {
-                            if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ success: false, message: 'Product already has an active order' });
-                            queryError(res, err);
-                        });
-                    }
+                const p = products[0];
+                if (Number(p.seller_id) === Number(req.user.user_id)) {
+                    return abort(() => res.status(400).json({ success: false, message: 'Cannot buy your own product' }));
+                }
 
-                    con.query(
-                        `INSERT INTO order_status_history (order_id, actor_id, from_status, to_status, reason)
-                         VALUES (?, ?, NULL, 'awaiting_payment', 'Order created')`,
-                        [result.insertId, req.user.user_id],
-                        (err) => {
-                            if (err) return con.rollback(() => queryError(res, err));
-                            con.commit((err) => {
-                                if (err) return con.rollback(() => queryError(res, err));
-                                res.status(201).json({ success: true, message: 'Order created; payment workflow must be completed separately', order_id: result.insertId });
+                conn.query('SELECT platform_bank_account_id FROM platform_bank_accounts WHERE platform_bank_account_id = ? AND is_active = 1', [platform_bank_account_id], (err, banks) => {
+                    if (err) return abort(() => queryError(res, err));
+                    if (banks.length === 0) return abort(() => res.status(400).json({ success: false, message: 'Platform bank account not found or inactive' }));
+
+                    const insertSql = `INSERT INTO orders
+                        (product_id, buyer_id, platform_bank_account_id, product_title_snapshot,
+                         total_amount, receiving_bank_name_snapshot, receiving_bank_number_snapshot,
+                         receiving_bank_holder_snapshot, payment_due_at)
+                        SELECT ?, ?, ?, ?, ?, bank_name, account_number, account_holder_name,
+                               DATE_ADD(UTC_TIMESTAMP(3), INTERVAL 30 MINUTE)
+                        FROM platform_bank_accounts WHERE platform_bank_account_id = ?`;
+                    conn.query(insertSql, [product_id, req.user.user_id, platform_bank_account_id, p.title, p.price, platform_bank_account_id], (err, result) => {
+                        if (err) {
+                            return abort(() => {
+                                if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ success: false, message: 'Product already has an active order' });
+                                queryError(res, err);
                             });
                         }
-                    );
+
+                        conn.query(
+                            `INSERT INTO order_status_history (order_id, actor_id, from_status, to_status, reason)
+                             VALUES (?, ?, NULL, 'awaiting_payment', 'Order created')`,
+                            [result.insertId, req.user.user_id],
+                            (err) => {
+                                if (err) return abort(() => queryError(res, err));
+                                conn.commit((err) => {
+                                    if (err) return abort(() => queryError(res, err));
+                                    finish(() => res.status(201).json({ success: true, message: 'Order created; payment workflow must be completed separately', order_id: result.insertId }));
+                                });
+                            }
+                        );
+                    });
                 });
             });
         });
@@ -510,40 +561,47 @@ app.get('/api/orders/:order_id', auth, (req, res) => {
 });
 
 app.post('/api/orders/:order_id/cancel', auth, (req, res) => {
-    con.beginTransaction((err) => {
+    con.getConnection((err, conn) => {
         if (err) return queryError(res, err);
-        con.query(
-            `SELECT order_id, status FROM orders WHERE order_id = ? AND buyer_id = ? FOR UPDATE`,
-            [req.params.order_id, req.user.user_id],
-            (err, rows) => {
-                if (err) return con.rollback(() => queryError(res, err));
-                if (rows.length === 0) return con.rollback(() => res.status(404).json({ success: false, message: 'Order not found' }));
-                if (!['awaiting_payment', 'slip_submitted'].includes(rows[0].status)) {
-                    return con.rollback(() => res.status(409).json({ success: false, message: 'Order cannot be cancelled in current status' }));
-                }
 
-                con.query(
-                    `UPDATE orders SET status='cancelled', closed_at=UTC_TIMESTAMP(3), close_reason='Cancelled by buyer'
-                     WHERE order_id = ?`,
-                    [req.params.order_id],
-                    (err) => {
-                        if (err) return con.rollback(() => queryError(res, err));
-                        con.query(
-                            `INSERT INTO order_status_history (order_id, actor_id, from_status, to_status, reason)
-                             VALUES (?, ?, ?, 'cancelled', 'Cancelled by buyer')`,
-                            [req.params.order_id, req.user.user_id, rows[0].status],
-                            (err) => {
-                                if (err) return con.rollback(() => queryError(res, err));
-                                con.commit((err) => {
-                                    if (err) return con.rollback(() => queryError(res, err));
-                                    res.json({ success: true, message: 'Order cancelled' });
-                                });
-                            }
-                        );
+        const finish = (send) => { conn.release(); send(); };
+        const abort = (send) => conn.rollback(() => finish(send));
+
+        conn.beginTransaction((err) => {
+            if (err) return finish(() => queryError(res, err));
+            conn.query(
+                `SELECT order_id, status FROM orders WHERE order_id = ? AND buyer_id = ? FOR UPDATE`,
+                [req.params.order_id, req.user.user_id],
+                (err, rows) => {
+                    if (err) return abort(() => queryError(res, err));
+                    if (rows.length === 0) return abort(() => res.status(404).json({ success: false, message: 'Order not found' }));
+                    if (!['awaiting_payment', 'slip_submitted'].includes(rows[0].status)) {
+                        return abort(() => res.status(409).json({ success: false, message: 'Order cannot be cancelled in current status' }));
                     }
-                );
-            }
-        );
+
+                    conn.query(
+                        `UPDATE orders SET status='cancelled', closed_at=UTC_TIMESTAMP(3), close_reason='Cancelled by buyer'
+                         WHERE order_id = ?`,
+                        [req.params.order_id],
+                        (err) => {
+                            if (err) return abort(() => queryError(res, err));
+                            conn.query(
+                                `INSERT INTO order_status_history (order_id, actor_id, from_status, to_status, reason)
+                                 VALUES (?, ?, ?, 'cancelled', 'Cancelled by buyer')`,
+                                [req.params.order_id, req.user.user_id, rows[0].status],
+                                (err) => {
+                                    if (err) return abort(() => queryError(res, err));
+                                    conn.commit((err) => {
+                                        if (err) return abort(() => queryError(res, err));
+                                        finish(() => res.json({ success: true, message: 'Order cancelled' }));
+                                    });
+                                }
+                            );
+                        }
+                    );
+                }
+            );
+        });
     });
 });
 
@@ -637,6 +695,9 @@ app.post('/api/reports', auth, (req, res) => {
     const targets = [reported_user_id, reported_product_id, reported_message_id, reported_review_id].filter(v => v !== undefined && v !== null && v !== '');
     if (targets.length !== 1 || !reason || !String(reason).trim()) {
         return res.status(400).json({ success: false, message: 'Provide exactly one report target and a reason' });
+    }
+    if (!isPositiveId(targets[0])) {
+        return res.status(400).json({ success: false, message: 'Report target id must be a positive integer' });
     }
 
     const sql = `INSERT INTO reports

@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:uni_swap/view/user/product_detail_page.dart';
 
-// ไฟล์นี้ใช้งานได้ด้วยตัวเอง (แถบเมนูด้านล่างให้ MainScreen จัดการ)
-
 class _C {
   static const bg = Color(0xFFFAF9F6);
   static const ink = Color(0xFF2F2F2B);
@@ -12,15 +10,13 @@ class _C {
   static const surface = Color(0xFFF3F2EE);
 }
 
-/// รูปแบบข้อมูลสินค้า: ให้เพื่อน backend ใช้เป็นแบบสำหรับ JSON ได้เลย
+/// รูปแบบข้อมูลสินค้า: ตัด minutes และ oldPrice ออกตามที่ตกลงกันค่ะ
 class _Product {
   const _Product({
     required this.id,
     required this.title,
     required this.price,
     required this.place,
-    required this.minutes,
-    this.oldPrice,
     this.imageUrl,
     this.urgent = false,
   });
@@ -28,9 +24,7 @@ class _Product {
   final String id;
   final String title;
   final int price;
-  final int? oldPrice;
   final String place; // เช่น 'North Campus · Maple Hall'
-  final int minutes; // เวลาเดินทางโดยประมาณ
   final String? imageUrl; // ถ้าเป็น null จะแสดงรูปแทนที่ชั่วคราว
   final bool urgent;
 
@@ -51,9 +45,7 @@ const _products = [
     id: '1',
     title: 'Oak study desk',
     price: 45,
-    oldPrice: 70,
     place: 'North Campus · Maple Hall',
-    minutes: 2,
     urgent: true,
   ),
   _Product(
@@ -61,22 +53,18 @@ const _products = [
     title: 'Acoustic guitar',
     price: 80,
     place: 'North Campus · Maple Hall',
-    minutes: 4,
   ),
   _Product(
     id: '3',
     title: 'Desk lamp',
     price: 12,
     place: 'North Campus · Oak Hall',
-    minutes: 6,
   ),
   _Product(
     id: '4',
     title: 'City bike',
     price: 120,
-    oldPrice: 150,
     place: 'South Campus · Cedar Hall',
-    minutes: 12,
   ),
 ];
 
@@ -392,12 +380,10 @@ class _HomePageState extends State<HomePage> {
         context,
         MaterialPageRoute(
           builder: (_) => ProductDetailPage(
-            // TODO: ส่งแค่ id แล้วให้หน้ารายละเอียดดึงข้อมูลจาก API เอง
             product: ProductDetail.mock(
               id: p.id,
               title: p.title,
               price: p.price,
-              oldPrice: p.oldPrice,
               place: p.place,
               urgent: p.urgent,
             ),
@@ -475,32 +461,18 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 4),
-          Row(
-            children: [
-              Text(
-                '\$${p.price}',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: _C.ink,
-                ),
-              ),
-              if (p.oldPrice != null) ...[
-                const SizedBox(width: 8),
-                Text(
-                  '\$${p.oldPrice}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: _C.faint,
-                    decoration: TextDecoration.lineThrough,
-                  ),
-                ),
-              ],
-            ],
+          Text(
+            '${p.price} THB',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: _C.ink,
+            ),
           ),
           const SizedBox(height: 4),
+          // โชว์แค่ชื่อสถานที่ ไม่เอา min แล้ว
           Text(
-            '${p.building} · ${p.minutes} min',
+            p.building,
             style: const TextStyle(fontSize: 12, color: _C.muted),
           ),
         ],

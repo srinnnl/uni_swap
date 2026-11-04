@@ -32,13 +32,14 @@ class ReportProductPage extends StatefulWidget {
 }
 
 class _ReportProductPageState extends State<ReportProductPage> {
-  // เหตุผลเหล่านี้ตรงกับหน้า Admin > Reports (ให้ backend ใช้ชุดเดียวกัน)
-  static const _reasons = [
-    'Misleading information',
-    'Prohibited item',
-    'Suspected scam',
-    'Already sold',
-    'Other',
+  // (ค่าที่ส่ง API, ข้อความที่แสดง)
+  // ค่าเหล่านี้ตรงกับ reports.reason ใน DB และหน้า Admin > Reports
+  static const _reasons = <(String, String)>[
+    ('misleading', 'Misleading information'),
+    ('prohibited_item', 'Prohibited item'),
+    ('scam', 'Suspected scam'),
+    ('already_sold', 'Already sold'),
+    ('other', 'Other'),
   ];
 
   final _detailsCtrl = TextEditingController();
@@ -54,12 +55,12 @@ class _ReportProductPageState extends State<ReportProductPage> {
   // ===== จุดเชื่อมต่อ API: ให้เพื่อนแก้ฟังก์ชันนี้ =====
   void _submit() {
     final details = _detailsCtrl.text.trim();
-    if (_reasons[_reason] == 'Other' && details.length < 5) {
+    if (_reasons[_reason].$1 == 'other' && details.length < 5) {
       setState(() => _error = 'Please tell us what happened');
       return;
     }
 
-    // TODO: ส่งไป API -> reason: _reasons[_reason], details: details
+    // TODO: ส่งไป API -> reason: _reasons[_reason].$1, details: details
     // (admin จะเห็นในหน้า Reports และจัดกลุ่มตามสินค้า)
     Navigator.pop(context, true);
   }
@@ -208,7 +209,7 @@ class _ReportProductPageState extends State<ReportProductPage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '\$${widget.price} · ${widget.sellerName}',
+                  '${widget.price} THB · ${widget.sellerName}',
                   style: const TextStyle(fontSize: 11, color: _C.muted),
                 ),
               ],
@@ -243,7 +244,7 @@ class _ReportProductPageState extends State<ReportProductPage> {
                   children: [
                     Expanded(
                       child: Text(
-                        _reasons[i],
+                        _reasons[i].$2,
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,

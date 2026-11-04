@@ -73,7 +73,12 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
   // ===== จุดเชื่อมต่อ API: ให้เพื่อนแก้ฟังก์ชันนี้ =====
   void _confirm() {
     final when = DateTime(
-        _date.year, _date.month, _date.day, _time.hour, _time.minute);
+      _date.year,
+      _date.month,
+      _date.day,
+      _time.hour,
+      _time.minute,
+    );
     if (when.isBefore(DateTime.now())) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -171,7 +176,7 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
               ),
               const SizedBox(height: 4),
               Text(
-                '${widget.productTitle} · \$${widget.price}',
+                '${widget.productTitle} · ${widget.price} THB',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 13, color: _C.muted),
@@ -258,8 +263,7 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
               ),
               const SizedBox(height: 3),
               Text(
-                // TODO: เวลาตอบกลับเฉลี่ยจริงจาก API
-                '$_building · Usually replies in 10 min',
+                _building,
                 style: const TextStyle(fontSize: 12, color: _C.muted),
               ),
             ],
@@ -284,12 +288,17 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
             InkWell(
               onTap: () => setState(() => _spot = i),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 17,
+                ),
                 child: Row(
                   children: [
-                    const Icon(Icons.location_on_outlined,
-                        size: 20, color: _C.ink),
+                    const Icon(
+                      Icons.location_on_outlined,
+                      size: 20,
+                      color: _C.ink,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
@@ -338,7 +347,8 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'Choose a public spot and inspect the item before paying.',
+                  'Choose a public spot. Check the item in person, then tap '
+                  '"Confirm received" in the app so UniSwap can pay the seller.',
                   style: TextStyle(fontSize: 12, color: _C.muted),
                 ),
               ],
@@ -356,16 +366,16 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: _C.ink,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Text(
+      text,
+      style: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: _C.ink,
+      ),
+    ),
+  );
 }
 
 /// วงกลมเลือก (แทน Radio ของระบบ ซึ่งเปลี่ยน API บ่อยตามเวอร์ชัน Flutter)
@@ -375,28 +385,28 @@ class _RadioDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        width: 22,
-        height: 22,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: selected ? _C.ink : _C.border,
-            width: selected ? 2 : 1.5,
-          ),
-        ),
-        child: selected
-            ? Container(
-                width: 10,
-                height: 10,
-                decoration: const BoxDecoration(
-                  color: _C.ink,
-                  shape: BoxShape.circle,
-                ),
-              )
-            : null,
-      );
+    duration: const Duration(milliseconds: 150),
+    width: 22,
+    height: 22,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      border: Border.all(
+        color: selected ? _C.ink : _C.border,
+        width: selected ? 2 : 1.5,
+      ),
+    ),
+    child: selected
+        ? Container(
+            width: 10,
+            height: 10,
+            decoration: const BoxDecoration(
+              color: _C.ink,
+              shape: BoxShape.circle,
+            ),
+          )
+        : null,
+  );
 }
 
 class _PickerBox extends StatelessWidget {
@@ -449,8 +459,18 @@ class _PickerBox extends StatelessWidget {
 String _formatDate(DateTime d) {
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   return '${days[d.weekday - 1]}, ${months[d.month - 1]} ${d.day}';
 }

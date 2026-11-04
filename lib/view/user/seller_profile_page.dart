@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 
-// ไฟล์นี้ใช้งานได้ด้วยตัวเอง: โปรไฟล์ผู้ขาย (เปิดจากแถบผู้ขายในหน้าสินค้า)
-// แสดงสถิติ สินค้าที่กำลังขาย และรีวิวจากผู้ซื้อ
-
 class _C {
   static const bg = Color(0xFFFAF9F6);
   static const ink = Color(0xFF2F2F2B);
@@ -26,13 +23,11 @@ class _Review {
     required this.rating,
     required this.product,
     required this.date,
-    this.comment, // อาจว่างได้ (ผู้ซื้อให้ดาวอย่างเดียว)
   });
   final String reviewer;
   final int rating;
   final String product;
   final String date;
-  final String? comment;
 }
 
 class SellerProfilePage extends StatefulWidget {
@@ -56,10 +51,6 @@ class SellerProfilePage extends StatefulWidget {
 }
 
 class _SellerProfilePageState extends State<SellerProfilePage> {
-  // TODO: ดึงจาก API
-  //  - listings: สินค้าที่ผู้ขายกำลังขาย (products ของ seller_id)
-  //  - reviews: รีวิวจากออเดอร์ที่เสร็จสิ้น (reviews ผูกกับ order_id)
-  //    แสดงชื่อผู้รีวิวแบบย่อ เช่น "Noah P." เพื่อความเป็นส่วนตัว
   static const _listings = [
     _Listing('Oak study desk', 45),
     _Listing('Desk lamp', 12),
@@ -73,14 +64,12 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
       rating: 5,
       product: 'Acoustic guitar',
       date: 'May 18',
-      comment: 'Great seller. The item was exactly as described.',
     ),
     _Review(
       reviewer: 'Alex S.',
       rating: 5,
       product: 'City bike',
       date: 'May 10',
-      comment: 'Quick reply and easy pickup. Thanks again!',
     ),
     _Review(
       reviewer: 'Priya N.',
@@ -90,7 +79,7 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
     ),
   ];
 
-  int _tab = 0; // 0 = Listings, 1 = Reviews
+  int _tab = 0;
 
   String get _initials {
     final parts = widget.name.trim().split(RegExp(r'\s+'));
@@ -188,24 +177,21 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
 
   Widget _buildStats() {
     Widget stat(String value, String label) => Expanded(
-          child: Column(
-            children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: _C.ink,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: const TextStyle(fontSize: 11, color: _C.muted),
-              ),
-            ],
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: _C.ink,
+            ),
           ),
-        );
+          const SizedBox(height: 4),
+          Text(label, style: const TextStyle(fontSize: 11, color: _C.muted)),
+        ],
+      ),
+    );
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
@@ -257,8 +243,10 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
                 ),
                 const SizedBox(width: 8),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: _C.surface,
                     borderRadius: BorderRadius.circular(10),
@@ -311,16 +299,22 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
                   child: l.imageUrl == null
                       ? Container(
                           color: _C.surface,
-                          child: const Icon(Icons.image_outlined,
-                              size: 30, color: _C.faint),
+                          child: const Icon(
+                            Icons.image_outlined,
+                            size: 30,
+                            color: _C.faint,
+                          ),
                         )
                       : Image.network(
                           l.imageUrl!,
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => Container(
                             color: _C.surface,
-                            child: const Icon(Icons.image_outlined,
-                                size: 30, color: _C.faint),
+                            child: const Icon(
+                              Icons.image_outlined,
+                              size: 30,
+                              color: _C.faint,
+                            ),
                           ),
                         ),
                 ),
@@ -339,7 +333,7 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
             ),
             const SizedBox(height: 2),
             Text(
-              '\$${l.price}',
+              '${l.price} THB',
               style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
@@ -357,7 +351,6 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
 
     return Column(
       children: [
-        // สรุปคะแนนเฉลี่ย
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
@@ -428,17 +421,6 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
           ),
           const SizedBox(height: 6),
           _Stars(r.rating),
-          if (r.comment != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              r.comment!,
-              style: const TextStyle(
-                fontSize: 13,
-                height: 1.45,
-                color: _C.ink,
-              ),
-            ),
-          ],
           const SizedBox(height: 8),
           Text(
             'Bought: ${r.product}',
@@ -457,16 +439,16 @@ class _Stars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 1; i <= 5; i++)
-            Icon(
-              i <= count ? Icons.star : Icons.star_border,
-              size: size,
-              color: _C.star,
-            ),
-        ],
-      );
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      for (var i = 1; i <= 5; i++)
+        Icon(
+          i <= count ? Icons.star : Icons.star_border,
+          size: size,
+          color: _C.star,
+        ),
+    ],
+  );
 }
 
 class _Empty extends StatelessWidget {
@@ -475,9 +457,9 @@ class _Empty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 48),
-        child: Center(
-          child: Text(text, style: const TextStyle(color: _C.muted)),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(vertical: 48),
+    child: Center(
+      child: Text(text, style: const TextStyle(color: _C.muted)),
+    ),
+  );
 }

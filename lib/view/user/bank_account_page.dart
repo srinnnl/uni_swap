@@ -71,8 +71,9 @@ class _BankAccountPageState extends State<BankAccountPage> {
             for (final b in _banks)
               ListTile(
                 title: Text(b),
-                trailing:
-                    b == _bank ? const Icon(Icons.check, color: _C.ink) : null,
+                trailing: b == _bank
+                    ? const Icon(Icons.check, color: _C.ink)
+                    : null,
                 onTap: () => Navigator.pop(context, b),
               ),
           ],
@@ -337,22 +338,22 @@ class _BankAccountPageState extends State<BankAccountPage> {
   }
 
   Widget _label(String t) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(
-          t,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: _C.ink,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(
+      t,
+      style: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: _C.ink,
+      ),
+    ),
+  );
 
   InputDecoration _dec(String hint) {
     OutlineInputBorder b(Color c, [double w = 1]) => OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: c, width: w),
-        );
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: c, width: w),
+    );
     return InputDecoration(
       hintText: hint,
       hintStyle: const TextStyle(color: _C.faint),

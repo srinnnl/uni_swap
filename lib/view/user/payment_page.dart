@@ -44,7 +44,7 @@ class PaymentPage extends StatelessWidget {
   final String accountNumber;
   final String accountName;
 
-  String get _amount => '\$${price.toStringAsFixed(2)}';
+  String get _amount => '${price.toStringAsFixed(2)} THB';
 
   // ===== จุดเชื่อมต่อ API: ให้เพื่อนแก้ฟังก์ชันนี้ =====
   Future<void> _markPaid(BuildContext context) async {
@@ -149,14 +149,14 @@ class PaymentPage extends StatelessWidget {
   }
 
   Widget _cardBox({required Widget child}) => Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _C.border),
-        ),
-        child: child,
-      );
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: _C.border),
+    ),
+    child: child,
+  );
 
   Widget _buildOrderCard() {
     return _cardBox(
@@ -177,8 +177,10 @@ class PaymentPage extends StatelessWidget {
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => Container(
                         color: _C.surface,
-                        child:
-                            const Icon(Icons.image_outlined, color: _C.faint),
+                        child: const Icon(
+                          Icons.image_outlined,
+                          color: _C.faint,
+                        ),
                       ),
                     ),
             ),

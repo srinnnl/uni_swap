@@ -4,7 +4,8 @@ import 'package:uni_swap/view/user/chat_page.dart';
 import 'package:uni_swap/view/user/payment_page.dart';
 
 // หน้ารายละเอียดออเดอร์ (เปิดจากการกดรายการในหน้า Orders)
-// ปิดหน้าแล้วจะ pop กลับพร้อมสถานะล่าสุด (OrderStage) ให้หน้า Orders อัปเดตตาม
+// ปิดหน้าแล้วจะ pop กลับพร้อมผลล่าสุดทั้งก้อน (OrderResult: สถานะ + จ่ายแล้วหรือยัง + จุดนัด)
+// ให้หน้า Orders อัปเดตตาม
 
 class _C {
   static const bg = Color(0xFFFAF9F6);
@@ -25,7 +26,23 @@ class _C {
 }
 
 /// สถานะหลักของออเดอร์ (ลำดับเดียวกับ _Status ในหน้า Orders)
+/// pending = requested ใน DB; "นัดแล้ว" ดูจาก meetup, "จ่ายแล้ว" ดูจาก paid
 enum OrderStage { pending, accepted, completed, cancelled }
+
+/// ผลที่ส่งกลับหน้า Orders ตอนปิดหน้ารายละเอียด
+class OrderResult {
+  const OrderResult({
+    required this.stage,
+    required this.paid,
+    this.meetupPlace,
+    this.meetupAt,
+  });
+
+  final OrderStage stage;
+  final bool paid;
+  final String? meetupPlace;
+  final DateTime? meetupAt;
+}
 
 class OrderDetailsPage extends StatefulWidget {
   const OrderDetailsPage({
@@ -77,9 +94,11 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
 
   String get _firstName => widget.person.trim().split(RegExp(r'\s+')).first;
   bool get _cancelled => _stage == OrderStage.cancelled;
+  // สินค้าฟรี (ราคา 0) ข้ามขั้นจ่ายเงิน
+  bool get _needsPayment => widget.price > 0;
   bool get _completed => _stage == OrderStage.completed;
   String get _priceText =>
-      widget.price == 0 ? 'Free' : '\$${widget.price.toStringAsFixed(0)}';
+      widget.price == 0 ? 'Free' : '${widget.price.toStringAsFixed(0)} THB';
 
   void _toast(String m) => ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
@@ -105,7 +124,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
       _meetupPlace = r.spot;
       _meetupAt = r.when;
     });
-    _toast('Meet-up saved');
+    _toast('Meet-up updated');
   }
 
   Future<void> _pay() async {
@@ -124,12 +143,16 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
     );
     if (ok == true && mounted) {
       setState(() => _paid = true);
-      _toast('Marked as paid');
+      _toast('Payment held by UniSwap');
     }
   }
 
-  Future<bool> _confirm(String title, String message, String action,
-      {bool danger = false}) async {
+  Future<bool> _confirm(
+    String title,
+    String message,
+    String action, {
+    bool danger = false,
+  }) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -165,9 +188,13 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   }
 
   Future<void> _cancelOrder() async {
+    // ยกเลิกหลังจ่ายแล้ว: UniSwap คืนเงินให้ผู้ซื้อ (ใน DB = disbursements แบบ buyer_refund)
+    final refund = _paid && _needsPayment;
     final ok = await _confirm(
       'Cancel this order?',
-      'The other person will be notified.',
+      refund
+          ? 'UniSwap will refund your $_priceText. The other person will be notified.'
+          : 'The other person will be notified.',
       'Cancel order',
       danger: true,
     );
@@ -190,7 +217,15 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
     );
   }
 
-  void _close() => Navigator.pop(context, _stage);
+  void _close() => Navigator.pop(
+    context,
+    OrderResult(
+      stage: _stage,
+      paid: _paid,
+      meetupPlace: _meetupPlace,
+      meetupAt: _meetupAt,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -224,7 +259,8 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   }
 
   Widget _buildHeader() {
-    final canCancel = widget.isBuying &&
+    final canCancel =
+        widget.isBuying &&
         (_stage == OrderStage.pending || _stage == OrderStage.accepted);
     return Row(
       children: [
@@ -258,7 +294,10 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
           itemBuilder: (_) => [
             if (canCancel)
               const PopupMenuItem(value: 'cancel', child: Text('Cancel order')),
-            const PopupMenuItem(value: 'report', child: Text('Report a problem')),
+            const PopupMenuItem(
+              value: 'report',
+              child: Text('Report a problem'),
+            ),
           ],
         ),
       ],
@@ -266,22 +305,22 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   }
 
   (String, Color, Color) get _badge => switch (_stage) {
-        OrderStage.pending => ('Pending', _C.amberBg, _C.amberFg),
-        OrderStage.accepted => ('Accepted', _C.blueBg, _C.blueFg),
-        OrderStage.completed => ('Completed', _C.sageBg, _C.sage),
-        OrderStage.cancelled => ('Cancelled', _C.redBg, _C.redFg),
-      };
+    OrderStage.pending => ('Pending', _C.amberBg, _C.amberFg),
+    OrderStage.accepted => ('Accepted', _C.blueBg, _C.blueFg),
+    OrderStage.completed => ('Completed', _C.sageBg, _C.sage),
+    OrderStage.cancelled => ('Cancelled', _C.redBg, _C.redFg),
+  };
 
   Widget _box({required Widget child, EdgeInsets? padding}) => Container(
-        width: double.infinity,
-        padding: padding ?? const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _C.border),
-        ),
-        child: child,
-      );
+    width: double.infinity,
+    padding: padding ?? const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: _C.border),
+    ),
+    child: child,
+  );
 
   Widget _buildOrderCard() {
     final (label, bg, fg) = _badge;
@@ -304,8 +343,10 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => Container(
                         color: _C.surface,
-                        child:
-                            const Icon(Icons.image_outlined, color: _C.faint),
+                        child: const Icon(
+                          Icons.image_outlined,
+                          color: _C.faint,
+                        ),
                       ),
                     ),
             ),
@@ -316,8 +357,10 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: bg,
                     borderRadius: BorderRadius.circular(8),
@@ -358,25 +401,34 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   Widget _buildStatusCard() {
     final accepted =
         _stage == OrderStage.accepted || _stage == OrderStage.completed;
+    final meetupText = _meetupAt == null
+        ? 'Not arranged yet'
+        : '${accepted ? '' : 'Proposed · '}${_formatDay(_meetupAt!)} · '
+              '${_formatTime(TimeOfDay.fromDateTime(_meetupAt!))}';
     final steps = <_Step>[
       _Step('Order requested', widget.requestedLabel, true),
-      _Step('Seller accepted',
-          accepted ? 'Seller confirmed' : 'Waiting for seller', accepted),
       _Step(
-        'Meet-up arranged',
-        _meetupAt == null
-            ? 'Not arranged yet'
-            : '${_formatDay(_meetupAt!)} · ${_formatTime(TimeOfDay.fromDateTime(_meetupAt!))}',
-        _meetupAt != null,
+        'Seller accepted',
+        accepted ? 'Seller confirmed' : 'Waiting for seller',
+        accepted,
       ),
-      _Step('Payment', _paid ? 'Paid to UniSwap (held safely)' : 'Waiting for payment',
-          _paid),
+      // ผู้ซื้อเสนอจุดนัดตอนกด Request ผู้ขายกด Accept = ยืนยันจุดนัด
+      _Step('Meet-up arranged', meetupText, accepted && _meetupAt != null),
+      if (_needsPayment)
+        _Step(
+          'Payment',
+          _paid ? 'Paid to UniSwap (held safely)' : 'Waiting for payment',
+          _paid,
+        ),
       _Step(
-          'Completed',
-          _completed
-              ? 'Confirmed · seller payout sent'
-              : 'Confirm after handover',
-          _completed),
+        'Completed',
+        _completed
+            ? (_needsPayment
+                  ? 'Confirmed · seller payout sent'
+                  : 'Confirmed · handover done')
+            : 'Confirm after handover',
+        _completed,
+      ),
     ];
 
     return _box(
@@ -390,18 +442,30 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
           ),
           const SizedBox(height: 18),
           if (_cancelled)
-            const Row(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.cancel_outlined, color: _C.redFg),
-                SizedBox(width: 12),
-                Text(
-                  'This order was cancelled',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: _C.redFg,
-                  ),
+                const Row(
+                  children: [
+                    Icon(Icons.cancel_outlined, color: _C.redFg),
+                    SizedBox(width: 12),
+                    Text(
+                      'This order was cancelled',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: _C.redFg,
+                      ),
+                    ),
+                  ],
                 ),
+                if (_paid && _needsPayment) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Your $_priceText payment will be refunded by UniSwap.',
+                    style: const TextStyle(fontSize: 12, color: _C.muted),
+                  ),
+                ],
               ],
             )
           else
@@ -434,10 +498,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
                       ? const Icon(Icons.check, size: 16, color: _C.sage)
                       : Text(
                           '${i + 1}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: _C.faint,
-                          ),
+                          style: const TextStyle(fontSize: 11, color: _C.faint),
                         ),
                 ),
                 if (!last)
@@ -499,8 +560,11 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.calendar_today_outlined,
-                size: 20, color: _C.ink),
+            child: const Icon(
+              Icons.calendar_today_outlined,
+              size: 20,
+              color: _C.ink,
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -531,7 +595,8 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
               ],
             ),
           ),
-          if (!_completed)
+          // แก้จุดนัดได้เฉพาะผู้ซื้อ และก่อนจ่ายเงินเท่านั้น
+          if (widget.isBuying && !_paid && !_completed)
             GestureDetector(
               onTap: _arrange,
               child: const Text(
@@ -588,7 +653,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   }
 
   Widget? _primaryAction() {
-    // ผู้ขายจัดการรับ/ปฏิเสธ/ปิดงานที่หน้ารายการ Orders อยู่แล้ว
+    // ผู้ขายรับ/ปฏิเสธที่หน้ารายการ Orders ส่วนปิดงาน (completed) ผู้ซื้อเป็นคนกด Confirm received
     if (!widget.isBuying || _cancelled || _completed) return null;
 
     String label;
@@ -602,8 +667,8 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
       label = 'Arrange meet-up';
       icon = Icons.event_outlined;
       onTap = _arrange;
-    } else if (!_paid) {
-      label = 'View payment';
+    } else if (_needsPayment && !_paid) {
+      label = 'Pay $_priceText';
       icon = Icons.credit_card_outlined;
       onTap = _pay;
     } else {
@@ -643,8 +708,18 @@ class _Step {
 String _formatDay(DateTime d) {
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   return '${days[d.weekday - 1]}, ${months[d.month - 1]} ${d.day}';
 }

@@ -4,6 +4,7 @@ import 'package:uni_swap/view/login.dart';
 import 'package:uni_swap/view/user/messages_page.dart';
 import 'package:uni_swap/view/user/my_listings_page.dart';
 import 'package:uni_swap/view/user/request_location_page.dart';
+import 'package:uni_swap/view/user/favorites_page.dart';
 
 // ---- colors (local to this file) ----
 const _cBg = Color(0xFFFAF9F6);
@@ -29,7 +30,7 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   // Mock data (UI only)
   static const _username = 'mayakim';
-  static const _displayName = 'Maya';
+  // static const _displayName = 'Maya';
 
   static const _zones = <String, List<String>>{
     'หอใน (On-campus dorm)': [
@@ -136,6 +137,14 @@ class _ProfilePageState extends State<ProfilePage> {
           _location,
           _pickLocation,
         ),
+
+        _menuTile(Icons.favorite_border, 'My favorites', 'Saved items', () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const FavoritesPage()),
+          );
+        }),
+
         _menuTile(
           Icons.inventory_2_outlined,
           'My listings',

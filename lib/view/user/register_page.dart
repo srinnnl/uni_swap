@@ -28,6 +28,7 @@ class RegisterPage extends StatefulWidget {
 
 class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
+  final _fullNameCtrl = TextEditingController();
   final _studentIdCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _usernameCtrl = TextEditingController();
@@ -40,6 +41,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
   @override
   void dispose() {
+    _fullNameCtrl.dispose();
     _studentIdCtrl.dispose();
     _emailCtrl.dispose();
     _usernameCtrl.dispose();
@@ -56,6 +58,8 @@ class _RegisterPageState extends State<RegisterPage> {
 
     final isOther = _residence == _otherOption;
     final data = {
+      // users.display_name (UI โชว์ชื่อเต็มคู่กับ @username ทั้งแอป)
+      'fullName': _fullNameCtrl.text.trim(),
       'studentId': _studentIdCtrl.text.trim(),
       'email': _emailCtrl.text.trim(),
       'username': _usernameCtrl.text.trim(),
@@ -227,6 +231,19 @@ class _RegisterPageState extends State<RegisterPage> {
               style: TextStyle(fontSize: 14, color: _C.muted),
             ),
             _buildField(
+              label: 'Full name',
+              hint: 'e.g. Maya Kim',
+              helper: 'Shown on your profile and to people you trade with',
+              controller: _fullNameCtrl,
+              icon: Icons.person_outline,
+              validator: (v) {
+                final text = v?.trim() ?? '';
+                if (text.length < 2) return 'Enter your full name';
+                if (text.length > 100) return 'Too long (max 100 characters)';
+                return null;
+              },
+            ),
+            _buildField(
               label: 'Student ID',
               hint: 'Your student ID',
               controller: _studentIdCtrl,
@@ -382,31 +399,48 @@ class _RegisterPageState extends State<RegisterPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildLabel(label),
-        TextFormField(
-          controller: controller,
-          obscureText: obscureText,
-          validator: validator,
-          keyboardType: keyboardType,
-          textInputAction: textInputAction,
-          style: const TextStyle(fontSize: 15, color: _C.ink),
-          decoration: InputDecoration(
-            hintText: hint,
-            helperText: helper,
-            helperStyle: const TextStyle(fontSize: 12, color: _C.muted),
-            hintStyle: const TextStyle(color: _C.hint),
-            prefixIcon: Icon(icon, size: 20, color: _C.muted),
-            suffixIcon: suffix,
-            filled: true,
-            fillColor: _C.bg,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 16,
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: _C.ink.withValues(alpha: 0.015),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+              BoxShadow(
+                color: Colors.white.withValues(alpha: 0.4),
+                blurRadius: 4,
+                offset: const Offset(-1, -1),
+              ),
+            ],
+          ),
+          child: TextFormField(
+            controller: controller,
+            obscureText: obscureText,
+            validator: validator,
+            keyboardType: keyboardType,
+            textInputAction: textInputAction,
+            style: const TextStyle(fontSize: 15, color: _C.ink),
+            decoration: InputDecoration(
+              hintText: hint,
+              helperText: helper,
+              helperStyle: const TextStyle(fontSize: 12, color: _C.muted),
+              hintStyle: const TextStyle(color: _C.hint),
+              prefixIcon: Icon(icon, size: 20, color: _C.muted),
+              suffixIcon: suffix,
+              filled: true,
+              fillColor: const Color(0xFFF8F7F2),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
+              border: _border(Colors.transparent),
+              enabledBorder: _border(const Color(0xFFE5E0D6)),
+              focusedBorder: _border(_C.ink, 1.5),
+              errorBorder: _border(Colors.red.shade300),
+              focusedErrorBorder: _border(Colors.red.shade400, 1.5),
             ),
-            border: _border(_C.border),
-            enabledBorder: _border(_C.border),
-            focusedBorder: _border(_C.ink, 1.5),
-            errorBorder: _border(Colors.red.shade300),
-            focusedErrorBorder: _border(Colors.red.shade400, 1.5),
           ),
         ),
       ],

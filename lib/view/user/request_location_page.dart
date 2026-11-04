@@ -4,9 +4,152 @@ const _cBg = Color(0xFFFAF9F6);
 const _cInk = Color(0xFF2B2B26);
 const _cMuted = Color(0xFF8A8A82);
 const _cBorder = Color(0xFFE6E4DE);
+const _cRedFg = Color(0xFFB3402F);
 
-class RequestLocationPage extends StatelessWidget {
-  const RequestLocationPage({super.key});
+// หน้าขอเพิ่มที่พัก (หอ / คอนโด) ที่ยังไม่มีในรายการ
+// กด Submit แล้วจะ pop กลับพร้อมค่า true (ตอนนี้ยังเป็นข้อมูลจำลอง)
+//
+// ค่า type ตรงกับ location_requests.location_type ใน DB:
+//   dorm_on_campus, dorm_off_campus, condo, other
+// สถานะเริ่มต้นของคำขอใน DB = pending (แอดมินเปลี่ยนเป็น reviewing / approved / merged / rejected)
+class RequestLocationPage extends StatefulWidget {
+  const RequestLocationPage({
+    super.key,
+    // TODO: ดึงที่พักปัจจุบันของผู้ใช้จาก API
+    this.currentLocation = 'North Campus · Maple Hall',
+  });
+
+  final String currentLocation;
+
+  @override
+  State<RequestLocationPage> createState() => _RequestLocationPageState();
+}
+
+class _RequestLocationPageState extends State<RequestLocationPage> {
+  // (ค่าที่ส่ง API, ข้อความที่แสดง)
+  static const _types = <(String, String)>[
+    ('dorm_on_campus', 'Dorm / residence hall (on campus)'),
+    ('dorm_off_campus', 'Dorm (off campus)'),
+    ('condo', 'Condo / apartment'),
+    ('other', 'Other'),
+  ];
+
+  // TODO: ดึงรายชื่อ zone จาก API
+  static const _zones = <String>[
+    'North Campus',
+    'South Campus',
+    'East Campus',
+    'West Campus',
+    'Off campus',
+  ];
+
+  final _nameCtrl = TextEditingController();
+  final _addressCtrl = TextEditingController();
+  final _reasonCtrl = TextEditingController();
+
+  String _type = _types.first.$1;
+  String? _zone;
+  String? _nameError;
+  String? _zoneError;
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _addressCtrl.dispose();
+    _reasonCtrl.dispose();
+    super.dispose();
+  }
+
+  String get _typeLabel => _types.firstWhere((t) => t.$1 == _type).$2;
+
+  // เลือกจากรายการ (bottom sheet) แล้วคืนค่าที่เลือก
+  Future<T?> _pick<T>({
+    required String title,
+    required List<(T, String)> options,
+    required T? selected,
+  }) {
+    return showModalBottomSheet<T>(
+      context: context,
+      backgroundColor: _cBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: _cInk,
+                ),
+              ),
+            ),
+            for (final o in options)
+              ListTile(
+                title: Text(o.$2),
+                trailing: o.$1 == selected
+                    ? const Icon(Icons.check, color: _cInk)
+                    : null,
+                onTap: () => Navigator.pop(ctx, o.$1),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickType() async {
+    final v = await _pick<String>(
+      title: 'Location type',
+      options: _types,
+      selected: _type,
+    );
+    if (v != null) setState(() => _type = v);
+  }
+
+  Future<void> _pickZone() async {
+    final v = await _pick<String>(
+      title: 'Campus zone',
+      options: [for (final z in _zones) (z, z)],
+      selected: _zone,
+    );
+    if (v != null) {
+      setState(() {
+        _zone = v;
+        _zoneError = null;
+      });
+    }
+  }
+
+  // ===== จุดเชื่อมต่อ API: ให้เพื่อนแก้ฟังก์ชันนี้ =====
+  void _submit() {
+    final name = _nameCtrl.text.trim();
+    setState(() {
+      _nameError = name.length < 3 ? 'Please enter the location name' : null;
+      _zoneError = _zone == null ? 'Please choose a zone' : null;
+    });
+    if (_nameError != null || _zoneError != null) return;
+
+    // TODO: ส่งไป API (location_requests)
+    //   name: name, location_type: _type, zone: _zone,
+    //   address: _addressCtrl.text.trim(), reason: _reasonCtrl.text.trim()
+    //   status เริ่มต้น = pending
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text("Request sent. We'll notify you once it's reviewed."),
+        ),
+      );
+    Navigator.pop(context, true);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -16,9 +159,9 @@ class RequestLocationPage extends StatelessWidget {
         backgroundColor: _cBg,
         elevation: 0,
         centerTitle: true,
-        title: Column(
+        title: const Column(
           children: [
-            const Text(
+            Text(
               'Request a location',
               style: TextStyle(
                 fontSize: 18,
@@ -39,6 +182,7 @@ class RequestLocationPage extends StatelessWidget {
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -59,12 +203,16 @@ class RequestLocationPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Row(
-                    children: const [
-                      Icon(Icons.location_on_outlined, size: 18, color: _cInk),
-                      SizedBox(width: 8),
+                    children: [
+                      const Icon(
+                        Icons.location_on_outlined,
+                        size: 18,
+                        color: _cInk,
+                      ),
+                      const SizedBox(width: 8),
                       Text(
-                        'North Campus · Maple Hall',
-                        style: TextStyle(fontWeight: FontWeight.w600),
+                        widget.currentLocation,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ],
                   ),
@@ -73,17 +221,33 @@ class RequestLocationPage extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            _buildFieldGroup('Location name', 'e.g. Riverside Residence'),
-            _buildSelector('Location type', 'Dorm / residence hall'),
-            _buildSelector('Campus zone', 'North Campus'),
             _buildFieldGroup(
-              'Address',
+              'Location name',
+              'e.g. Riverside Residence',
+              controller: _nameCtrl,
+              errorText: _nameError,
+              onChanged: (_) {
+                if (_nameError != null) setState(() => _nameError = null);
+              },
+            ),
+            _buildSelector('Location type', _typeLabel, onTap: _pickType),
+            _buildSelector(
+              'Campus zone',
+              _zone ?? 'Choose a zone',
+              onTap: _pickZone,
+              placeholder: _zone == null,
+              errorText: _zoneError,
+            ),
+            _buildFieldGroup(
+              'Address (optional)',
               'Street address or nearby landmark',
+              controller: _addressCtrl,
               maxLines: 3,
             ),
             _buildFieldGroup(
-              'Why should we add it?',
+              'Why should we add it? (optional)',
               'Tell us how many students live here...',
+              controller: _reasonCtrl,
               maxLines: 3,
             ),
 
@@ -99,7 +263,7 @@ class RequestLocationPage extends StatelessWidget {
               width: double.infinity,
               height: 52,
               child: FilledButton(
-                onPressed: () {}, // TODO: Submit action
+                onPressed: _submit,
                 style: FilledButton.styleFrom(
                   backgroundColor: _cInk,
                   shape: RoundedRectangleBorder(
@@ -118,7 +282,19 @@ class RequestLocationPage extends StatelessWidget {
     );
   }
 
-  Widget _buildFieldGroup(String label, String hint, {int maxLines = 1}) {
+  Widget _buildFieldGroup(
+    String label,
+    String hint, {
+    required TextEditingController controller,
+    int maxLines = 1,
+    String? errorText,
+    ValueChanged<String>? onChanged,
+  }) {
+    OutlineInputBorder border(Color c) => OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: BorderSide(color: c),
+    );
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: Column(
@@ -134,20 +310,21 @@ class RequestLocationPage extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           TextField(
+            controller: controller,
             maxLines: maxLines,
+            onChanged: onChanged,
+            textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
               hintText: hint,
               hintStyle: const TextStyle(color: _cMuted, fontSize: 13),
+              errorText: errorText,
               filled: true,
               fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: _cBorder),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: _cBorder),
-              ),
+              border: border(_cBorder),
+              enabledBorder: border(_cBorder),
+              focusedBorder: border(_cInk),
+              errorBorder: border(_cRedFg),
+              focusedErrorBorder: border(_cRedFg),
             ),
           ),
         ],
@@ -155,7 +332,13 @@ class RequestLocationPage extends StatelessWidget {
     );
   }
 
-  Widget _buildSelector(String label, String value) {
+  Widget _buildSelector(
+    String label,
+    String value, {
+    required VoidCallback onTap,
+    bool placeholder = false,
+    String? errorText,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: Column(
@@ -170,21 +353,43 @@ class RequestLocationPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: _cBorder),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(value, style: const TextStyle(fontSize: 14, color: _cInk)),
-                const Icon(Icons.chevron_right, color: _cMuted, size: 20),
-              ],
+          InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: errorText == null ? _cBorder : _cRedFg,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      value,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: placeholder ? _cMuted : _cInk,
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, color: _cMuted, size: 20),
+                ],
+              ),
             ),
           ),
+          if (errorText != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, left: 4),
+              child: Text(
+                errorText,
+                style: const TextStyle(fontSize: 12, color: _cRedFg),
+              ),
+            ),
         ],
       ),
     );

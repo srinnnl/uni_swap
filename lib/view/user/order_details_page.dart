@@ -147,8 +147,12 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
     }
   }
 
-  Future<bool> _confirm(String title, String message, String action,
-      {bool danger = false}) async {
+  Future<bool> _confirm(
+    String title,
+    String message,
+    String action, {
+    bool danger = false,
+  }) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -255,7 +259,8 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   }
 
   Widget _buildHeader() {
-    final canCancel = widget.isBuying &&
+    final canCancel =
+        widget.isBuying &&
         (_stage == OrderStage.pending || _stage == OrderStage.accepted);
     return Row(
       children: [
@@ -289,7 +294,10 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
           itemBuilder: (_) => [
             if (canCancel)
               const PopupMenuItem(value: 'cancel', child: Text('Cancel order')),
-            const PopupMenuItem(value: 'report', child: Text('Report a problem')),
+            const PopupMenuItem(
+              value: 'report',
+              child: Text('Report a problem'),
+            ),
           ],
         ),
       ],
@@ -297,22 +305,22 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   }
 
   (String, Color, Color) get _badge => switch (_stage) {
-        OrderStage.pending => ('Pending', _C.amberBg, _C.amberFg),
-        OrderStage.accepted => ('Accepted', _C.blueBg, _C.blueFg),
-        OrderStage.completed => ('Completed', _C.sageBg, _C.sage),
-        OrderStage.cancelled => ('Cancelled', _C.redBg, _C.redFg),
-      };
+    OrderStage.pending => ('Pending', _C.amberBg, _C.amberFg),
+    OrderStage.accepted => ('Accepted', _C.blueBg, _C.blueFg),
+    OrderStage.completed => ('Completed', _C.sageBg, _C.sage),
+    OrderStage.cancelled => ('Cancelled', _C.redBg, _C.redFg),
+  };
 
   Widget _box({required Widget child, EdgeInsets? padding}) => Container(
-        width: double.infinity,
-        padding: padding ?? const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _C.border),
-        ),
-        child: child,
-      );
+    width: double.infinity,
+    padding: padding ?? const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: _C.border),
+    ),
+    child: child,
+  );
 
   Widget _buildOrderCard() {
     final (label, bg, fg) = _badge;
@@ -335,8 +343,10 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => Container(
                         color: _C.surface,
-                        child:
-                            const Icon(Icons.image_outlined, color: _C.faint),
+                        child: const Icon(
+                          Icons.image_outlined,
+                          color: _C.faint,
+                        ),
                       ),
                     ),
             ),
@@ -347,8 +357,10 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: bg,
                     borderRadius: BorderRadius.circular(8),
@@ -392,11 +404,14 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
     final meetupText = _meetupAt == null
         ? 'Not arranged yet'
         : '${accepted ? '' : 'Proposed · '}${_formatDay(_meetupAt!)} · '
-            '${_formatTime(TimeOfDay.fromDateTime(_meetupAt!))}';
+              '${_formatTime(TimeOfDay.fromDateTime(_meetupAt!))}';
     final steps = <_Step>[
       _Step('Order requested', widget.requestedLabel, true),
-      _Step('Seller accepted',
-          accepted ? 'Seller confirmed' : 'Waiting for seller', accepted),
+      _Step(
+        'Seller accepted',
+        accepted ? 'Seller confirmed' : 'Waiting for seller',
+        accepted,
+      ),
       // ผู้ซื้อเสนอจุดนัดตอนกด Request ผู้ขายกด Accept = ยืนยันจุดนัด
       _Step('Meet-up arranged', meetupText, accepted && _meetupAt != null),
       if (_needsPayment)
@@ -409,8 +424,8 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
         'Completed',
         _completed
             ? (_needsPayment
-                ? 'Confirmed · seller payout sent'
-                : 'Confirmed · handover done')
+                  ? 'Confirmed · seller payout sent'
+                  : 'Confirmed · handover done')
             : 'Confirm after handover',
         _completed,
       ),
@@ -483,10 +498,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
                       ? const Icon(Icons.check, size: 16, color: _C.sage)
                       : Text(
                           '${i + 1}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: _C.faint,
-                          ),
+                          style: const TextStyle(fontSize: 11, color: _C.faint),
                         ),
                 ),
                 if (!last)
@@ -548,8 +560,11 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.calendar_today_outlined,
-                size: 20, color: _C.ink),
+            child: const Icon(
+              Icons.calendar_today_outlined,
+              size: 20,
+              color: _C.ink,
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -693,8 +708,18 @@ class _Step {
 String _formatDay(DateTime d) {
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   return '${days[d.weekday - 1]}, ${months[d.month - 1]} ${d.day}';
 }

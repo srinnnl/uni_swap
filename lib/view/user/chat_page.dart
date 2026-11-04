@@ -10,7 +10,6 @@ class _C {
   static const border = Color(0xFFE6E4DD);
   static const surface = Color(0xFFF3F2EE);
   static const mine = Color(0xFFE1E9F7); // ฟองข้อความของเรา
-  static const online = Color(0xFF3F6B52);
 }
 
 class _Msg {
@@ -128,20 +127,11 @@ class _ChatPageState extends State<ChatPage> {
                     color: _C.ink,
                   ),
                 ),
-                const SizedBox(height: 4),
-                // TODO: เวลาตอบกลับเฉลี่ยจริงจาก API
-                const Text(
-                  'Usually replies in 10 min',
-                  style: TextStyle(fontSize: 13, color: _C.muted),
-                ),
+                // ไม่แสดง "online" / "Usually replies in 10 min" เพราะ DB ไม่มีข้อมูลนี้
               ],
             ),
           ),
-          // จุดสถานะออนไลน์
-          const SizedBox(
-            width: 48,
-            child: Icon(Icons.circle, size: 10, color: _C.online),
-          ),
+          const SizedBox(width: 48), // ถ่วงให้ชื่ออยู่กลางพอดี
         ],
       ),
     );

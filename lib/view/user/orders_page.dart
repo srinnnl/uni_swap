@@ -3,7 +3,6 @@ import 'package:uni_swap/view/user/order_details_page.dart';
 
 // ---- colors (local to this file) ----
 const _cBg = Color(0xFFFAF9F6);
-const _cCard = Color(0xFFFFFFFF);
 const _cInk = Color(0xFF2B2B26);
 const _cMuted = Color(0xFF8A8A82);
 const _cBorder = Color(0xFFE6E4DE);
@@ -18,6 +17,10 @@ const _cRedBg = Color(0xFFF8DADA);
 const _cRedFg = Color(0xFFB3402F);
 const _cLink = Color(0xFF4A5C8F);
 
+// สถานะต้องเรียงลำดับเดียวกับ OrderStage ใน order_details_page.dart
+// (แปลงกันด้วย index) และตรงกับ orders.status ใน DB:
+//   pending = requested, accepted, completed, cancelled
+// "นัดรับแล้ว" ดูจาก meetupPlace/meetupAt  "จ่ายแล้ว" ดูจาก paid
 enum _Status { pending, accepted, completed, cancelled }
 
 class _Order {
@@ -30,7 +33,8 @@ class _Order {
   final Color thumbColor;
   final IconData thumbIcon;
   _Status status;
-  String? meetupPlace;
+  bool paid; // payments.status = verified (จำลอง)
+  String? meetupPlace; // ผู้ซื้อเสนอตั้งแต่ตอนกด Request to buy
   DateTime? meetupAt;
   int? rating;
 
@@ -42,11 +46,23 @@ class _Order {
     this.isBuying,
     this.timeLabel,
     this.thumbColor,
-    this.thumbIcon, [
+    this.thumbIcon, {
     this.status = _Status.pending,
-  ]);
+    this.paid = false,
+    this.meetupPlace,
+    this.meetupAt,
+  });
 
   bool get isActive => status == _Status.pending || status == _Status.accepted;
+
+  // สินค้าฟรี (ราคา 0) ข้ามขั้นจ่ายเงิน
+  bool get needsPayment => price > 0;
+}
+
+// เวลาจำลองสำหรับข้อมูลตัวอย่าง: วันนี้ + [days] วัน ที่ [hour]:[minute]
+DateTime _soon(int days, int hour, [int minute = 0]) {
+  final n = DateTime.now();
+  return DateTime(n.year, n.month, n.day + days, hour, minute);
 }
 
 class OrdersPage extends StatefulWidget {
@@ -57,15 +73,9 @@ class OrdersPage extends StatefulWidget {
 }
 
 class _OrdersPageState extends State<OrdersPage> {
-  static const _meetupPoints = [
-    'Maple Hall lobby',
-    'Central Library entrance',
-    'Student Center cafeteria',
-    'Westwood Condos lobby',
-    'Main gate',
-  ];
-
   // Mock data (UI only)
+  // TODO: โหลดจาก API (orders + meetups + payments) แล้วแปลงเป็น _Order
+  // ทุกออเดอร์มีจุดนัดตั้งแต่ตอนกด Request to buy (ผู้ซื้อเสนอ ผู้ขายกด Accept = ยืนยัน)
   final List<_Order> _orders = [
     _Order(
       'b1',
@@ -76,7 +86,9 @@ class _OrdersPageState extends State<OrdersPage> {
       'Today, 10:24 AM',
       const Color(0xFFD9DEE3),
       Icons.desk_outlined,
-      _Status.accepted,
+      status: _Status.accepted,
+      meetupPlace: 'Maple Hall lobby',
+      meetupAt: _soon(1, 17, 30),
     ),
     _Order(
       'b2',
@@ -87,6 +99,8 @@ class _OrdersPageState extends State<OrdersPage> {
       'Yesterday',
       const Color(0xFF4A4036),
       Icons.music_note,
+      meetupPlace: 'Central Library entrance',
+      meetupAt: _soon(2, 18),
     ),
     _Order(
       'b3',
@@ -97,7 +111,9 @@ class _OrdersPageState extends State<OrdersPage> {
       'May 18',
       const Color(0xFFB9B2A6),
       Icons.pedal_bike,
-      _Status.completed,
+      status: _Status.completed,
+      meetupPlace: 'Main gate',
+      meetupAt: DateTime(DateTime.now().year, 5, 20, 16),
     ),
     _Order(
       's1',
@@ -108,6 +124,8 @@ class _OrdersPageState extends State<OrdersPage> {
       'Today, 9:02 AM',
       const Color(0xFFE9D9B0),
       Icons.light_outlined,
+      meetupPlace: 'Student Center cafeteria',
+      meetupAt: _soon(1, 12),
     ),
     _Order(
       's2',
@@ -118,7 +136,10 @@ class _OrdersPageState extends State<OrdersPage> {
       'Yesterday',
       const Color(0xFFC9D6CB),
       Icons.menu_book,
-      _Status.accepted,
+      status: _Status.accepted,
+      paid: true,
+      meetupPlace: 'Maple Hall lobby',
+      meetupAt: _soon(1, 15),
     ),
     _Order(
       's3',
@@ -129,6 +150,8 @@ class _OrdersPageState extends State<OrdersPage> {
       'Mon',
       const Color(0xFFD3DDE8),
       Icons.kitchen,
+      meetupPlace: 'Westwood Condos lobby',
+      meetupAt: _soon(3, 11),
     ),
     _Order(
       's4',
@@ -139,7 +162,10 @@ class _OrdersPageState extends State<OrdersPage> {
       'May 10',
       const Color(0xFFE3C9C9),
       Icons.chair,
-      _Status.completed,
+      status: _Status.completed,
+      paid: true,
+      meetupPlace: 'Main gate',
+      meetupAt: DateTime(DateTime.now().year, 5, 12, 17),
     ),
   ];
 
@@ -322,7 +348,7 @@ class _OrdersPageState extends State<OrdersPage> {
                     if (o.meetupPlace != null && o.meetupAt != null) ...[
                       const SizedBox(height: 4),
                       Text(
-                        'Meet: ${o.meetupPlace} · ${_formatDate(o.meetupAt!)} ${_formatTime(TimeOfDay.fromDateTime(o.meetupAt!))}',
+                        '${o.status == _Status.pending ? 'Proposed meet-up' : 'Meet'}: ${o.meetupPlace} · ${_formatDate(o.meetupAt!)} ${_formatTime(TimeOfDay.fromDateTime(o.meetupAt!))}',
                         style: const TextStyle(fontSize: 12, color: _cSageDark),
                       ),
                     ],
@@ -338,10 +364,11 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
-  // เปิดหน้ารายละเอียด แล้วอัปเดตสถานะตามที่ผู้ใช้ทำในหน้านั้น
+  // เปิดหน้ารายละเอียด แล้วรับผลล่าสุดกลับมาทั้งก้อน (สถานะ, จ่ายแล้วหรือยัง, จุดนัด)
+  // เดิม pop ส่งกลับแค่สถานะ ทำให้ "จ่ายแล้ว" กับ "นัดรับ" หายเมื่อกลับมาหน้ารายการ
   // (OrderStage กับ _Status เรียงลำดับเหมือนกัน จึงแปลงด้วย index ได้)
   Future<void> _openDetails(_Order o) async {
-    final result = await Navigator.push<OrderStage>(
+    final result = await Navigator.push<OrderResult>(
       context,
       MaterialPageRoute(
         builder: (_) => OrderDetailsPage(
@@ -354,12 +381,17 @@ class _OrdersPageState extends State<OrdersPage> {
           requestedLabel: o.timeLabel,
           meetupPlace: o.meetupPlace,
           meetupAt: o.meetupAt,
+          paid: o.paid,
         ),
       ),
     );
-    if (result != null && result.index != o.status.index && mounted) {
-      setState(() => o.status = _Status.values[result.index]);
-    }
+    if (result == null || !mounted) return;
+    setState(() {
+      o.status = _Status.values[result.stage.index];
+      o.paid = result.paid;
+      o.meetupPlace = result.meetupPlace;
+      o.meetupAt = result.meetupAt;
+    });
   }
 
   Widget _link(String text, VoidCallback? onTap, {bool arrow = false}) {
@@ -409,16 +441,23 @@ class _OrdersPageState extends State<OrdersPage> {
         );
 
       case _Status.accepted:
-        return Wrap(
-          spacing: 16,
-          children: [
-            _link('Arrange meet-up', () => _meetupSheet(o), arrow: true),
-            if (!o.isBuying)
-              _link(
-                'Mark completed',
-                () => setState(() => o.status = _Status.completed),
-              ),
-          ],
+        // ผู้ซื้อ: ขั้นตอนถัดไปทั้งหมดทำในหน้ารายละเอียดหน้าเดียว (นัดรับ -> จ่าย -> ยืนยันรับของ)
+        // ผู้ขาย: ไม่มีปุ่มปิดงานเอง เพราะ completed เกิดจากผู้ซื้อกด Confirm received เท่านั้น
+        if (o.isBuying) {
+          final next = o.meetupAt == null
+              ? 'Arrange meet-up'
+              : (o.needsPayment && !o.paid)
+              ? 'Pay now'
+              : 'Confirm received';
+          return _link(next, () => _openDetails(o), arrow: true);
+        }
+        return Text(
+          !o.needsPayment
+              ? 'Waiting for buyer to confirm receipt'
+              : o.paid
+              ? 'Paid · waiting for buyer to confirm receipt'
+              : 'Waiting for buyer to pay',
+          style: const TextStyle(fontSize: 12, color: _cMuted),
         );
 
       case _Status.completed:
@@ -438,111 +477,6 @@ class _OrdersPageState extends State<OrdersPage> {
       case _Status.cancelled:
         return const SizedBox.shrink();
     }
-  }
-
-  void _meetupSheet(_Order o) {
-    String place = o.meetupPlace ?? _meetupPoints.first;
-    DateTime date = o.meetupAt ?? DateTime.now().add(const Duration(days: 1));
-    TimeOfDay time = o.meetupAt != null
-        ? TimeOfDay.fromDateTime(o.meetupAt!)
-        : const TimeOfDay(hour: 17, minute: 0);
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: _cBg,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheet) => Padding(
-          padding: EdgeInsets.fromLTRB(
-            20,
-            20,
-            20,
-            MediaQuery.of(ctx).viewInsets.bottom + 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Meet-up for ${o.title}',
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 20),
-              const _FieldLabel('Meeting point'),
-              DropdownButtonFormField<String>(
-                value: place,
-                decoration: _dec(''),
-                items: [
-                  for (final p in _meetupPoints)
-                    DropdownMenuItem(value: p, child: Text(p)),
-                ],
-                onChanged: (v) => setSheet(() => place = v ?? place),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.calendar_today_outlined, size: 16),
-                      label: Text(_formatDate(date)),
-                      onPressed: () async {
-                        final d = await showDatePicker(
-                          context: ctx,
-                          initialDate: date,
-                          firstDate: DateTime.now(),
-                          lastDate: DateTime.now().add(
-                            const Duration(days: 90),
-                          ),
-                        );
-                        if (d != null) setSheet(() => date = d);
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.access_time, size: 16),
-                      label: Text(_formatTime(time)),
-                      onPressed: () async {
-                        final t = await showTimePicker(
-                          context: ctx,
-                          initialTime: time,
-                        );
-                        if (t != null) setSheet(() => time = t);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _DarkButton(
-                label: 'Confirm meet-up',
-                onPressed: () {
-                  setState(() {
-                    o.meetupPlace = place;
-                    o.meetupAt = DateTime(
-                      date.year,
-                      date.month,
-                      date.day,
-                      time.hour,
-                      time.minute,
-                    );
-                  });
-                  Navigator.pop(ctx);
-                  _showSnack(context, 'Meet-up saved (mock)');
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   void _reviewDialog(_Order o) {
@@ -599,70 +533,7 @@ class _OrdersPageState extends State<OrdersPage> {
   }
 }
 
-InputDecoration _dec(String hint, {Widget? prefix}) {
-  OutlineInputBorder b(Color c) => OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: c),
-  );
-  return InputDecoration(
-    hintText: hint,
-    hintStyle: const TextStyle(color: Color(0xFFB0AFA8), fontSize: 14),
-    filled: true,
-    fillColor: _cCard,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-    prefixIcon: prefix,
-    prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-    border: b(_cBorder),
-    enabledBorder: b(_cBorder),
-    disabledBorder: b(_cBorder),
-    focusedBorder: b(_cInk),
-    errorBorder: b(_cRedFg),
-    focusedErrorBorder: b(_cRedFg),
-  );
-}
-
 // ---- small shared widgets (local to this file) ----
-class _DarkButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onPressed;
-  const _DarkButton({super.key, required this.label, required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    width: double.infinity,
-    height: 52,
-    child: FilledButton(
-      style: FilledButton.styleFrom(
-        backgroundColor: _cInk,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-      onPressed: onPressed,
-      child: Text(
-        label,
-        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-      ),
-    ),
-  );
-}
-
-class _FieldLabel extends StatelessWidget {
-  final String text;
-  const _FieldLabel(this.text, {super.key});
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: Text(
-      text,
-      style: const TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        color: _cInk,
-      ),
-    ),
-  );
-}
-
 class _PageHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
@@ -736,16 +607,4 @@ String _formatTime(TimeOfDay t) {
   final h = t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod;
   final m = t.minute.toString().padLeft(2, '0');
   return '$h:$m ${t.period == DayPeriod.am ? 'AM' : 'PM'}';
-}
-
-void _showSnack(BuildContext context, String msg) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: _cInk,
-      ),
-    );
 }

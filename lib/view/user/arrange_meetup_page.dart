@@ -263,8 +263,7 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
               ),
               const SizedBox(height: 3),
               Text(
-                // TODO: เวลาตอบกลับเฉลี่ยจริงจาก API
-                '$_building · Usually replies in 10 min',
+                _building,
                 style: const TextStyle(fontSize: 12, color: _C.muted),
               ),
             ],
@@ -348,7 +347,8 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'Choose a public spot and inspect the item before paying.',
+                  'Choose a public spot. Check the item in person, then tap '
+                  '"Confirm received" in the app so UniSwap can pay the seller.',
                   style: TextStyle(fontSize: 12, color: _C.muted),
                 ),
               ],

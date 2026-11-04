@@ -58,12 +58,13 @@ class AdminListingsPage extends StatefulWidget {
 
 class _AdminListingsPageState extends State<AdminListingsPage> {
   static const _filters = ['All', 'Pending', 'Changes requested'];
-  static const _rejectReasons = [
-    'Prohibited item',
-    'Misleading information',
-    'Poor quality photos',
-    'Duplicate listing',
-    'Other',
+  // (ค่าที่ส่ง API, ข้อความที่แสดง) ตรงกับ products.reject_reason ใน DB
+  static const _rejectReasons = <(String, String)>[
+    ('prohibited_item', 'Prohibited item'),
+    ('misleading', 'Misleading information'),
+    ('poor_photos', 'Poor quality photos'),
+    ('duplicate', 'Duplicate listing'),
+    ('other', 'Other'),
   ];
 
   // Mock data (UI only)
@@ -236,10 +237,10 @@ class _AdminListingsPageState extends State<AdminListingsPage> {
             onPressed: () async {
               final reason = await _pickReason(ctx, _rejectReasons);
               if (reason == null || !mounted) return;
-              // TODO: API -> สถานะ = rejected พร้อมเหตุผล + แจ้งผู้ขาย
+              // TODO: API -> สถานะ = rejected, reject_reason = reason.$1 + แจ้งผู้ขาย
               setState(() => _items.remove(item));
               if (ctx.mounted) Navigator.pop(ctx);
-              _snack(context, '${item.title} rejected: $reason (mock)');
+              _snack(context, '${item.title} rejected: ${reason.$2} (mock)');
             },
           ),
         ],
@@ -395,8 +396,11 @@ Future<T?> _showSheet<T>(
   );
 }
 
-Future<String?> _pickReason(BuildContext context, List<String> reasons) {
-  return showModalBottomSheet<String>(
+Future<(String, String)?> _pickReason(
+  BuildContext context,
+  List<(String, String)> reasons,
+) {
+  return showModalBottomSheet<(String, String)>(
     context: context,
     backgroundColor: _cBg,
     shape: const RoundedRectangleBorder(
@@ -415,7 +419,7 @@ Future<String?> _pickReason(BuildContext context, List<String> reasons) {
             ),
           ),
           for (final r in reasons)
-            ListTile(title: Text(r), onTap: () => Navigator.pop(ctx, r)),
+            ListTile(title: Text(r.$2), onTap: () => Navigator.pop(ctx, r)),
           const SizedBox(height: 8),
         ],
       ),

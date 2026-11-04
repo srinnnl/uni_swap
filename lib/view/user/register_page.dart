@@ -28,6 +28,7 @@ class RegisterPage extends StatefulWidget {
 
 class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
+  final _fullNameCtrl = TextEditingController();
   final _studentIdCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _usernameCtrl = TextEditingController();
@@ -40,6 +41,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
   @override
   void dispose() {
+    _fullNameCtrl.dispose();
     _studentIdCtrl.dispose();
     _emailCtrl.dispose();
     _usernameCtrl.dispose();
@@ -56,6 +58,8 @@ class _RegisterPageState extends State<RegisterPage> {
 
     final isOther = _residence == _otherOption;
     final data = {
+      // users.display_name (UI โชว์ชื่อเต็มคู่กับ @username ทั้งแอป)
+      'fullName': _fullNameCtrl.text.trim(),
       'studentId': _studentIdCtrl.text.trim(),
       'email': _emailCtrl.text.trim(),
       'username': _usernameCtrl.text.trim(),
@@ -225,6 +229,19 @@ class _RegisterPageState extends State<RegisterPage> {
             const Text(
               'Join your campus marketplace.',
               style: TextStyle(fontSize: 14, color: _C.muted),
+            ),
+            _buildField(
+              label: 'Full name',
+              hint: 'e.g. Maya Kim',
+              helper: 'Shown on your profile and to people you trade with',
+              controller: _fullNameCtrl,
+              icon: Icons.person_outline,
+              validator: (v) {
+                final text = v?.trim() ?? '';
+                if (text.length < 2) return 'Enter your full name';
+                if (text.length > 100) return 'Too long (max 100 characters)';
+                return null;
+              },
             ),
             _buildField(
               label: 'Student ID',

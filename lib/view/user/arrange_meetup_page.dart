@@ -27,7 +27,7 @@ class ArrangeMeetupPage extends StatefulWidget {
   final String productTitle;
   final int price;
   final String sellerName;
-  final String sellerLocation; // เช่น 'North Campus · Maple Hall'
+  final String sellerLocation; // เช่น 'On-campus dorms · Lamduan 1 Dormitory'
 
   @override
   State<ArrangeMeetupPage> createState() => _ArrangeMeetupPageState();
@@ -35,9 +35,9 @@ class ArrangeMeetupPage extends StatefulWidget {
 
 class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
   // TODO: ดึงจุดนัดพบที่เหมาะกับที่พักของผู้ขายจาก API
-  static const _spots = [
-    'Maple Hall lobby',
-    'North Campus library',
+  List<String> get _spots => [
+    '$_building lobby',
+    'Main library',
     'Student union entrance',
   ];
 

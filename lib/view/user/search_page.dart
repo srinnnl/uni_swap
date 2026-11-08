@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:uni_swap/view/user/campus_locations.dart';
+import 'package:uni_swap/view/user/product_categories.dart';
 import 'package:uni_swap/view/user/product_detail_page.dart';
 
 class _C {
@@ -16,7 +19,7 @@ class _Product {
     required this.title,
     required this.price,
     required this.category,
-    required this.place,
+    required this.location,
     this.imageUrl,
     this.urgent = false,
   });
@@ -25,11 +28,12 @@ class _Product {
   final String title;
   final int price;
   final String category;
-  final String place;
+  final CampusLocation location;
   final String? imageUrl;
   final bool urgent;
 
-  String get building => place.split(' · ').last;
+  String get place => location.place;
+  String get building => location.name;
 }
 
 enum _Sort {
@@ -40,29 +44,18 @@ enum _Sort {
   final String label;
 }
 
-const _categories = <(String, IconData?)>[
+final _categories = <(String, IconData?)>[
   ('All', null),
-  ('Furniture', Icons.chair_alt_outlined),
-  ('Books', Icons.menu_book_outlined),
-  ('Tech', Icons.computer_outlined),
-  ('Music', Icons.music_note_outlined),
-  ('Transport', Icons.pedal_bike_outlined),
+  for (final c in kProductCategories) (c.name, c.icon),
 ];
 
-const _places = [
-  'North Campus · Maple Hall',
-  'North Campus · Oak Hall',
-  'South Campus · Cedar Hall',
-  'Off campus',
-];
-
-const _products = [
+final _products = [
   _Product(
     id: '1',
     title: 'Oak study desk',
     price: 45,
     category: 'Furniture',
-    place: 'North Campus · Maple Hall',
+    location: locationById(12),
     urgent: true,
   ),
   _Product(
@@ -70,35 +63,35 @@ const _products = [
     title: 'Acoustic guitar',
     price: 80,
     category: 'Music',
-    place: 'North Campus · Maple Hall',
+    location: locationById(12),
   ),
   _Product(
     id: '3',
     title: 'Calculus textbook',
     price: 20,
     category: 'Books',
-    place: 'North Campus · Maple Hall',
+    location: locationById(12),
   ),
   _Product(
     id: '4',
     title: 'Desk lamp',
     price: 12,
     category: 'Furniture',
-    place: 'North Campus · Oak Hall',
+    location: locationById(13),
   ),
   _Product(
     id: '5',
     title: 'Laptop stand',
     price: 18,
-    category: 'Tech',
-    place: 'North Campus · Oak Hall',
+    category: 'Technology',
+    location: locationById(13),
   ),
   _Product(
     id: '6',
     title: 'City bike',
     price: 120,
     category: 'Transport',
-    place: 'South Campus · Cedar Hall',
+    location: locationById(7),
   ),
 ];
 
@@ -110,12 +103,12 @@ class SearchPage extends StatefulWidget {
 }
 
 class _SearchPageState extends State<SearchPage> {
-  static const double _maxPrice = 200;
 
   final _searchCtrl = TextEditingController();
   String _category = 'All';
-  RangeValues _price = const RangeValues(0, _maxPrice);
-  final Set<String> _locations = {};
+  double _priceMin = 0;
+  double? _priceMax; // null = ไม่จำกัดราคาสูงสุด
+  final Set<int> _locations = {};
   _Sort _sort = _Sort.priceLow;
   final Set<String> _favorites = {};
 
@@ -130,8 +123,11 @@ class _SearchPageState extends State<SearchPage> {
     final list = _products.where((p) {
       if (q.isNotEmpty && !p.title.toLowerCase().contains(q)) return false;
       if (_category != 'All' && p.category != _category) return false;
-      if (p.price < _price.start || p.price > _price.end) return false;
-      if (_locations.isNotEmpty && !_locations.contains(p.place)) return false;
+      if (p.price < _priceMin) return false;
+      if (_priceMax != null && p.price > _priceMax!) {
+        return false;
+      }
+      if (_locations.isNotEmpty && !_locations.contains(p.location.id)) return false;
       return true;
     }).toList();
 
@@ -148,16 +144,18 @@ class _SearchPageState extends State<SearchPage> {
       _searchCtrl.text.isNotEmpty ||
       _category != 'All' ||
       _locations.isNotEmpty ||
-      _price.start > 0 ||
-      _price.end < _maxPrice;
+      _priceMin > 0 ||
+      _priceMax != null;
 
-  String get _priceLabel => (_price.start == 0 && _price.end == _maxPrice)
-      ? 'Any price'
-      : '${_price.start.round()} THB – ${_price.end.round()} THB';
+  String get _priceLabel {
+    if (_priceMin == 0 && _priceMax == null) return 'Any price';
+    if (_priceMax == null) return 'From ${_priceMin.round()} THB';
+    return '${_priceMin.round()} – ${_priceMax!.round()} THB';
+  }
 
   String get _locationLabel {
     if (_locations.isEmpty) return 'All campus';
-    final first = _locations.first.split(' · ').last;
+    final first = locationById(_locations.first).name;
     return _locations.length == 1 ? first : '$first +${_locations.length - 1}';
   }
 
@@ -165,69 +163,35 @@ class _SearchPageState extends State<SearchPage> {
     setState(() {
       _searchCtrl.clear();
       _category = 'All';
-      _price = const RangeValues(0, _maxPrice);
+      _priceMin = 0;
+      _priceMax = null;
       _locations.clear();
     });
   }
 
   Future<void> _pickPrice() async {
-    var temp = _price;
-    final result = await showModalBottomSheet<RangeValues>(
+    final result = await showModalBottomSheet<(double, double?)>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       backgroundColor: Colors.white,
-      builder: (_) => StatefulBuilder(
-        builder: (context, setSheet) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Price range',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${temp.start.round()} THB – ${temp.end.round()} THB',
-                  style: const TextStyle(fontSize: 15, color: _C.muted),
-                ),
-                RangeSlider(
-                  values: temp,
-                  min: 0,
-                  max: _maxPrice,
-                  divisions: 40,
-                  activeColor: _C.ink,
-                  inactiveColor: _C.border,
-                  onChanged: (v) => setSheet(() => temp = v),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: FilledButton(
-                    onPressed: () => Navigator.pop(context, temp),
-                    style: FilledButton.styleFrom(backgroundColor: _C.ink),
-                    child: const Text('Apply'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      builder: (_) => _PriceSheet(min: _priceMin, max: _priceMax),
     );
-    if (result != null) setState(() => _price = result);
+    if (result != null) {
+      setState(() {
+        _priceMin = result.$1;
+        _priceMax = result.$2;
+      });
+    }
   }
 
   Future<void> _pickLocations() async {
     final temp = {..._locations};
-    final result = await showModalBottomSheet<Set<String>>(
+    var zone = CampusZone.onCampus; // เลือกหอใน/หอนอกก่อน แล้วค่อยติ๊กหอ
+    final result = await showModalBottomSheet<Set<int>>(
       context: context,
       showDragHandle: true,
-      isScrollControlled:
-          true, // ให้สูงเกิน 9/16 ของจอได้ ไม่งั้นรายการยาวแล้ว overflow
+      isScrollControlled: true,
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.8,
       ),
@@ -244,22 +208,42 @@ class _SearchPageState extends State<SearchPage> {
                   'Location',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final z in CampusZone.values)
+                      ChoiceChip(
+                        label: Text(z.label),
+                        selected: zone == z,
+                        onSelected: (_) => setSheet(() => zone = z),
+                        showCheckmark: false,
+                        backgroundColor: Colors.white,
+                        selectedColor: _C.ink,
+                        side: const BorderSide(color: _C.border),
+                        labelStyle: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: zone == z ? Colors.white : _C.ink,
+                        ),
+                      ),
+                  ],
+                ),
                 const SizedBox(height: 4),
-                // รายการที่พักเลื่อนได้ (ปุ่มด้านล่างคงที่) รองรับรายการยาวจาก API
                 Flexible(
                   child: ListView(
                     shrinkWrap: true,
                     padding: EdgeInsets.zero,
                     children: [
-                      for (final p in _places)
+                      for (final l in locationsIn(zone))
                         CheckboxListTile(
                           contentPadding: EdgeInsets.zero,
                           activeColor: _C.ink,
                           controlAffinity: ListTileControlAffinity.leading,
-                          title: Text(p),
-                          value: temp.contains(p),
+                          title: Text(l.name),
+                          value: temp.contains(l.id),
                           onChanged: (on) => setSheet(() {
-                            on == true ? temp.add(p) : temp.remove(p);
+                            on == true ? temp.add(l.id) : temp.remove(l.id);
                           }),
                         ),
                     ],
@@ -270,7 +254,7 @@ class _SearchPageState extends State<SearchPage> {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () => Navigator.pop(context, <String>{}),
+                        onPressed: () => Navigator.pop(context, <int>{}),
                         child: const Text('Any location'),
                       ),
                     ),
@@ -732,6 +716,132 @@ class _SearchPageState extends State<SearchPage> {
       errorBuilder: (_, __, ___) => placeholder,
       loadingBuilder: (_, child, progress) =>
           progress == null ? child : placeholder,
+    );
+  }
+}
+
+/// ช่องกรอกราคาต่ำสุด-สูงสุด (เว้นว่างช่องสูงสุด = ไม่จำกัด)
+class _PriceSheet extends StatefulWidget {
+  const _PriceSheet({required this.min, required this.max});
+  final double min;
+  final double? max;
+
+  @override
+  State<_PriceSheet> createState() => _PriceSheetState();
+}
+
+class _PriceSheetState extends State<_PriceSheet> {
+  late final _minCtrl = TextEditingController(
+    text: widget.min > 0 ? widget.min.round().toString() : '',
+  );
+  late final _maxCtrl = TextEditingController(
+    text: widget.max == null ? '' : widget.max!.round().toString(),
+  );
+
+  @override
+  void dispose() {
+    _minCtrl.dispose();
+    _maxCtrl.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _dec(String hint) => InputDecoration(
+    hintText: hint,
+    suffixText: 'THB',
+    filled: true,
+    fillColor: Colors.white,
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: _C.border),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: _C.border),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: _C.ink, width: 1.5),
+    ),
+  );
+
+  Widget _field(TextEditingController c, String label, String hint) => Expanded(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 13, color: _C.muted)),
+        const SizedBox(height: 6),
+        TextField(
+          controller: c,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: _dec(hint),
+        ),
+      ],
+    ),
+  );
+
+  void _apply() {
+    var lo = double.tryParse(_minCtrl.text) ?? 0;
+    var hi = double.tryParse(_maxCtrl.text);
+    if (hi != null && hi < lo) {
+      final t = lo;
+      lo = hi;
+      hi = t;
+    }
+    Navigator.pop(context, (lo, hi));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          24,
+          0,
+          24,
+          24 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Price range',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                _field(_minCtrl, 'Min', '0'),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(12, 24, 12, 0),
+                  child: Text('–'),
+                ),
+                _field(_maxCtrl, 'Max', 'No limit'),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context, (0.0, null)),
+                    child: const Text('Any price'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _apply,
+                    style: FilledButton.styleFrom(backgroundColor: _C.ink),
+                    child: const Text('Apply'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

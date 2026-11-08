@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/view/user/campus_locations.dart';
+import 'package:uni_swap/view/user/product_categories.dart';
 import 'package:image_picker/image_picker.dart';
 
 // ---- colors (local to this file) ----
@@ -21,15 +23,8 @@ class SellPage extends StatefulWidget {
 
 class _SellPageState extends State<SellPage> {
   static const _maxPhotos = 6;
-  static const _categories = <(String, IconData)>[
-    ('Furniture', Icons.chair_alt_outlined),
-    ('Electronics', Icons.devices_other_outlined),
-    ('Books', Icons.menu_book_outlined),
-    ('Clothing', Icons.checkroom_outlined),
-    ('Kitchen', Icons.kitchen_outlined),
-    ('Bikes', Icons.pedal_bike_outlined),
-    ('Music', Icons.music_note_outlined),
-    ('Other', Icons.category_outlined),
+  static final _categories = <(String, IconData)>[
+    for (final c in kProductCategories) (c.name, c.icon),
   ];
 
   final _formKey = GlobalKey<FormState>();
@@ -40,6 +35,17 @@ class _SellPageState extends State<SellPage> {
 
   final List<XFile> _photos = [];
   int _categoryIndex = 0;
+  // products.item_condition: new / like_new / good / fair (ไม่เลือก = unspecified)
+  static const _conditions = <(String, String)>[
+    ('new', 'New'),
+    ('like_new', 'Like new'),
+    ('good', 'Good'),
+    ('fair', 'Fair'),
+  ];
+  int? _conditionIndex;
+  // ที่รับสินค้า (products.zone_id / location_id) ตั้งต้นจากที่พักของผู้ขาย
+  // TODO: ตั้งค่าเริ่มต้นจากโปรไฟล์ผู้ใช้
+  CampusLocation _pickup = locationsIn(CampusZone.onCampus).first;
   bool _isFree = false;
   DateTime? _deadline;
 
@@ -74,7 +80,11 @@ class _SellPageState extends State<SellPage> {
       _showSnack(context, 'Please fix the errors');
       return;
     }
-    // TODO: call controller / API here later.
+    // TODO: ส่งไป API -> title, price (0 = ฟรี DB รองรับ), description,
+    //   category_id: kProductCategories[_categoryIndex].id,
+    //   item_condition: _conditionIndex == null ? 'unspecified' : _conditions[_conditionIndex!].$1,
+    //   zone_id: _pickup.zone.code, location_id: _pickup.id,
+    //   clearance_deadline: _deadline, photos (sort_order = ลำดับ)
     setState(() {
       _titleCtrl.clear();
       _priceCtrl.clear();
@@ -83,6 +93,7 @@ class _SellPageState extends State<SellPage> {
       _isFree = false;
       _deadline = null;
       _categoryIndex = 0;
+      _conditionIndex = null;
     });
     _formKey.currentState?.reset();
     // ลงขายแล้วต้องรอแอดมินตรวจสอบก่อนขึ้นหน้าร้าน (ดู Admin > Listings review)
@@ -91,13 +102,45 @@ class _SellPageState extends State<SellPage> {
       context,
       'Submitted for review. We will notify you once approved.',
     );
+    Navigator.pop(context, true); // หน้านี้เปิดจาก My items จึงปิดกลับหลังส่ง
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _cBg,
-      body: SafeArea(bottom: false, child: _buildForm()),
+      body: SafeArea(child: _buildForm()),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Row(
+      children: [
+        IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.maybePop(context),
+        ),
+        const Expanded(
+          child: Column(
+            children: [
+              Text(
+                'Sell an item',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: _cInk,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'Takes less than 2 minutes',
+                style: TextStyle(fontSize: 13, color: _cMuted),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 48), // ถ่วงให้หัวข้ออยู่กลางพอดี
+      ],
     );
   }
 
@@ -107,14 +150,11 @@ class _SellPageState extends State<SellPage> {
     return Form(
       key: _formKey,
       child: ListView(
-        // ท้ายหน้าเว้น 120 ให้พ้นแถบเมนูล่าง
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
-          const _PageHeader(
-            title: 'Sell an item',
-            subtitle: 'Takes less than 2 minutes',
-          ),
-          const SizedBox(height: 28),
+          _buildHeader(),
+          const SizedBox(height: 20),
 
           const _FieldLabel('Photos'),
           _buildPhotos(),
@@ -149,6 +189,57 @@ class _SellPageState extends State<SellPage> {
           ),
           const SizedBox(height: 24),
 
+          const _FieldLabel('Condition'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (var i = 0; i < _conditions.length; i++)
+                ChoiceChip(
+                  label: Text(_conditions[i].$2),
+                  selected: _conditionIndex == i,
+                  // กดซ้ำเพื่อยกเลิก (ส่ง unspecified)
+                  onSelected: (on) =>
+                      setState(() => _conditionIndex = on ? i : null),
+                  showCheckmark: false,
+                  backgroundColor: Colors.white,
+                  selectedColor: _cInk,
+                  side: const BorderSide(color: _cBorder),
+                  labelStyle: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _conditionIndex == i ? Colors.white : _cInk,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          const _FieldLabel('Price'),
+          TextFormField(
+            controller: _priceCtrl,
+            enabled: !_isFree,
+            validator: (v) {
+              if (_isFree) return null;
+              final p = double.tryParse(v ?? '');
+              if (p == null) return 'Please enter a price';
+              if (p < 0) return 'Price cannot be negative';
+              return null;
+            },
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: _dec(
+              '0.00',
+              prefix: const Padding(
+                padding: EdgeInsets.only(left: 16, right: 8),
+                child: Text(
+                  'THB',
+                  style: TextStyle(fontWeight: FontWeight.w700, color: _cMuted),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
           _AppCard(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
@@ -175,7 +266,7 @@ class _SellPageState extends State<SellPage> {
                 Switch(
                   value: _isFree,
                   onChanged: _toggleFree,
-                  activeColor: Colors.white,
+                  activeThumbColor: Colors.white,
                   activeTrackColor: _cSageDark,
                 ),
               ],
@@ -183,27 +274,29 @@ class _SellPageState extends State<SellPage> {
           ),
           const SizedBox(height: 24),
 
-          const _FieldLabel('Price'),
-          TextFormField(
-            controller: _priceCtrl,
-            enabled: !_isFree,
-            validator: (v) {
-              if (_isFree) return null;
-              final p = double.tryParse(v ?? '');
-              if (p == null) return 'Please enter a price';
-              if (p < 0) return 'Price cannot be negative';
-              return null;
-            },
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: _dec(
-              '0.00',
-              prefix: const Padding(
-                padding: EdgeInsets.only(left: 16, right: 8),
-                child: Text(
-                  'THB',
-                  style: TextStyle(fontWeight: FontWeight.w700, color: _cMuted),
+          const _FieldLabel('Pickup location'),
+          _TapField(
+            onTap: _pickPickup,
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.location_on_outlined,
+                  size: 18,
+                  color: Color(0xFF8B4A3C),
                 ),
-              ),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    _pickup.place,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 24),
@@ -255,6 +348,13 @@ class _SellPageState extends State<SellPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _pickPickup() async {
+    final picked = await showCampusLocationPicker(context, selected: _pickup);
+    if (picked?.location != null) {
+      setState(() => _pickup = picked!.location!);
+    }
   }
 
   Future<void> _pickCategory() async {
@@ -452,7 +552,7 @@ class _DashedBorderPainter extends CustomPainter {
 
 InputDecoration _dec(String hint, {Widget? prefix}) {
   OutlineInputBorder b(Color c) => OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
+    borderRadius: BorderRadius.circular(14),
     borderSide: BorderSide(color: c),
   );
   return InputDecoration(
@@ -513,16 +613,17 @@ class _DarkButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SizedBox(
     width: double.infinity,
-    height: 52,
+    height: 54,
     child: FilledButton(
       style: FilledButton.styleFrom(
         backgroundColor: _cInk,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
       onPressed: onPressed,
       child: Text(
         label,
-        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
       ),
     ),
   );
@@ -544,32 +645,6 @@ class _FieldLabel extends StatelessWidget {
       ),
     ),
   );
-}
-
-class _PageHeader extends StatelessWidget {
-  final String title;
-  final String? subtitle;
-  const _PageHeader({super.key, required this.title, this.subtitle});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: _cInk,
-          ),
-        ),
-        if (subtitle != null) ...[
-          const SizedBox(height: 6),
-          Text(subtitle!, style: const TextStyle(fontSize: 13, color: _cMuted)),
-        ],
-      ],
-    );
-  }
 }
 
 class _StatusBadge extends StatelessWidget {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/view/user/campus_locations.dart';
 
 // ---- colors (local to this file) ----
 const _cBg = Color(0xFFFAF9F6);
@@ -10,62 +11,78 @@ const _cBlueBg = Color(0xFFE3ECF7);
 const _cBlueFg = Color(0xFF3B5E8C);
 const _cAmberBg = Color(0xFFFBEBC2);
 const _cAmberFg = Color(0xFF8A6410);
-const _cRedBg = Color(0xFFF8DADA);
 const _cRedFg = Color(0xFFB3402F);
 
-enum _RStatus { high, fresh, review }
+enum _LStatus { pending, reviewing }
 
-class _Report {
-  final String product;
-  final String reason;
-  final int count;
-  _RStatus status;
-  _Report(this.product, this.reason, this.count, this.status);
+class _Loc {
+  final String name;
+  final String area;
+  final String meta;
+  _LStatus status;
+  _Loc(this.name, this.area, this.meta, this.status);
 }
 
-class AdminReportsPage extends StatefulWidget {
-  const AdminReportsPage({super.key});
+class AdminLocationsPage extends StatefulWidget {
+  const AdminLocationsPage({super.key});
 
   @override
-  State<AdminReportsPage> createState() => _AdminReportsPageState();
+  State<AdminLocationsPage> createState() => _AdminLocationsPageState();
 }
 
-class _AdminReportsPageState extends State<AdminReportsPage> {
-  static const _filters = ['All', 'High', 'New', 'Review'];
+class _AdminLocationsPageState extends State<AdminLocationsPage> {
+  static const _filters = ['All', 'Pending', 'Reviewing'];
+  // ตรงกับ location_zones ใน DB (CampusZone)
+  static final _areas = [for (final z in CampusZone.values) z.label];
+
+  // ที่พักที่อนุมัติแล้ว (ตัวอย่าง) ไว้เป็นปลายทางของการ Merge
+  // TODO: ดึงจาก API (ควรใช้ locationId ไม่ใช่ชื่อ)
+  static final _existing = [for (final l in kCampusLocations) l.place];
 
   // Mock data (UI only)
-  final List<_Report> _reports = [
-    _Report('MacBook Air M2', 'Suspected scam', 3, _RStatus.high),
-    _Report('Oak study desk', 'Misleading information', 1, _RStatus.fresh),
-    _Report('Event tickets', 'Prohibited item', 2, _RStatus.review),
+  final List<_Loc> _locs = [
+    _Loc(
+      'Riverside Residence',
+      'On-campus dorms',
+      'Requested by Maya K.',
+      _LStatus.pending,
+    ),
+    _Loc(
+      'The Grove Condos',
+      'Off-campus dorms',
+      'Requested by Arun P.',
+      _LStatus.pending,
+    ),
+    _Loc(
+      'Cedar Student Living',
+      'Off-campus dorms',
+      'Requested by Lina W.',
+      _LStatus.pending,
+    ),
+    _Loc(
+      'Hilltop Apartments',
+      'On-campus dorms',
+      'Requested yesterday',
+      _LStatus.reviewing,
+    ),
   ];
 
   String _query = '';
   String _filter = 'All';
 
-  String _label(_RStatus s) => switch (s) {
-    _RStatus.high => 'High',
-    _RStatus.fresh => 'New',
-    _RStatus.review => 'Review',
-  };
+  String _label(_LStatus s) => s == _LStatus.pending ? 'Pending' : 'Reviewing';
 
-  (Color, Color) _colors(_RStatus s) => switch (s) {
-    _RStatus.high => (_cRedBg, _cRedFg),
-    _RStatus.fresh => (_cAmberBg, _cAmberFg),
-    _RStatus.review => (_cBlueBg, _cBlueFg),
-  };
+  (Color, Color) _colors(_LStatus s) =>
+      s == _LStatus.pending ? (_cAmberBg, _cAmberFg) : (_cBlueBg, _cBlueFg);
 
-  String _sub(_Report r) =>
-      '${r.reason} · ${r.count} ${r.count == 1 ? 'report' : 'reports'}';
-
-  List<_Report> get _visible {
+  List<_Loc> get _visible {
     final q = _query.trim().toLowerCase();
-    return _reports.where((r) {
+    return _locs.where((l) {
       final matchQ =
           q.isEmpty ||
-          r.product.toLowerCase().contains(q) ||
-          r.reason.toLowerCase().contains(q);
-      final matchF = _filter == 'All' || _label(r.status) == _filter;
+          l.name.toLowerCase().contains(q) ||
+          l.area.toLowerCase().contains(q);
+      final matchF = _filter == 'All' || _label(l.status) == _filter;
       return matchQ && matchF;
     }).toList();
   }
@@ -75,8 +92,8 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
     if (r != null) setState(() => _filter = r);
   }
 
-  void _openReport(_Report r) {
-    final (bg, fg) = _colors(r.status);
+  void _openLoc(_Loc l) {
+    final (bg, fg) = _colors(l.status);
     _showSheet(context, (ctx) {
       return Column(
         mainAxisSize: MainAxisSize.min,
@@ -85,34 +102,58 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
           Row(
             children: [
               const _IconBox(
-                icon: Icons.flag_outlined,
-                bg: _cRedBg,
-                fg: _cRedFg,
+                icon: Icons.location_on_outlined,
+                bg: _cBlueBg,
+                fg: _cBlueFg,
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Text(
-                  r.product,
+                  l.name,
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
-              _Badge(label: _label(r.status), bg: bg, fg: fg),
+              _Badge(label: _label(l.status), bg: bg, fg: fg),
             ],
           ),
           const SizedBox(height: 16),
-          _InfoRow('Reason', r.reason),
-          _InfoRow('Reports', '${r.count}'),
+          _InfoRow('Zone', l.area),
+          _InfoRow('Request', l.meta),
           const Divider(height: 1, color: _cBorder),
           const SizedBox(height: 20),
-          if (r.status != _RStatus.review) ...[
+          _ActionButton(
+            label: 'Approve location',
+            onPressed: () {
+              setState(() => _locs.remove(l));
+              Navigator.pop(ctx);
+              _snack(context, '${l.name} approved (mock)');
+            },
+          ),
+          const SizedBox(height: 10),
+          // ใช้กรณีผู้ใช้พิมพ์ชื่อไม่ตรงกับที่พักที่มีอยู่ (สะกดผิด/ชื่อเรียกต่างกัน)
+          _ActionButton(
+            filled: false,
+            label: 'Merge into existing location',
+            onPressed: () async {
+              final target = await _pickExisting(ctx);
+              if (target == null || !mounted) return;
+              setState(() => _locs.remove(l));
+              if (ctx.mounted) Navigator.pop(ctx);
+              // TODO: backend: ย้ายผู้ใช้ทุกคนที่ผูกกับคำขอนี้ไปที่ locationId
+              // ของ target แล้วปิดคำขอ (ผู้ใช้ไม่ต้องทำอะไร)
+              _snack(context, '${l.name} merged into $target (mock)');
+            },
+          ),
+          const SizedBox(height: 10),
+          if (l.status == _LStatus.pending) ...[
             _ActionButton(
               filled: false,
               label: 'Mark as reviewing',
               onPressed: () {
-                setState(() => r.status = _RStatus.review);
+                setState(() => l.status = _LStatus.reviewing);
                 Navigator.pop(ctx);
               },
             ),
@@ -120,28 +161,12 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
           ],
           _ActionButton(
             filled: false,
-            label: 'Dismiss report',
-            onPressed: () {
-              setState(() => _reports.remove(r));
-              Navigator.pop(ctx);
-              _snack(context, 'Report dismissed (mock)');
-            },
-          ),
-          const SizedBox(height: 10),
-          _ActionButton(
             danger: true,
-            label: 'Remove product',
-            onPressed: () async {
-              final ok = await _confirm(
-                ctx,
-                title: 'Remove product?',
-                message: '"${r.product}" will be removed from the marketplace.',
-                confirmLabel: 'Remove',
-              );
-              if (!ok || !mounted) return;
-              setState(() => _reports.remove(r));
-              if (ctx.mounted) Navigator.pop(ctx);
-              _snack(context, 'Product removed (mock)');
+            label: 'Reject request',
+            onPressed: () {
+              setState(() => _locs.remove(l));
+              Navigator.pop(ctx);
+              _snack(context, '${l.name} rejected (mock)');
             },
           ),
         ],
@@ -149,20 +174,68 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
     });
   }
 
+  Future<String?> _pickExisting(BuildContext context) {
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: _cBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
+              child: Text(
+                'Merge into which location?',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+              ),
+            ),
+            for (final e in _existing)
+              ListTile(title: Text(e), onTap: () => Navigator.pop(ctx, e)),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _addLocation() {
+    _showSheet(context, (ctx) {
+      return _LocationForm(
+        areas: _areas,
+        onSave: (name, area) {
+          setState(
+            () => _locs.insert(
+              0,
+              _Loc(name, area, 'Requested just now', _LStatus.pending),
+            ),
+          );
+          _snack(context, 'Location added (mock)');
+        },
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final list = _visible;
+    final n = _locs.length;
     return Scaffold(
       backgroundColor: _cBg,
       body: SafeArea(
         child: Column(
           children: [
             _Header(
-              title: 'Reports',
-              subtitle: '${_reports.length} open product reports',
+              title: 'Location requests',
+              subtitle: n == 1
+                  ? '1 request needs review'
+                  : '$n requests need review',
             ),
             _SearchRow(
-              hint: 'Search reports',
+              hint: 'Search locations',
               filterActive: _filter != 'All',
               onChanged: (v) => setState(() => _query = v),
               onFilter: _openFilter,
@@ -170,21 +243,21 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
             _SectionRow(label: 'Needs attention', shown: list.length),
             Expanded(
               child: list.isEmpty
-                  ? const _Empty('No reports found')
+                  ? const _Empty('No requests found')
                   : ListView(
                       padding: const EdgeInsets.only(bottom: 24),
                       children: [
-                        for (final r in list)
+                        for (final l in list)
                           _ListRow(
-                            icon: Icons.flag_outlined,
-                            iconBg: _cRedBg,
-                            iconFg: _cRedFg,
-                            title: r.product,
-                            subtitle: _sub(r),
-                            badge: _label(r.status),
-                            badgeBg: _colors(r.status).$1,
-                            badgeFg: _colors(r.status).$2,
-                            onTap: () => _openReport(r),
+                            icon: Icons.location_on_outlined,
+                            iconBg: _cBlueBg,
+                            iconFg: _cBlueFg,
+                            title: l.name,
+                            subtitle: '${l.area} · ${l.meta}',
+                            badge: _label(l.status),
+                            badgeBg: _colors(l.status).$1,
+                            badgeFg: _colors(l.status).$2,
+                            onTap: () => _openLoc(l),
                           ),
                       ],
                     ),
@@ -192,6 +265,83 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
           ],
         ),
       ),
+      bottomNavigationBar: _BottomBar(
+        label: 'Add location',
+        onPressed: _addLocation,
+      ),
+    );
+  }
+}
+
+class _LocationForm extends StatefulWidget {
+  final List<String> areas;
+  final void Function(String name, String area) onSave;
+  const _LocationForm({required this.areas, required this.onSave});
+
+  @override
+  State<_LocationForm> createState() => _LocationFormState();
+}
+
+class _LocationFormState extends State<_LocationForm> {
+  final _name = TextEditingController();
+  late String _area = widget.areas.first;
+  String? _error;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Add location',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 18),
+        const Text(
+          'Name',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _name,
+          textCapitalization: TextCapitalization.words,
+          decoration: _dec('e.g. Riverside Residence', error: _error),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'Zone',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          value: _area,
+          decoration: _dec(''),
+          items: [
+            for (final a in widget.areas)
+              DropdownMenuItem(value: a, child: Text(a)),
+          ],
+          onChanged: (v) => setState(() => _area = v ?? _area),
+        ),
+        const SizedBox(height: 22),
+        _ActionButton(
+          label: 'Add location',
+          onPressed: () {
+            if (_name.text.trim().isEmpty) {
+              setState(() => _error = 'Please enter a name');
+              return;
+            }
+            widget.onSave(_name.text.trim(), _area);
+            Navigator.pop(context);
+          },
+        ),
+      ],
     );
   }
 }
@@ -230,35 +380,6 @@ Future<T?> _showSheet<T>(
       child: SingleChildScrollView(child: builder(ctx)),
     ),
   );
-}
-
-Future<bool> _confirm(
-  BuildContext context, {
-  required String title,
-  required String message,
-  required String confirmLabel,
-}) async {
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: _cBg,
-      surfaceTintColor: Colors.transparent,
-      title: Text(title),
-      content: Text(message),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: _cRedFg),
-          onPressed: () => Navigator.pop(ctx, true),
-          child: Text(confirmLabel),
-        ),
-      ],
-    ),
-  );
-  return ok ?? false;
 }
 
 Future<String?> _pickFilter(
@@ -308,6 +429,27 @@ Future<String?> _pickFilter(
         ),
       ),
     ),
+  );
+}
+
+InputDecoration _dec(String hint, {String? error}) {
+  OutlineInputBorder b(Color c) => OutlineInputBorder(
+    borderRadius: BorderRadius.circular(12),
+    borderSide: BorderSide(color: c),
+  );
+  return InputDecoration(
+    hintText: hint,
+    errorText: error,
+    hintStyle: const TextStyle(color: Color(0xFFB0AFA8), fontSize: 14),
+    filled: true,
+    fillColor: _cCard,
+    counterText: '',
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+    border: b(_cBorder),
+    enabledBorder: b(_cBorder),
+    focusedBorder: b(_cInk),
+    errorBorder: b(_cRedFg),
+    focusedErrorBorder: b(_cRedFg),
   );
 }
 
@@ -566,6 +708,49 @@ class _ListRow extends StatelessWidget {
             const SizedBox(width: 6),
             const Icon(Icons.chevron_right, size: 20),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BottomBar extends StatelessWidget {
+  final String label;
+  final VoidCallback onPressed;
+  const _BottomBar({required this.label, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: _cBg,
+        border: Border(top: BorderSide(color: _cBorder)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: SizedBox(
+            height: 52,
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: _cInk,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: onPressed,
+              icon: const Icon(Icons.add, size: 20),
+              label: Text(
+                label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

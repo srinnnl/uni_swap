@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'admin_listings_page.dart';
 import 'admin_locations_page.dart';
-import 'admin_reports_page.dart';
 import 'admin_users_page.dart';
 import 'package:uni_swap/view/login.dart';
 
@@ -126,13 +125,7 @@ class AdminPage extends StatelessWidget {
                   note: '+12%',
                   onTap: () => _open(context, const AdminUsersPage()),
                 ),
-                _StatCard(
-                  icon: Icons.flag_outlined,
-                  label: 'Reports',
-                  value: '3',
-                  note: 'Review',
-                  onTap: () => _open(context, const AdminReportsPage()),
-                ),
+                
                 _StatCard(
                   icon: Icons.location_on_outlined,
                   label: 'Locations',
@@ -164,49 +157,7 @@ class AdminPage extends StatelessWidget {
             _sectionHeader('Needs attention', 'View all'),
             const SizedBox(height: 14),
 
-            _AppCard(
-              onTap: () => _open(context, const AdminReportsPage()),
-              child: Row(
-                children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: const BoxDecoration(
-                      color: _cRedBg,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.priority_high,
-                      color: _cRedFg,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '3 reported products',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: _cInk,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Review community reports',
-                          style: TextStyle(fontSize: 11, color: _cMuted),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right, color: _cMuted),
-                ],
-              ),
-            ),
-
+           
             const SizedBox(height: 12),
 
             _AppCard(

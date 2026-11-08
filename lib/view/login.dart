@@ -32,8 +32,10 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   // ===== จำลองการ login (mock) =====
+  // role ตรงกับ users.role ใน DB: 'member' / 'admin'
+  // ตอนเดโม: อีเมลที่ขึ้นต้นด้วย admin@ จะเข้าหน้าแอดมิน
   ({String token, String role}) _mockLogin(String email) {
-    final role = email.toLowerCase() == 'admin' ? 'admin' : 'user';
+    final role = email.toLowerCase().startsWith('admin@') ? 'admin' : 'member';
     return (token: 'mock-token-$role', role: role);
   }
 
@@ -42,6 +44,8 @@ class _LoginPageState extends State<LoginPage> {
     if (!_formKey.currentState!.validate()) return;
 
     final email = _emailCtrl.text.trim();
+    // TODO: เรียก API login ด้วย email + password
+    //   ถ้า users.status ไม่ใช่ active (suspended / pending_verification) ให้แสดงข้อความแจ้งแทนการเข้าแอป
     final session = _mockLogin(email);
     debugPrint('login: $email as ${session.role}');
 
@@ -175,12 +179,19 @@ class _LoginPageState extends State<LoginPage> {
             ),
             _buildField(
               label: 'Email',
-              hint: 'Email',
+              hint: 'you@example.com',
               controller: _emailCtrl,
-              icon: Icons.person_outline,
+              icon: Icons.mail_outline,
+              keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.next,
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Enter your email' : null,
+              validator: (v) {
+                final t = v?.trim() ?? '';
+                if (t.isEmpty) return 'Enter your email';
+                if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(t)) {
+                  return 'Enter a valid email address';
+                }
+                return null;
+              },
             ),
             _buildField(
               label: 'Password',
@@ -262,6 +273,7 @@ class _LoginPageState extends State<LoginPage> {
     Widget? suffix,
     String? Function(String?)? validator,
     TextInputAction? textInputAction,
+    TextInputType? keyboardType,
     ValueChanged<String>? onSubmitted,
   }) {
     OutlineInputBorder border(Color c, [double w = 1]) => OutlineInputBorder(
@@ -311,6 +323,7 @@ class _LoginPageState extends State<LoginPage> {
           child: TextFormField(
             controller: controller,
             obscureText: obscureText,
+            keyboardType: keyboardType,
             validator: validator,
             textInputAction: textInputAction,
             onFieldSubmitted: onSubmitted,

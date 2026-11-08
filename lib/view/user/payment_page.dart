@@ -1,5 +1,6 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 // ไฟล์นี้ใช้งานได้ด้วยตัวเอง: หน้าชำระเงิน (จำลอง ไม่มีการโอนเงินจริง)
 // กด "Mark as paid" แล้วยืนยัน จะ pop กลับพร้อมค่า true
@@ -15,6 +16,8 @@ class _C {
   static const sageBg = Color(0xFFD8E4DC);
   static const amberBg = Color(0xFFFBEBC2);
   static const amberFg = Color(0xFF8A6410);
+  static const red = Color(0xFFB3402F);
+  static const redBg = Color(0xFFF8DADA);
 }
 
 class PaymentPage extends StatelessWidget {
@@ -26,12 +29,8 @@ class PaymentPage extends StatelessWidget {
     required this.sellerName,
     this.imageUrl,
     this.paid = false,
-    // ผู้ซื้อโอนเข้า "บัญชีกลางของ UniSwap" (escrow) ไม่ใช่บัญชีผู้ขาย
-    // แพลตฟอร์มจะโอนต่อให้ผู้ขายหลังผู้ซื้อกดยืนยันรับของ
-    // TODO: ดึงบัญชีกลางจาก API (ตาราง platform_bank_accounts ของ orders)
-    this.bankName = 'Kasikornbank',
-    this.accountNumber = '123-4-56789-0',
-    this.accountName = 'UniSwap Campus Escrow',
+    // orders.payment_due_at (สร้างออเดอร์ + 30 นาที) null = ไม่แสดงตัวนับเวลา
+    this.paymentDueAt,
   });
 
   final String orderId;
@@ -40,9 +39,7 @@ class PaymentPage extends StatelessWidget {
   final String sellerName;
   final String? imageUrl;
   final bool paid;
-  final String bankName;
-  final String accountNumber;
-  final String accountName;
+  final DateTime? paymentDueAt;
 
   String get _amount => '${price.toStringAsFixed(2)} THB';
 
@@ -53,23 +50,27 @@ class PaymentPage extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         backgroundColor: _C.bg,
         title: const Text('Confirm payment'),
-        content: Text('Have you transferred $_amount to UniSwap?'),
+        content: Text(
+          'Pay $_amount now? UniSwap holds the money until you confirm the item.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Not yet'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: _C.ink),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Yes, mark as paid'),
+            child: const Text('Pay now'),
           ),
         ],
       ),
     );
     if (ok != true || !context.mounted) return;
 
-    // TODO: ส่งสถานะ "ชำระแล้ว" ไปที่ API (orderId) ผู้ขายจะเห็นว่าผู้ซื้อแจ้งโอนแล้ว
+    // TODO: เรียก API จ่ายเงิน (orderId) -- จำลองการพักเงิน ไม่มีเงินจริง
+    //   backend: orders.status = payment_held, คำนวณ GP เก็บที่ออเดอร์ (platform_fee_*),
+    //   บันทึกรายการพักเงินที่ payments
     Navigator.pop(context, true);
   }
 
@@ -85,31 +86,15 @@ class PaymentPage extends StatelessWidget {
             const SizedBox(height: 20),
             _buildOrderCard(),
             const SizedBox(height: 16),
-            _buildTransferCard(context),
+            _buildSummaryCard(),
             const SizedBox(height: 16),
             _buildNotice(),
             const SizedBox(height: 24),
-            SizedBox(
-              height: 54,
-              child: FilledButton(
-                onPressed: paid ? null : () => _markPaid(context),
-                style: FilledButton.styleFrom(
-                  backgroundColor: _C.ink,
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: _C.border,
-                  disabledForegroundColor: _C.muted,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                child: Text(
-                  paid ? 'Paid' : 'Mark as paid',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+            _PaySection(
+              paid: paid,
+              dueAt: paymentDueAt,
+              amount: _amount,
+              onPay: () => _markPaid(context),
             ),
           ],
         ),
@@ -233,7 +218,7 @@ class PaymentPage extends StatelessWidget {
     );
   }
 
-  Widget _buildTransferCard(BuildContext context) {
+  Widget _buildSummaryCard() {
     return _cardBox(
       child: Column(
         children: [
@@ -249,18 +234,18 @@ class PaymentPage extends StatelessWidget {
                 child: const Icon(Icons.apartment, color: _C.ink, size: 22),
               ),
               const SizedBox(width: 14),
-              Expanded(
+              const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Transfer to',
+                    Text(
+                      'Pay to',
                       style: TextStyle(fontSize: 11, color: _C.muted),
                     ),
-                    const SizedBox(height: 3),
+                    SizedBox(height: 3),
                     Text(
                       'UniSwap (held until you confirm)',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: _C.ink,
@@ -273,33 +258,11 @@ class PaymentPage extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           const Divider(height: 1, color: _C.border),
-          _row('Bank', bankName),
+          _row('Item price', _amount),
           const Divider(height: 1, color: _C.border),
-          _row(
-            'Account number',
-            accountNumber,
-            trailing: InkWell(
-              onTap: () {
-                Clipboard.setData(ClipboardData(text: accountNumber));
-                ScaffoldMessenger.of(context)
-                  ..hideCurrentSnackBar()
-                  ..showSnackBar(
-                    const SnackBar(content: Text('Account number copied')),
-                  );
-              },
-              child: const Padding(
-                padding: EdgeInsets.only(left: 8),
-                child: Icon(Icons.copy_outlined, size: 16, color: _C.muted),
-              ),
-            ),
-          ),
-          const Divider(height: 1, color: _C.border),
-          _row('Account name', accountName),
-          const Divider(height: 1, color: _C.border),
-          // เลขอ้างอิงให้ฝั่งแพลตฟอร์มจับคู่การโอนกับออเดอร์
           _row('Reference', orderId),
           const Divider(height: 1, color: _C.border),
-          _row('Amount', _amount, valueColor: _C.sage, large: true),
+          _row('Total to pay', _amount, valueColor: _C.sage, large: true),
         ],
       ),
     );
@@ -367,6 +330,120 @@ class PaymentPage extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// ส่วนล่างของหน้า: ตัวนับเวลา 30 นาที + ปุ่มจ่ายเงิน (จำลอง)
+class _PaySection extends StatefulWidget {
+  const _PaySection({
+    required this.paid,
+    required this.dueAt,
+    required this.amount,
+    required this.onPay,
+  });
+
+  final bool paid;
+  final DateTime? dueAt;
+  final String amount;
+  final Future<void> Function() onPay;
+
+  @override
+  State<_PaySection> createState() => _PaySectionState();
+}
+
+class _PaySectionState extends State<_PaySection> {
+  Timer? _timer;
+  Duration? _left;
+
+  bool get _expired => _left != null && _left! <= Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.dueAt != null && !widget.paid) {
+      _left = widget.dueAt!.difference(DateTime.now());
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() => _left = widget.dueAt!.difference(DateTime.now()));
+        if (_expired) _timer?.cancel();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String get _clock {
+    final s = _left!.inSeconds.clamp(0, 86400);
+    final m = (s ~/ 60).toString().padLeft(2, '0');
+    final r = (s % 60).toString().padLeft(2, '0');
+    return '$m:$r';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canPay = !widget.paid && !_expired;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_left != null && !widget.paid) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: _expired ? _C.redBg : _C.amberBg,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.timer_outlined,
+                  size: 20,
+                  color: _expired ? _C.red : _C.amberFg,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _expired
+                        ? 'Payment time expired. This order is cancelled.'
+                        : 'Pay within $_clock or the order is cancelled',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: _expired ? _C.red : _C.amberFg,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        SizedBox(
+          height: 54,
+          child: FilledButton(
+            onPressed: canPay ? () => widget.onPay() : null,
+            style: FilledButton.styleFrom(
+              backgroundColor: _C.ink,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: _C.border,
+              disabledForegroundColor: _C.muted,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: Text(
+              widget.paid
+                  ? 'Paid'
+                  : (_expired ? 'Time expired' : 'Pay ${widget.amount}'),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

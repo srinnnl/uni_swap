@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/view/user/campus_locations.dart';
 
 const _cBg = Color(0xFFFAF9F6);
 const _cInk = Color(0xFF2B2B26);
@@ -9,14 +10,14 @@ const _cRedFg = Color(0xFFB3402F);
 // หน้าขอเพิ่มที่พัก (หอ / คอนโด) ที่ยังไม่มีในรายการ
 // กด Submit แล้วจะ pop กลับพร้อมค่า true (ตอนนี้ยังเป็นข้อมูลจำลอง)
 //
-// ค่า type ตรงกับ location_requests.location_type ใน DB:
-//   dorm_on_campus, dorm_off_campus, condo, other
+// zone = หอใน/หอนอก (ตรงกับ location_zones) ตัดช่อง "Location type" ออกเพราะซ้ำกับ zone
+// location_type ให้ backend ตั้งจาก zone (dorm_on_campus / dorm_off_campus)
 // สถานะเริ่มต้นของคำขอใน DB = pending (แอดมินเปลี่ยนเป็น reviewing / approved / merged / rejected)
 class RequestLocationPage extends StatefulWidget {
   const RequestLocationPage({
     super.key,
     // TODO: ดึงที่พักปัจจุบันของผู้ใช้จาก API
-    this.currentLocation = 'North Campus · Maple Hall',
+    this.currentLocation = 'On-campus dorms · Lamduan 1 Dormitory',
   });
 
   final String currentLocation;
@@ -26,29 +27,11 @@ class RequestLocationPage extends StatefulWidget {
 }
 
 class _RequestLocationPageState extends State<RequestLocationPage> {
-  // (ค่าที่ส่ง API, ข้อความที่แสดง)
-  static const _types = <(String, String)>[
-    ('dorm_on_campus', 'Dorm / residence hall (on campus)'),
-    ('dorm_off_campus', 'Dorm (off campus)'),
-    ('condo', 'Condo / apartment'),
-    ('other', 'Other'),
-  ];
-
-  // TODO: ดึงรายชื่อ zone จาก API
-  static const _zones = <String>[
-    'North Campus',
-    'South Campus',
-    'East Campus',
-    'West Campus',
-    'Off campus',
-  ];
-
   final _nameCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
   final _reasonCtrl = TextEditingController();
 
-  String _type = _types.first.$1;
-  String? _zone;
+  CampusZone? _zone;
   String? _nameError;
   String? _zoneError;
 
@@ -59,8 +42,6 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
     _reasonCtrl.dispose();
     super.dispose();
   }
-
-  String get _typeLabel => _types.firstWhere((t) => t.$1 == _type).$2;
 
   // เลือกจากรายการ (bottom sheet) แล้วคืนค่าที่เลือก
   Future<T?> _pick<T>({
@@ -105,19 +86,10 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
     );
   }
 
-  Future<void> _pickType() async {
-    final v = await _pick<String>(
-      title: 'Location type',
-      options: _types,
-      selected: _type,
-    );
-    if (v != null) setState(() => _type = v);
-  }
-
   Future<void> _pickZone() async {
-    final v = await _pick<String>(
-      title: 'Campus zone',
-      options: [for (final z in _zones) (z, z)],
+    final v = await _pick<CampusZone>(
+      title: 'Where is it?',
+      options: [for (final z in CampusZone.values) (z, z.label)],
       selected: _zone,
     );
     if (v != null) {
@@ -138,7 +110,7 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
     if (_nameError != null || _zoneError != null) return;
 
     // TODO: ส่งไป API (location_requests)
-    //   name: name, location_type: _type, zone: _zone,
+    //   name: name, zone: _zone!.code,
     //   address: _addressCtrl.text.trim(), reason: _reasonCtrl.text.trim()
     //   status เริ่มต้น = pending
     ScaffoldMessenger.of(context)
@@ -230,10 +202,9 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
                 if (_nameError != null) setState(() => _nameError = null);
               },
             ),
-            _buildSelector('Location type', _typeLabel, onTap: _pickType),
             _buildSelector(
-              'Campus zone',
-              _zone ?? 'Choose a zone',
+              'On / off campus',
+              _zone?.label ?? 'Choose a zone',
               onTap: _pickZone,
               placeholder: _zone == null,
               errorText: _zoneError,

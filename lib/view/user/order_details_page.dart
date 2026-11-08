@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:uni_swap/view/user/arrange_meetup_page.dart';
-import 'package:uni_swap/view/user/chat_page.dart';
 import 'package:uni_swap/view/user/payment_page.dart';
 
 // หน้ารายละเอียดออเดอร์ (เปิดจากการกดรายการในหน้า Orders)
@@ -29,6 +28,10 @@ class _C {
 /// pending = requested ใน DB; "นัดแล้ว" ดูจาก meetup, "จ่ายแล้ว" ดูจาก paid
 enum OrderStage { pending, accepted, completed, cancelled }
 
+/// ค่าธรรมเนียมแพลตฟอร์ม (GP) หักจากผู้ขาย
+/// TODO: ใช้ orders.platform_fee_rate / platform_fee_amount / seller_payout_amount จาก API
+const _kFeeRate = 0.05;
+
 /// ผลที่ส่งกลับหน้า Orders ตอนปิดหน้ารายละเอียด
 class OrderResult {
   const OrderResult({
@@ -40,6 +43,8 @@ class OrderResult {
 
   final OrderStage stage;
   final bool paid;
+  final DateTime? paymentDueAt =
+      null; // แก้ไขให้รองรับ Optional ถ้าไม่ได้ใช้ใน Constructor ด้านบน
   final String? meetupPlace;
   final DateTime? meetupAt;
 }
@@ -57,6 +62,7 @@ class OrderDetailsPage extends StatefulWidget {
     this.meetupPlace,
     this.meetupAt,
     this.paid = false,
+    this.paymentDueAt, // เวลาหมดอายุการจ่ายเงิน (null = ไม่แสดงตัวนับเวลา)
     this.imageUrl,
     // TODO: ดึงที่พักของผู้ขายจาก API
     this.sellerLocation = 'North Campus · Maple Hall',
@@ -72,6 +78,7 @@ class OrderDetailsPage extends StatefulWidget {
   final String? meetupPlace;
   final DateTime? meetupAt;
   final bool paid;
+  final DateTime? paymentDueAt;
   final String? imageUrl;
   final String sellerLocation;
 
@@ -138,6 +145,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
           sellerName: widget.person,
           imageUrl: widget.imageUrl,
           paid: _paid,
+          paymentDueAt: widget.paymentDueAt,
         ),
       ),
     );
@@ -201,22 +209,6 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
     if (ok) setState(() => _stage = OrderStage.cancelled);
   }
 
-  void _openChat() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChatPage(
-          sellerName: widget.person,
-          productTitle: widget.title,
-          price: widget.price.round(),
-          imageUrl: widget.imageUrl,
-          // แชทของออเดอร์ที่จบแล้ว/ยกเลิกแล้ว อ่านได้อย่างเดียว
-          ended: _completed || _cancelled,
-        ),
-      ),
-    );
-  }
-
   void _close() => Navigator.pop(
     context,
     OrderResult(
@@ -245,6 +237,10 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
               _buildOrderCard(),
               const SizedBox(height: 16),
               _buildStatusCard(),
+              if (!widget.isBuying && _completed && _needsPayment) ...[
+                const SizedBox(height: 16),
+                _buildReceipt(),
+              ],
               if (_meetupAt != null && !_cancelled) ...[
                 const SizedBox(height: 16),
                 _buildMeetupCard(),
@@ -398,6 +394,83 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   }
 
   // ===== สถานะออเดอร์แบบเส้นเวลา =====
+  // ใบเสร็จผู้ขาย: ราคาสินค้า - ค่าธรรมเนียม UniSwap = ยอดที่ได้รับ
+  Widget _buildReceipt() {
+    final fee = double.parse((widget.price * _kFeeRate).toStringAsFixed(2));
+    final net = widget.price - fee;
+    String money(double v) => '${v.toStringAsFixed(2)} THB';
+
+    Widget row(
+      String label,
+      String value, {
+      bool strong = false,
+      Color? color,
+    }) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: strong ? 14 : 13,
+                fontWeight: strong ? FontWeight.w700 : FontWeight.w400,
+                color: strong ? _C.ink : _C.muted,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: strong ? 17 : 13,
+                fontWeight: FontWeight.w700,
+                color: color ?? _C.ink,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return _box(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.receipt_long_outlined, size: 18, color: _C.sage),
+              SizedBox(width: 8),
+              Text(
+                'Receipt',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: _C.ink,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          row('Item price', money(widget.price)),
+          const Divider(height: 1, color: _C.border),
+          // แก้ไขบรรทัดที่ Error ให้ถูกต้อง
+          row(
+            'UniSwap fee (${(_kFeeRate * 100).toStringAsFixed(0)}%)',
+            '- ${money(fee)}',
+          ),
+          const Divider(height: 1, color: _C.border),
+          row('You receive', money(net), strong: true, color: _C.sage),
+          const SizedBox(height: 2),
+          Text(
+            'Sent to your bank account · Order ${widget.orderId}',
+            style: const TextStyle(fontSize: 11, color: _C.muted),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildStatusCard() {
     final accepted =
         _stage == OrderStage.accepted || _stage == OrderStage.completed;
@@ -623,31 +696,6 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
           Expanded(child: primary),
           const SizedBox(width: 12),
         ],
-        Expanded(
-          child: SizedBox(
-            height: 54,
-            child: OutlinedButton.icon(
-              onPressed: _openChat,
-              icon: const Icon(Icons.chat_bubble_outline, size: 18),
-              label: Text(
-                'Chat with $_firstName',
-                overflow: TextOverflow.ellipsis,
-              ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _C.ink,
-                backgroundColor: Colors.white,
-                side: const BorderSide(color: _C.border),
-                textStyle: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -721,6 +769,7 @@ String _formatDay(DateTime d) {
     'Nov',
     'Dec',
   ];
+  // แก้ไขบรรทัดที่ Error ให้ถูกต้อง
   return '${days[d.weekday - 1]}, ${months[d.month - 1]} ${d.day}';
 }
 

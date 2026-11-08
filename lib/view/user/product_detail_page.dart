@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:uni_swap/view/user/arrange_meetup_page.dart';
-import 'package:uni_swap/view/user/chat_page.dart';
-import 'package:uni_swap/view/user/report_product_page.dart';
+import 'package:uni_swap/view/user/product_categories.dart';
 import 'package:uni_swap/view/user/seller_profile_page.dart';
 
 class _C {
@@ -97,9 +96,7 @@ class ProductDetailPage extends StatefulWidget {
 
 class _ProductDetailPageState extends State<ProductDetailPage> {
   final _pageCtrl = PageController();
-  final _noteCtrl = TextEditingController();
   int _imageIndex = 0;
-  bool _isFavorite = false;
   bool _requested = false;
 
   ProductDetail get _p => widget.product;
@@ -107,7 +104,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   @override
   void dispose() {
     _pageCtrl.dispose();
-    _noteCtrl.dispose();
     super.dispose();
   }
 
@@ -147,38 +143,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           location: _p.place,
           rating: s.rating,
           sales: s.sales,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _openReport() async {
-    final sent = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ReportProductPage(
-          productTitle: _p.title,
-          price: _p.price,
-          sellerName: _p.seller?.name ?? 'Seller',
-          imageUrl: _p.imageUrls.isEmpty ? null : _p.imageUrls.first,
-        ),
-      ),
-    );
-    if (sent == true && mounted) {
-      _toast('Report submitted. Thank you for helping keep UniSwap safe.');
-    }
-  }
-
-  void _openChat() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChatPage(
-          sellerName: _p.seller?.name ?? 'Seller',
-          productTitle: _p.title,
-          price: _p.price,
-          urgent: _p.urgent,
-          imageUrl: _p.imageUrls.isEmpty ? null : _p.imageUrls.first,
         ),
       ),
     );
@@ -241,15 +205,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             onTap: () => Navigator.maybePop(context),
           ),
         ),
-        Positioned(
-          top: topInset + 12,
-          right: 20,
-          child: _circleButton(
-            icon: _isFavorite ? Icons.favorite : Icons.favorite_border,
-            iconColor: _isFavorite ? Colors.red.shade400 : _C.ink,
-            onTap: () => setState(() => _isFavorite = !_isFavorite),
-          ),
-        ),
         if (count > 1)
           Positioned(
             bottom: 14,
@@ -310,26 +265,18 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            if (_p.urgent) _urgentBadge() else const SizedBox(height: 28),
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_horiz, color: _C.ink),
-              padding: EdgeInsets.zero,
-              color: Colors.white,
-              onSelected: (v) {
-                if (v == 'share') {
-                  _toast('Share coming soon');
-                } else {
-                  _openReport();
-                }
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'share', child: Text('Share')),
-                PopupMenuItem(value: 'report', child: Text('Report listing')),
-              ],
-            ),
+            if (_p.category != null) ...[
+              Icon(categoryIcon(_p.category), size: 16, color: _C.muted),
+              const SizedBox(width: 6),
+              Text(
+                _p.category!,
+                style: const TextStyle(fontSize: 12, color: _C.muted),
+              ),
+            ],
+            const Spacer(),
+            if (_p.urgent) _urgentBadge(),
           ],
         ),
         const SizedBox(height: 8),
@@ -373,42 +320,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         ],
         if (seller != null) _buildSeller(seller),
         const SizedBox(height: 24),
-        Row(
-          children: [
-            Expanded(
-              child: SizedBox(
-                height: 52,
-                child: OutlinedButton.icon(
-                  onPressed: _openChat,
-                  icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                  label: const Text('Chat with seller'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _C.ink,
-                    backgroundColor: Colors.white,
-                    side: const BorderSide(color: _C.border),
-                    textStyle: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            TextButton.icon(
-              onPressed: _openReport,
-              icon: const Icon(Icons.outlined_flag, size: 18),
-              label: const Text('Report'),
-              style: TextButton.styleFrom(
-                foregroundColor: _C.muted,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }
@@ -432,16 +343,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     );
   }
 
-  IconData _categoryIcon(String? category) => switch (category) {
-    'Furniture' => Icons.chair_alt_outlined,
-    'Books' => Icons.menu_book_outlined,
-    'Tech' => Icons.computer_outlined,
-    'Music' => Icons.music_note_outlined,
-    'Transport' => Icons.pedal_bike_outlined,
-    _ => Icons.sell_outlined,
-  };
-
- 
   Widget _buildSeller(SellerInfo s) {
     return InkWell(
       onTap: _openSeller,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/view/user/campus_locations.dart';
 import 'package:uni_swap/view/user/product_detail_page.dart';
 
 class _C {
@@ -16,7 +17,7 @@ class _Product {
     required this.id,
     required this.title,
     required this.price,
-    required this.place,
+    required this.location,
     this.imageUrl,
     this.urgent = false,
   });
@@ -24,47 +25,41 @@ class _Product {
   final String id;
   final String title;
   final int price;
-  final String place; // เช่น 'North Campus · Maple Hall'
+  final CampusLocation location;
   final String? imageUrl; // ถ้าเป็น null จะแสดงรูปแทนที่ชั่วคราว
   final bool urgent;
 
-  String get zone => place.split(' · ').first;
-  String get building => place.split(' · ').last;
+  CampusZone get zone => location.zone;
+  String get place => location.place;
+  String get building => location.name;
 }
 
 // ===== ข้อมูลตัวอย่าง: TODO แทนด้วยข้อมูลจาก API =====
-const _places = [
-  'North Campus · Maple Hall',
-  'North Campus · Oak Hall',
-  'South Campus · Cedar Hall',
-  'Off campus',
-];
-
-const _products = [
+final _products = [
   _Product(
     id: '1',
     title: 'Oak study desk',
     price: 45,
-    place: 'North Campus · Maple Hall',
+    location: locationById(12),
     urgent: true,
   ),
   _Product(
     id: '2',
     title: 'Acoustic guitar',
     price: 80,
-    place: 'North Campus · Maple Hall',
+    location: locationById(12),
   ),
   _Product(
     id: '3',
     title: 'Desk lamp',
     price: 12,
-    place: 'North Campus · Oak Hall',
+    location: locationById(13),
   ),
   _Product(
     id: '4',
     title: 'City bike',
     price: 120,
-    place: 'South Campus · Cedar Hall',
+    location: locationById(7),
   ),
 ];
 
@@ -83,21 +78,20 @@ class _HomePageState extends State<HomePage> {
   final bool _residencePending = false; // true = ที่พักรอ admin ตรวจสอบ
 
   int _tab = 0;
-  String _place = _places.first;
-  final Set<String> _favorites = {};
+  CampusLocation _place = locationsIn(CampusZone.onCampus).first;
 
-  String get _zone => _place.split(' · ').first;
-  String get _building => _place.split(' · ').last;
+  CampusZone get _zone => _place.zone;
+  String get _building => _place.name;
 
   List<_Product> get _visible => switch (_tab) {
-    0 => _products.where((p) => p.place == _place).toList(),
+    0 => _products.where((p) => p.location.id == _place.id).toList(),
     1 => _products.where((p) => p.zone == _zone).toList(),
     _ => _products,
   };
 
   String get _subtitle => switch (_tab) {
     0 => 'Items in $_building',
-    1 => 'Items in $_zone',
+    1 => 'Items in ${_zone.label}',
     _ => 'Items across campus',
   };
 
@@ -108,27 +102,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _pickPlace() async {
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      backgroundColor: Colors.white,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final p in _places)
-              ListTile(
-                title: Text(p),
-                trailing: p == _place
-                    ? const Icon(Icons.check, color: _C.ink)
-                    : null,
-                onTap: () => Navigator.pop(context, p),
-              ),
-          ],
-        ),
-      ),
+    final picked = await showCampusLocationPicker(
+      context,
+      zone: _place.zone,
+      selected: _place,
     );
-    if (picked != null) setState(() => _place = picked);
+    if (picked?.location != null) setState(() => _place = picked!.location!);
   }
 
   @override
@@ -261,7 +240,7 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                _place,
+                _place.place,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -373,8 +352,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildProductCard(_Product p) {
-    final isFav = _favorites.contains(p.id);
-
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
@@ -400,28 +377,7 @@ class _HomePageState extends State<HomePage> {
                 fit: StackFit.expand,
                 children: [
                   _buildImage(p.imageUrl),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: () => setState(() {
-                        isFav ? _favorites.remove(p.id) : _favorites.add(p.id);
-                      }),
-                      child: Container(
-                        padding: const EdgeInsets.all(7),
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          isFav ? Icons.favorite : Icons.favorite_border,
-                          size: 20,
-                          color: isFav ? Colors.red.shade400 : _C.ink,
-                        ),
-                      ),
-                    ),
-                  ),
+                  
                   if (p.urgent)
                     Positioned(
                       bottom: 8,

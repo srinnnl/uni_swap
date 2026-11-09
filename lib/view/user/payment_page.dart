@@ -29,17 +29,17 @@ class PaymentPage extends StatelessWidget {
     required this.sellerName,
     this.imageUrl,
     this.paid = false,
-    // orders.payment_due_at (สร้างออเดอร์ + 30 นาที) null = ไม่แสดงตัวนับเวลา
-    this.paymentDueAt,
+    // orders.payment_deadline (สร้างออเดอร์ + 30 นาที) null = ไม่แสดงตัวนับเวลา
+    this.paymentDeadline,
   });
 
-  final String orderId;
+  final String orderId; // เช่น '#US-12' (จาก orders.order_id)
   final String title;
-  final double price;
+  final double price; // orders.total_amount (DECIMAL ใช้ double ทั้งแอป)
   final String sellerName;
   final String? imageUrl;
   final bool paid;
-  final DateTime? paymentDueAt;
+  final DateTime? paymentDeadline;
 
   String get _amount => '${price.toStringAsFixed(2)} THB';
 
@@ -69,8 +69,11 @@ class PaymentPage extends StatelessWidget {
     if (ok != true || !context.mounted) return;
 
     // TODO: เรียก API จ่ายเงิน (orderId) -- จำลองการพักเงิน ไม่มีเงินจริง
-    //   backend: orders.status = payment_held, คำนวณ GP เก็บที่ออเดอร์ (platform_fee_*),
-    //   บันทึกรายการพักเงินที่ payments
+    //   backend (ตาม project_mobile_app.sql):
+    //     payments: payment_method='gateway', payment_status='paid', paid_at=now,
+    //               seller_transfer_status='held'
+    //     orders:   status='paid'  (commission_* / seller_payout คำนวณไว้แล้วตอนสร้างออเดอร์)
+    //   ถ้าเลย orders.payment_deadline แล้ว backend ต้องปฏิเสธ (orders.status = 'expired')
     Navigator.pop(context, true);
   }
 
@@ -92,7 +95,7 @@ class PaymentPage extends StatelessWidget {
             const SizedBox(height: 24),
             _PaySection(
               paid: paid,
-              dueAt: paymentDueAt,
+              dueAt: paymentDeadline,
               amount: _amount,
               onPay: () => _markPaid(context),
             ),
@@ -334,7 +337,7 @@ class PaymentPage extends StatelessWidget {
   }
 }
 
-/// ส่วนล่างของหน้า: ตัวนับเวลา 30 นาที + ปุ่มจ่ายเงิน (จำลอง)
+/// ส่วนล่างของหน้า: ตัวนับเวลาถึง payment_deadline + ปุ่มจ่ายเงิน (จำลอง)
 class _PaySection extends StatefulWidget {
   const _PaySection({
     required this.paid,
@@ -408,8 +411,8 @@ class _PaySectionState extends State<_PaySection> {
                 Expanded(
                   child: Text(
                     _expired
-                        ? 'Payment time expired. This order is cancelled.'
-                        : 'Pay within $_clock or the order is cancelled',
+                        ? 'Payment time expired. This order has expired.'
+                        : 'Pay within $_clock or the order expires',
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,

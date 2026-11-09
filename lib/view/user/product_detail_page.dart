@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/model/format.dart';
+import 'package:uni_swap/model/order_status.dart';
 import 'package:uni_swap/view/user/arrange_meetup_page.dart';
 import 'package:uni_swap/view/user/product_categories.dart';
 import 'package:uni_swap/view/user/seller_profile_page.dart';
@@ -14,13 +16,17 @@ class _C {
 
 class SellerInfo {
   const SellerInfo({
+    required this.id,
     required this.name,
     required this.rating,
     required this.sales,
     required this.location,
   });
 
-  final String name;
+  final int id; // users.user_id (ใช้เปิดโปรไฟล์ผู้ขาย และเช็คว่าเป็นสินค้าของตัวเองไหม)
+  final String name; // users.display_name
+  // TODO: rating / sales ไม่มีใน SQL เวอร์ชันปัจจุบัน
+  //   ต้องรอตาราง reviews (ดู alter_request.sql) และนับจาก orders ที่ completed
   final double rating;
   final int sales;
   final String location;
@@ -43,11 +49,13 @@ class ProductDetail {
     this.daysLeft,
     this.imageUrls = const [],
     this.seller,
+    this.status = ProductStatus.available,
+    this.isOwnItem = false,
   });
 
-  final String id;
+  final int id; // products.product_id
   final String title;
-  final int price;
+  final double price; // products.price DECIMAL(10,2)
   final String place;
   final String? category;
   final String? description;
@@ -55,15 +63,18 @@ class ProductDetail {
   final int? daysLeft;
   final List<String> imageUrls;
   final SellerInfo? seller;
+  final ProductStatus status; // reserved/sold = ซื้อไม่ได้
+  final bool isOwnItem; // seller_id == ผู้ใช้ที่ login (กันซื้อสินค้าตัวเอง)
 
   factory ProductDetail.mock({
-    required String id,
+    required int id,
     required String title,
-    required int price,
+    required double price,
     required String place,
     String? category,
     bool urgent = false,
   }) {
+    // TODO: แทนด้วย ProductDetail.fromJson(...) เมื่อมี API
     return ProductDetail(
       id: id,
       title: title,
@@ -76,6 +87,7 @@ class ProductDetail {
       urgent: urgent,
       daysLeft: urgent ? 3 : null,
       seller: SellerInfo(
+        id: 0,
         name: 'Jamie Lee',
         rating: 4.9,
         sales: 18,
@@ -97,9 +109,27 @@ class ProductDetailPage extends StatefulWidget {
 class _ProductDetailPageState extends State<ProductDetailPage> {
   final _pageCtrl = PageController();
   int _imageIndex = 0;
-  bool _requested = false;
+  bool _ordered = false;
 
   ProductDetail get _p => widget.product;
+
+  // ซื้อได้เฉพาะสินค้า available ที่ไม่ใช่ของตัวเอง และยังไม่ได้สั่งในหน้านี้
+  bool get _canBuy =>
+      _p.status == ProductStatus.available && !_p.isOwnItem && !_ordered;
+
+  String get _buttonLabel {
+    if (_p.isOwnItem) return 'Your item';
+    if (_ordered) return 'Order placed';
+    return switch (_p.status) {
+      ProductStatus.available => 'Buy now',
+      ProductStatus.reserved => 'Reserved',
+      ProductStatus.sold => 'Sold',
+      ProductStatus.hidden ||
+      ProductStatus.pendingReview ||
+      ProductStatus.changesRequested ||
+      ProductStatus.rejected => 'Unavailable',
+    };
+  }
 
   @override
   void dispose() {
@@ -113,7 +143,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _requestToBuy() async {
+  // Buy now: เลือกจุดนัด/เวลา แล้วสร้างออเดอร์ (pending_payment) ทันที
+  // ไม่มีขั้นรอผู้ขายตอบรับ (ตรงกับ DB ที่ orders เริ่มที่ pending_payment)
+  Future<void> _buyNow() async {
     final sellerName = _p.seller?.name ?? 'the seller';
     final confirmed = await Navigator.push<MeetupChoice>(
       context,
@@ -128,8 +160,17 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     );
 
     if (confirmed == null || !mounted) return;
-    setState(() => _requested = true);
-    _toast('Request sent to $sellerName');
+
+    // TODO: เรียก API สร้างออเดอร์
+    //   POST orders { product_id: _p.id,
+    //                 meetup_location: confirmed.spot,
+    //                 meetup_datetime: confirmed.when.toUtc().toIso8601String() }
+    //   backend: orders.status='pending_payment', payment_deadline = now + 30 นาที,
+    //            products.status 'available' -> 'reserved'
+    //            (ต้องกันกรณีผู้ซื้อ 2 คนสั่งของชิ้นเดียวกันพร้อมกัน และ buyer_id == seller_id)
+    //   ถ้า API ตอบ error (สินค้าถูกจองไปแล้ว) ให้แสดงข้อความและไม่ตั้ง _ordered
+    setState(() => _ordered = true);
+    _toast('Order placed with $sellerName · pay within 30 minutes in My orders');
   }
 
   void _openSeller() {
@@ -291,7 +332,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         ),
         const SizedBox(height: 14),
         Text(
-          '${_p.price} THB',
+          formatPriceTHB(_p.price),
           style: const TextStyle(
             fontSize: 26,
             fontWeight: FontWeight.w700,
@@ -432,7 +473,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     style: TextStyle(fontSize: 12, color: _C.muted),
                   ),
                   Text(
-                    '${_p.price} THB',
+                    formatPriceTHB(_p.price),
                     style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w700,
@@ -445,7 +486,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               SizedBox(
                 height: 52,
                 child: FilledButton(
-                  onPressed: _requested ? null : _requestToBuy,
+                  onPressed: _canBuy ? _buyNow : null,
                   style: FilledButton.styleFrom(
                     backgroundColor: _C.ink,
                     foregroundColor: Colors.white,
@@ -457,7 +498,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     ),
                   ),
                   child: Text(
-                    _requested ? 'Request sent' : 'Request to buy',
+                    _buttonLabel,
                     style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,

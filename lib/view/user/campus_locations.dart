@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 // ไฟล์กลางของที่พัก ใช้ร่วมกันทุกหน้า (register, profile, sell, search, ...)
-// วางที่ lib/data/campus_locations.dart
-// ตรงกับ DB: location_zones (on_campus / off_campus) และ locations
+// ตอนนี้วางที่ lib/view/user/campus_locations.dart (ทุกไฟล์ import จากที่นี่)
+// ตรงกับ DB: zone เป็น enum on_campus / off_campus ส่วนตาราง locations ต้องรอเพื่อน ALTER (alter_request.sql)
 // TODO: เปลี่ยน kCampusLocations เป็นข้อมูลจาก API (รายการ locations ที่ is_active)
 
 const _ink = Color(0xFF2F2F2B);
@@ -13,7 +13,7 @@ enum CampusZone {
   offCampus('off_campus', 'Off-campus dorms');
 
   const CampusZone(this.code, this.label);
-  final String code; // location_zones.code
+  final String code; // products.zone / users.residence_zone
   final String label; // ข้อความที่แสดงในแอป
 }
 

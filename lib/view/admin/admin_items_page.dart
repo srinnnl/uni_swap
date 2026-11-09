@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:uni_swap/view/user/campus_locations.dart';
 
 // ---- colors (local to this file) ----
 const _cBg = Color(0xFFFAF9F6);
@@ -7,82 +6,131 @@ const _cCard = Color(0xFFFFFFFF);
 const _cInk = Color(0xFF2B2B26);
 const _cMuted = Color(0xFF8A8A82);
 const _cBorder = Color(0xFFE6E4DE);
+const _cChip = Color(0xFFF0EEE9);
+const _cSage = Color(0xFFD8E4DC);
+const _cSageDark = Color(0xFF3F6B52);
 const _cBlueBg = Color(0xFFE3ECF7);
 const _cBlueFg = Color(0xFF3B5E8C);
 const _cAmberBg = Color(0xFFFBEBC2);
 const _cAmberFg = Color(0xFF8A6410);
+const _cRedBg = Color(0xFFF8DADA);
 const _cRedFg = Color(0xFFB3402F);
 
-enum _LStatus { pending, reviewing }
+enum _LStatus { pending, changes }
 
-class _Loc {
-  final String name;
-  final String area;
-  final String meta;
+class _Item {
+  final String title;
+  final String seller;
+  final int price;
+  final String category;
+  final String place;
+  final String submitted;
+  final String description;
+  final bool urgent;
+  final String? flag; // ข้อสังเกตให้แอดมินดูเพิ่ม (ไม่มีคอลัมน์ใน DB ให้ API คำนวณ เช่น ราคาสูงกว่าค่าเฉลี่ยในหมวด หรือตัดทิ้ง)
+  // รูปสินค้าทั้งหมดที่ผู้ขายอัปโหลด เรียงตาม product_images.display_order (รูปแรก = ปก)
+  // null = ยังไม่มี URL จริง จะแสดงกรอบเทาแทน
+  // TODO: ใส่ URL รูปจริงจาก API (ตาราง product_images)
+  final List<String?> photos;
   _LStatus status;
-  _Loc(this.name, this.area, this.meta, this.status);
+  String? note; // ข้อความที่ส่งกลับให้ผู้ขายแก้ไข
+  _Item(
+    this.title,
+    this.seller,
+    this.price,
+    this.category,
+    this.place,
+    this.submitted,
+    this.description, {
+    this.urgent = false,
+    this.flag,
+    this.photos = const [null],
+    this.status = _LStatus.pending,
+  });
 }
 
-class AdminLocationsPage extends StatefulWidget {
-  const AdminLocationsPage({super.key});
+class AdminItemsPage extends StatefulWidget {
+  const AdminItemsPage({super.key});
 
   @override
-  State<AdminLocationsPage> createState() => _AdminLocationsPageState();
+  State<AdminItemsPage> createState() => _AdminItemsPageState();
 }
 
-class _AdminLocationsPageState extends State<AdminLocationsPage> {
-  static const _filters = ['All', 'Pending', 'Reviewing'];
-  // ตรงกับ location_zones ใน DB (CampusZone)
-  static final _areas = [for (final z in CampusZone.values) z.label];
-
-  // ที่พักที่อนุมัติแล้ว (ตัวอย่าง) ไว้เป็นปลายทางของการ Merge
-  // TODO: ดึงจาก API (ควรใช้ locationId ไม่ใช่ชื่อ)
-  static final _existing = [for (final l in kCampusLocations) l.place];
+class _AdminItemsPageState extends State<AdminItemsPage> {
+  static const _filters = ['All', 'Pending', 'Changes requested'];
+  // (ค่าที่ส่ง API, ข้อความที่แสดง) ตรงกับ products.reject_reason ใน DB
+  static const _rejectReasons = <(String, String)>[
+    ('prohibited_item', 'Prohibited item'),
+    ('misleading', 'Misleading information'),
+    ('poor_photos', 'Poor quality photos'),
+    ('duplicate', 'Duplicate item'),
+    ('other', 'Other'),
+  ];
 
   // Mock data (UI only)
-  final List<_Loc> _locs = [
-    _Loc(
-      'Riverside Residence',
-      'On-campus dorms',
-      'Requested by Maya K.',
-      _LStatus.pending,
+  // TODO: ดึงจาก API (สินค้าที่รอตรวจสอบ) และอัปเดตสถานะสินค้าเมื่อแอดมินตัดสิน
+  final List<_Item> _items = [
+    _Item(
+      'Mini fridge',
+      'Sam K.',
+      60,
+      'Appliances',
+      'North Campus · Oak Hall',
+      '10 min ago',
+      'Works great, small dent on the side. Pickup only.',
+      photos: const [null, null, null],
     ),
-    _Loc(
-      'The Grove Condos',
-      'Off-campus dorms',
-      'Requested by Arun P.',
-      _LStatus.pending,
+    _Item(
+      'Calculus textbook',
+      'Priya N.',
+      20,
+      'Books',
+      'North Campus · Maple Hall',
+      '1 hour ago',
+      'Latest edition, a few highlighted pages.',
+      urgent: true,
     ),
-    _Loc(
-      'Cedar Student Living',
-      'Off-campus dorms',
-      'Requested by Lina W.',
-      _LStatus.pending,
+    _Item(
+      'iPad Air (2021)',
+      'Lee W.',
+      320,
+      'Tech',
+      'South Campus · Cedar Hall',
+      '3 hours ago',
+      '64GB, includes case. Battery health 91%.',
+      flag: 'Price is higher than most items in this category',
+      photos: const [null, null, null, null],
     ),
-    _Loc(
-      'Hilltop Apartments',
-      'On-campus dorms',
-      'Requested yesterday',
-      _LStatus.reviewing,
+    _Item(
+      'Bean bag chair',
+      'Mika T.',
+      15,
+      'Furniture',
+      'North Campus · Oak Hall',
+      'Yesterday',
+      'Comfy, lightly used.',
+      status: _LStatus.changes,
     ),
   ];
 
   String _query = '';
   String _filter = 'All';
 
-  String _label(_LStatus s) => s == _LStatus.pending ? 'Pending' : 'Reviewing';
+  String _label(_LStatus s) =>
+      s == _LStatus.pending ? 'Pending' : 'Changes requested';
 
   (Color, Color) _colors(_LStatus s) =>
       s == _LStatus.pending ? (_cAmberBg, _cAmberFg) : (_cBlueBg, _cBlueFg);
 
-  List<_Loc> get _visible {
+  List<_Item> get _visible {
     final q = _query.trim().toLowerCase();
-    return _locs.where((l) {
+    return _items.where((i) {
       final matchQ =
           q.isEmpty ||
-          l.name.toLowerCase().contains(q) ||
-          l.area.toLowerCase().contains(q);
-      final matchF = _filter == 'All' || _label(l.status) == _filter;
+          i.title.toLowerCase().contains(q) ||
+          i.seller.toLowerCase().contains(q) ||
+          i.category.toLowerCase().contains(q);
+      final matchF = _filter == 'All' || _label(i.status) == _filter;
       return matchQ && matchF;
     }).toList();
   }
@@ -92,8 +140,8 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
     if (r != null) setState(() => _filter = r);
   }
 
-  void _openLoc(_Loc l) {
-    final (bg, fg) = _colors(l.status);
+  void _openItem(_Item item) {
+    final (bg, fg) = _colors(item.status);
     _showSheet(context, (ctx) {
       return Column(
         mainAxisSize: MainAxisSize.min,
@@ -102,71 +150,98 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
           Row(
             children: [
               const _IconBox(
-                icon: Icons.location_on_outlined,
-                bg: _cBlueBg,
-                fg: _cBlueFg,
+                icon: Icons.fact_check_outlined,
+                bg: _cAmberBg,
+                fg: _cAmberFg,
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Text(
-                  l.name,
+                  item.title,
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
-              _Badge(label: _label(l.status), bg: bg, fg: fg),
+              _Badge(label: _label(item.status), bg: bg, fg: fg),
             ],
           ),
           const SizedBox(height: 16),
-          _InfoRow('Zone', l.area),
-          _InfoRow('Request', l.meta),
+          _PhotoStrip(photos: item.photos),
+          const SizedBox(height: 12),
+          _InfoRow('Price', '${item.price} THB'),
+          _InfoRow('Category', item.category),
+          _InfoRow('Seller', item.seller),
+          _InfoRow('Location', item.place),
+          _InfoRow('Submitted', item.submitted),
+          if (item.urgent) const _InfoRow('Urgent', 'Has a move-out deadline'),
+          const SizedBox(height: 6),
           const Divider(height: 1, color: _cBorder),
+          const SizedBox(height: 14),
+          const Text(
+            'Description',
+            style: TextStyle(fontSize: 12, color: _cMuted),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            item.description,
+            style: const TextStyle(fontSize: 13, height: 1.45),
+          ),
+          if (item.flag != null) ...[
+            const SizedBox(height: 14),
+            _Notice(item.flag!, bg: _cAmberBg, fg: _cAmberFg),
+          ],
+          if (item.note != null) ...[
+            const SizedBox(height: 14),
+            _Notice('Sent to seller: ${item.note}', bg: _cBlueBg, fg: _cBlueFg),
+          ],
           const SizedBox(height: 20),
           _ActionButton(
-            label: 'Approve location',
+            label: 'Approve item',
             onPressed: () {
-              setState(() => _locs.remove(l));
+              // TODO: API -> products.status='available' (ขึ้นหน้าร้าน), reviewed_by=admin, reviewed_at=now
+              //   (ผู้ขายเห็นสถานะใน My items ไม่มีระบบแจ้งเตือน)
+              setState(() => _items.remove(item));
               Navigator.pop(ctx);
-              _snack(context, '${l.name} approved (mock)');
+              _snack(context, '${item.title} approved and live (mock)');
             },
           ),
           const SizedBox(height: 10),
-          // ใช้กรณีผู้ใช้พิมพ์ชื่อไม่ตรงกับที่พักที่มีอยู่ (สะกดผิด/ชื่อเรียกต่างกัน)
           _ActionButton(
             filled: false,
-            label: 'Merge into existing location',
+            label: 'Request changes',
             onPressed: () async {
-              final target = await _pickExisting(ctx);
-              if (target == null || !mounted) return;
-              setState(() => _locs.remove(l));
+              final note = await _showSheet<String>(
+                ctx,
+                (c) => _NoteForm(
+                  title: 'Request changes',
+                  hint: 'e.g. Please add clearer photos of the front.',
+                  button: 'Send to seller',
+                ),
+              );
+              if (note == null || !mounted) return;
+              // TODO: API -> products.status='changes_requested', review_note=<ข้อความถึงผู้ขาย>, reviewed_by/at
+              setState(() {
+                item.status = _LStatus.changes;
+                item.note = note;
+              });
               if (ctx.mounted) Navigator.pop(ctx);
-              // TODO: backend: ย้ายผู้ใช้ทุกคนที่ผูกกับคำขอนี้ไปที่ locationId
-              // ของ target แล้วปิดคำขอ (ผู้ใช้ไม่ต้องทำอะไร)
-              _snack(context, '${l.name} merged into $target (mock)');
+              _snack(context, 'Sent to ${item.seller} (mock)');
             },
           ),
           const SizedBox(height: 10),
-          if (l.status == _LStatus.pending) ...[
-            _ActionButton(
-              filled: false,
-              label: 'Mark as reviewing',
-              onPressed: () {
-                setState(() => l.status = _LStatus.reviewing);
-                Navigator.pop(ctx);
-              },
-            ),
-            const SizedBox(height: 10),
-          ],
           _ActionButton(
             filled: false,
             danger: true,
-            label: 'Reject request',
-            onPressed: () {
-              setState(() => _locs.remove(l));
-              Navigator.pop(ctx);
-              _snack(context, '${l.name} rejected (mock)');
+            label: 'Reject item',
+            onPressed: () async {
+              final reason = await _pickReason(ctx, _rejectReasons);
+              if (reason == null || !mounted) return;
+              // TODO: API -> products.status='rejected', reject_reason=reason.$1 (ถ้าเป็น 'other' ให้ใส่ review_note), reviewed_by/at
+              setState(() => _items.remove(item));
+              if (ctx.mounted) Navigator.pop(ctx);
+              _snack(context, '${item.title} rejected: ${reason.$2} (mock)');
             },
           ),
         ],
@@ -174,68 +249,23 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
     });
   }
 
-  Future<String?> _pickExisting(BuildContext context) {
-    return showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: _cBg,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
-              child: Text(
-                'Merge into which location?',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-              ),
-            ),
-            for (final e in _existing)
-              ListTile(title: Text(e), onTap: () => Navigator.pop(ctx, e)),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _addLocation() {
-    _showSheet(context, (ctx) {
-      return _LocationForm(
-        areas: _areas,
-        onSave: (name, area) {
-          setState(
-            () => _locs.insert(
-              0,
-              _Loc(name, area, 'Requested just now', _LStatus.pending),
-            ),
-          );
-          _snack(context, 'Location added (mock)');
-        },
-      );
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final list = _visible;
-    final n = _locs.length;
+    final n = _items.length;
     return Scaffold(
       backgroundColor: _cBg,
       body: SafeArea(
         child: Column(
           children: [
             _Header(
-              title: 'Location requests',
+              title: 'Items review',
               subtitle: n == 1
-                  ? '1 request needs review'
-                  : '$n requests need review',
+                  ? '1 item waiting for review'
+                  : '$n items waiting for review',
             ),
             _SearchRow(
-              hint: 'Search locations',
+              hint: 'Search items or sellers',
               filterActive: _filter != 'All',
               onChanged: (v) => setState(() => _query = v),
               onFilter: _openFilter,
@@ -243,21 +273,23 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
             _SectionRow(label: 'Needs attention', shown: list.length),
             Expanded(
               child: list.isEmpty
-                  ? const _Empty('No requests found')
+                  ? const _Empty('No items to review')
                   : ListView(
                       padding: const EdgeInsets.only(bottom: 24),
                       children: [
-                        for (final l in list)
+                        for (final i in list)
                           _ListRow(
-                            icon: Icons.location_on_outlined,
-                            iconBg: _cBlueBg,
-                            iconFg: _cBlueFg,
-                            title: l.name,
-                            subtitle: '${l.area} · ${l.meta}',
-                            badge: _label(l.status),
-                            badgeBg: _colors(l.status).$1,
-                            badgeFg: _colors(l.status).$2,
-                            onTap: () => _openLoc(l),
+                            icon: Icons.fact_check_outlined,
+                            iconBg: _cAmberBg,
+                            iconFg: _cAmberFg,
+                            thumb: _Thumb(i.photos.first),
+                            title: i.title,
+                            subtitle:
+                                '${i.price} THB · ${i.seller} · ${i.submitted}',
+                            badge: _label(i.status),
+                            badgeBg: _colors(i.status).$1,
+                            badgeFg: _colors(i.status).$2,
+                            onTap: () => _openItem(i),
                           ),
                       ],
                     ),
@@ -265,31 +297,31 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
           ],
         ),
       ),
-      bottomNavigationBar: _BottomBar(
-        label: 'Add location',
-        onPressed: _addLocation,
-      ),
     );
   }
 }
 
-class _LocationForm extends StatefulWidget {
-  final List<String> areas;
-  final void Function(String name, String area) onSave;
-  const _LocationForm({required this.areas, required this.onSave});
+class _NoteForm extends StatefulWidget {
+  final String title;
+  final String hint;
+  final String button;
+  const _NoteForm({
+    required this.title,
+    required this.hint,
+    required this.button,
+  });
 
   @override
-  State<_LocationForm> createState() => _LocationFormState();
+  State<_NoteForm> createState() => _NoteFormState();
 }
 
-class _LocationFormState extends State<_LocationForm> {
-  final _name = TextEditingController();
-  late String _area = widget.areas.first;
+class _NoteFormState extends State<_NoteForm> {
+  final _ctrl = TextEditingController();
   String? _error;
 
   @override
   void dispose() {
-    _name.dispose();
+    _ctrl.dispose();
     super.dispose();
   }
 
@@ -299,46 +331,29 @@ class _LocationFormState extends State<_LocationForm> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Add location',
-          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 18),
-        const Text(
-          'Name',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _name,
-          textCapitalization: TextCapitalization.words,
-          decoration: _dec('e.g. Riverside Residence', error: _error),
+        Text(
+          widget.title,
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 16),
-        const Text(
-          'Zone',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        TextField(
+          controller: _ctrl,
+          minLines: 3,
+          maxLines: 5,
+          maxLength: 300,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: _dec(widget.hint, error: _error),
         ),
-        const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          value: _area,
-          decoration: _dec(''),
-          items: [
-            for (final a in widget.areas)
-              DropdownMenuItem(value: a, child: Text(a)),
-          ],
-          onChanged: (v) => setState(() => _area = v ?? _area),
-        ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 14),
         _ActionButton(
-          label: 'Add location',
+          label: widget.button,
           onPressed: () {
-            if (_name.text.trim().isEmpty) {
-              setState(() => _error = 'Please enter a name');
+            final text = _ctrl.text.trim();
+            if (text.length < 5) {
+              setState(() => _error = 'Please write a short message');
               return;
             }
-            widget.onSave(_name.text.trim(), _area);
-            Navigator.pop(context);
+            Navigator.pop(context, text);
           },
         ),
       ],
@@ -378,6 +393,37 @@ Future<T?> _showSheet<T>(
         MediaQuery.of(ctx).viewInsets.bottom + 24,
       ),
       child: SingleChildScrollView(child: builder(ctx)),
+    ),
+  );
+}
+
+Future<(String, String)?> _pickReason(
+  BuildContext context,
+  List<(String, String)> reasons,
+) {
+  return showModalBottomSheet<(String, String)>(
+    context: context,
+    backgroundColor: _cBg,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
+            child: Text(
+              'Why are you rejecting this?',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+          ),
+          for (final r in reasons)
+            ListTile(title: Text(r.$2), onTap: () => Navigator.pop(ctx, r)),
+          const SizedBox(height: 8),
+        ],
+      ),
     ),
   );
 }
@@ -443,7 +489,6 @@ InputDecoration _dec(String hint, {String? error}) {
     hintStyle: const TextStyle(color: Color(0xFFB0AFA8), fontSize: 14),
     filled: true,
     fillColor: _cCard,
-    counterText: '',
     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
     border: b(_cBorder),
     enabledBorder: b(_cBorder),
@@ -488,10 +533,7 @@ class _Header extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.more_horiz),
-            onPressed: () => _snack(context, 'More options (coming soon)'),
-          ),
+          const SizedBox(width: 48),
         ],
       ),
     );
@@ -658,6 +700,7 @@ class _ListRow extends StatelessWidget {
   final Color badgeBg;
   final Color badgeFg;
   final VoidCallback onTap;
+  final Widget? thumb; // ถ้ามี จะแสดงแทนกล่องไอคอน (เช่น รูปสินค้า)
   const _ListRow({
     required this.icon,
     required this.iconBg,
@@ -668,6 +711,7 @@ class _ListRow extends StatelessWidget {
     required this.badgeBg,
     required this.badgeFg,
     required this.onTap,
+    this.thumb,
   });
 
   @override
@@ -682,7 +726,7 @@ class _ListRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            _IconBox(icon: icon, bg: iconBg, fg: iconFg),
+            thumb ?? _IconBox(icon: icon, bg: iconBg, fg: iconFg),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -698,6 +742,8 @@ class _ListRow extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 11, color: _cMuted),
                   ),
                 ],
@@ -708,49 +754,6 @@ class _ListRow extends StatelessWidget {
             const SizedBox(width: 6),
             const Icon(Icons.chevron_right, size: 20),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BottomBar extends StatelessWidget {
-  final String label;
-  final VoidCallback onPressed;
-  const _BottomBar({required this.label, required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: _cBg,
-        border: Border(top: BorderSide(color: _cBorder)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: SizedBox(
-            height: 52,
-            width: double.infinity,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: _cInk,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: onPressed,
-              icon: const Icon(Icons.add, size: 20),
-              label: Text(
-                label,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                ),
-              ),
-            ),
-          ),
         ),
       ),
     );
@@ -811,18 +814,174 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 8),
+    padding: const EdgeInsets.symmetric(vertical: 7),
     child: Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: const TextStyle(fontSize: 13, color: _cMuted)),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        const SizedBox(width: 16),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
         ),
       ],
     ),
   );
+}
+
+class _Notice extends StatelessWidget {
+  final String text;
+  final Color bg;
+  final Color fg;
+  const _Notice(this.text, {required this.bg, required this.fg});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Text(text, style: TextStyle(fontSize: 12, height: 1.4, color: fg)),
+  );
+}
+
+// ---- แสดงรูปสินค้า ----
+Widget _photoWidget(String? url, {BoxFit fit = BoxFit.cover}) {
+  final placeholder = Container(
+    color: _cChip,
+    alignment: Alignment.center,
+    child: const Icon(Icons.image_outlined, size: 30, color: _cMuted),
+  );
+  if (url == null) return placeholder;
+  return Image.network(
+    url,
+    fit: fit,
+    errorBuilder: (_, __, ___) => placeholder,
+    loadingBuilder: (_, child, progress) =>
+        progress == null ? child : placeholder,
+  );
+}
+
+/// รูปย่อในรายการ
+class _Thumb extends StatelessWidget {
+  final String? url;
+  const _Thumb(this.url);
+
+  @override
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(12),
+    child: SizedBox(width: 48, height: 48, child: _photoWidget(url)),
+  );
+}
+
+/// แถบรูปทั้งหมดในหน้ารายละเอียด เลื่อนดูได้ กดเพื่อขยายเต็มจอ
+class _PhotoStrip extends StatelessWidget {
+  final List<String?> photos;
+  const _PhotoStrip({required this.photos});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 180,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: photos.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (ctx, i) => GestureDetector(
+              onTap: () => showDialog(
+                context: ctx,
+                builder: (_) => _PhotoViewer(photos: photos, initial: i),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  width: 180,
+                  height: 180,
+                  child: _photoWidget(photos[i]),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '${photos.length} ${photos.length == 1 ? 'photo' : 'photos'} · tap to enlarge',
+          style: const TextStyle(fontSize: 11, color: _cMuted),
+        ),
+      ],
+    );
+  }
+}
+
+/// ดูรูปเต็มจอ ปัดซ้ายขวาได้ บีบนิ้วซูมได้
+class _PhotoViewer extends StatefulWidget {
+  final List<String?> photos;
+  final int initial;
+  const _PhotoViewer({required this.photos, required this.initial});
+
+  @override
+  State<_PhotoViewer> createState() => _PhotoViewerState();
+}
+
+class _PhotoViewerState extends State<_PhotoViewer> {
+  late final PageController _ctrl = PageController(initialPage: widget.initial);
+  late int _index = widget.initial;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog.fullscreen(
+      backgroundColor: Colors.black,
+      child: Stack(
+        children: [
+          PageView.builder(
+            controller: _ctrl,
+            itemCount: widget.photos.length,
+            onPageChanged: (i) => setState(() => _index = i),
+            itemBuilder: (_, i) => InteractiveViewer(
+              child: Center(
+                child: _photoWidget(widget.photos[i], fit: BoxFit.contain),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topRight,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  '${_index + 1} / ${widget.photos.length}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _Empty extends StatelessWidget {

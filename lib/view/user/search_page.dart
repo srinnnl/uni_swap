@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:uni_swap/model/format.dart';
 import 'package:uni_swap/view/user/campus_locations.dart';
 import 'package:uni_swap/view/user/product_categories.dart';
 import 'package:uni_swap/view/user/product_detail_page.dart';
@@ -20,16 +21,16 @@ class _Product {
     required this.price,
     required this.category,
     required this.location,
-    this.imageUrl,
+    required this.imageUrl,
     this.urgent = false,
   });
 
-  final String id;
+  final int id; // products.product_id
   final String title;
-  final int price;
+  final double price; // products.price DECIMAL(10,2)
   final String category;
   final CampusLocation location;
-  final String? imageUrl;
+  final String imageUrl;
   final bool urgent;
 
   String get place => location.place;
@@ -51,47 +52,59 @@ final _categories = <(String, IconData?)>[
 
 final _products = [
   _Product(
-    id: '1',
+    id: 1,
     title: 'Oak study desk',
     price: 45,
     category: 'Furniture',
     location: locationById(12),
     urgent: true,
+    imageUrl:
+        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
   ),
   _Product(
-    id: '2',
+    id: 2,
     title: 'Acoustic guitar',
     price: 80,
     category: 'Music',
     location: locationById(12),
+    imageUrl:
+        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
   ),
   _Product(
-    id: '3',
+    id: 3,
     title: 'Calculus textbook',
     price: 20,
     category: 'Books',
     location: locationById(12),
+    imageUrl:
+        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
   ),
   _Product(
-    id: '4',
+    id: 4,
     title: 'Desk lamp',
     price: 12,
     category: 'Furniture',
     location: locationById(13),
+    imageUrl:
+        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
   ),
   _Product(
-    id: '5',
+    id: 5,
     title: 'Laptop stand',
     price: 18,
     category: 'Technology',
     location: locationById(13),
+    imageUrl:
+        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
   ),
   _Product(
-    id: '6',
+    id: 6,
     title: 'City bike',
     price: 120,
     category: 'Transport',
     location: locationById(7),
+    imageUrl:
+        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
   ),
 ];
 
@@ -103,14 +116,12 @@ class SearchPage extends StatefulWidget {
 }
 
 class _SearchPageState extends State<SearchPage> {
-
   final _searchCtrl = TextEditingController();
   String _category = 'All';
   double _priceMin = 0;
   double? _priceMax; // null = ไม่จำกัดราคาสูงสุด
   final Set<int> _locations = {};
   _Sort _sort = _Sort.priceLow;
-  final Set<String> _favorites = {};
 
   @override
   void dispose() {
@@ -127,7 +138,8 @@ class _SearchPageState extends State<SearchPage> {
       if (_priceMax != null && p.price > _priceMax!) {
         return false;
       }
-      if (_locations.isNotEmpty && !_locations.contains(p.location.id)) return false;
+      if (_locations.isNotEmpty && !_locations.contains(p.location.id))
+        return false;
       return true;
     }).toList();
 
@@ -596,8 +608,6 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   Widget _buildProductCard(_Product p) {
-    final isFav = _favorites.contains(p.id);
-
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
@@ -624,28 +634,6 @@ class _SearchPageState extends State<SearchPage> {
                 fit: StackFit.expand,
                 children: [
                   _buildImage(p.imageUrl),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: () => setState(() {
-                        isFav ? _favorites.remove(p.id) : _favorites.add(p.id);
-                      }),
-                      child: Container(
-                        padding: const EdgeInsets.all(7),
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          isFav ? Icons.favorite : Icons.favorite_border,
-                          size: 20,
-                          color: isFav ? Colors.red.shade400 : _C.ink,
-                        ),
-                      ),
-                    ),
-                  ),
                   if (p.urgent)
                     Positioned(
                       bottom: 8,
@@ -686,7 +674,7 @@ class _SearchPageState extends State<SearchPage> {
           ),
           const SizedBox(height: 4),
           Text(
-            '${p.price} THB',
+            formatPriceTHB(p.price),
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,

@@ -10,8 +10,7 @@ const _cRedFg = Color(0xFFB3402F);
 // หน้าขอเพิ่มที่พัก (หอ / คอนโด) ที่ยังไม่มีในรายการ
 // กด Submit แล้วจะ pop กลับพร้อมค่า true (ตอนนี้ยังเป็นข้อมูลจำลอง)
 //
-// zone = หอใน/หอนอก (ตรงกับ location_zones) ตัดช่อง "Location type" ออกเพราะซ้ำกับ zone
-// location_type ให้ backend ตั้งจาก zone (dorm_on_campus / dorm_off_campus)
+// zone = หอใน/หอนอก (ตรงกับ location_requests.zone: on_campus / off_campus)
 // สถานะเริ่มต้นของคำขอใน DB = pending (แอดมินเปลี่ยนเป็น reviewing / approved / merged / rejected)
 class RequestLocationPage extends StatefulWidget {
   const RequestLocationPage({
@@ -117,7 +116,7 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         const SnackBar(
-          content: Text("Request sent. We'll notify you once it's reviewed."),
+          content: Text("Request sent. Your place shows as pending until an admin reviews it."),
         ),
       );
     Navigator.pop(context, true);

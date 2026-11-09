@@ -65,7 +65,8 @@ class _RegisterPageState extends State<RegisterPage> {
       'password': _passwordCtrl.text,
       // ถ้าเลือก Other: residence เป็น null และส่งชื่อที่พิมพ์เองให้ admin ตรวจ
       // backend ควรเก็บเป็นสถานะ pending (approved / merged / rejected ภายหลัง)
-      // users.residence_zone_id / residence_location_id (location_zones.code + locations.location_id)
+      // users.residence_zone / residence_location_id (ต้องรอเพื่อน ALTER ตาม alter_request.sql)
+      // ส่ง zone เป็น code ('on_campus' / 'off_campus') ตรงกับ enum ใน DB
       'residenceZone': _zone!.code,
       'residenceLocationId': _location?.id,
       'customResidence': isOther ? _customResidenceCtrl.text.trim() : null,
@@ -73,12 +74,15 @@ class _RegisterPageState extends State<RegisterPage> {
     debugPrint('register: ${data['username']} (pending: $isOther)');
 
     // TODO: ส่ง data ไปที่ API สมัครสมาชิก แล้วค่อยกลับหน้า Login เมื่อสำเร็จ
+    //   ผู้สมัครใหม่ได้ users.status='pending' (ไม่มี OTP) ต้องรอ admin อนุมัติก่อนเข้าใช้ได้
+    //   studentId ส่งเป็นข้อความ (DB ควรเป็น CHAR(10)) ถ้า email/username/studentId ซ้ำ
+    //   API จะตอบ error ให้แสดงใต้ช่องที่ซ้ำ
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           isOther
-              ? 'Account created! Your residence is waiting for admin review.'
-              : 'Account created! Please sign in.',
+              ? 'Account created! An admin will review your account and residence before you can sign in.'
+              : 'Account created! You can sign in once an admin approves it.',
         ),
       ),
     );
@@ -264,7 +268,10 @@ class _RegisterPageState extends State<RegisterPage> {
               validator: (v) {
                 final text = v?.trim() ?? '';
                 if (text.length < 3) return 'At least 3 characters';
-                if (text.contains(' ')) return 'No spaces allowed';
+                if (text.length > 30) return 'Too long (max 30 characters)';
+                if (!RegExp(r'^[A-Za-z0-9_.]+$').hasMatch(text)) {
+                  return 'Use letters, numbers, _ or . only';
+                }
                 return null;
               },
             ),

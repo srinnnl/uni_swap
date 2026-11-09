@@ -14,8 +14,34 @@ const _cSageDark = Color(0xFF3F6B52);
 const _cRedBg = Color(0xFFF8DADA);
 const _cRedFg = Color(0xFFB3402F);
 
+// ข้อมูลสินค้าเดิมสำหรับโหมดแก้ไข (แถวใน products)
+class SellDraft {
+  const SellDraft({
+    required this.productId,
+    required this.title,
+    required this.price,
+    required this.location,
+    this.description = '',
+    this.categoryId = 1,
+    this.condition,
+    this.deadline,
+  });
+
+  final int productId; // products.product_id
+  final String title;
+  final double price;
+  final String description;
+  final int categoryId; // products.category_id
+  final String? condition; // products.item_condition (null = ไม่ระบุ)
+  final CampusLocation location; // products.location_id
+  final DateTime? deadline; // products.clearance_deadline
+}
+
 class SellPage extends StatefulWidget {
-  const SellPage({super.key});
+  // existing != null = โหมดแก้ไข (เปิดจาก My items > Edit item / Fix item)
+  const SellPage({super.key, this.existing});
+
+  final SellDraft? existing;
 
   @override
   State<SellPage> createState() => _SellPageState();
@@ -35,7 +61,7 @@ class _SellPageState extends State<SellPage> {
 
   final List<XFile> _photos = [];
   int _categoryIndex = 0;
-  // products.item_condition: new / like_new / good / fair (ไม่เลือก = unspecified)
+  // products.item_condition: new / like_new / good / fair (ไม่เลือก = NULL)
   static const _conditions = <(String, String)>[
     ('new', 'New'),
     ('like_new', 'Like new'),
@@ -43,11 +69,32 @@ class _SellPageState extends State<SellPage> {
     ('fair', 'Fair'),
   ];
   int? _conditionIndex;
-  // ที่รับสินค้า (products.zone_id / location_id) ตั้งต้นจากที่พักของผู้ขาย
+  // ที่รับสินค้า (products.zone / location_id) ตั้งต้นจากที่พักของผู้ขาย
   // TODO: ตั้งค่าเริ่มต้นจากโปรไฟล์ผู้ใช้
   CampusLocation _pickup = locationsIn(CampusZone.onCampus).first;
   bool _isFree = false;
   DateTime? _deadline;
+
+  bool get _isEdit => widget.existing != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existing;
+    if (e == null) return;
+    _titleCtrl.text = e.title;
+    _descCtrl.text = e.description;
+    _isFree = e.price == 0;
+    _priceCtrl.text = e.price == e.price.roundToDouble()
+        ? e.price.toInt().toString()
+        : e.price.toString();
+    final ci = kProductCategories.indexWhere((c) => c.id == e.categoryId);
+    if (ci >= 0) _categoryIndex = ci;
+    final ki = _conditions.indexWhere((c) => c.$1 == e.condition);
+    _conditionIndex = ki >= 0 ? ki : null;
+    _pickup = e.location;
+    _deadline = e.deadline;
+  }
 
   @override
   void dispose() {
@@ -80,12 +127,14 @@ class _SellPageState extends State<SellPage> {
       _showSnack(context, 'Please fix the errors');
       return;
     }
+    // โหมดแก้ไข: UPDATE products WHERE product_id = widget.existing!.productId แล้วตั้ง status='pending_review'
+    //   และล้าง review_note / reject_reason เดิม (รูป: ถ้าไม่เลือกใหม่ = ใช้รูปเดิม)
     // TODO: ส่งไป API -> title, price (0 = ฟรี DB รองรับ), description,
     //   category_id: kProductCategories[_categoryIndex].id,
-    //   item_condition: _conditionIndex == null ? 'unspecified' : _conditions[_conditionIndex!].$1,
-    //   zone_id: _pickup.zone.code, location_id: _pickup.id,
-    //   clearance_deadline: _deadline, photos (sort_order = ลำดับ)
-    setState(() {
+    //   item_condition: _conditionIndex == null ? null : _conditions[_conditionIndex!].$1,
+    //   zone: _pickup.zone.code, location_id: _pickup.id,
+    //   clearance_deadline: _deadline, photos (product_images.display_order = ลำดับ)
+    if (!_isEdit) setState(() {
       _titleCtrl.clear();
       _priceCtrl.clear();
       _descCtrl.clear();
@@ -95,12 +144,14 @@ class _SellPageState extends State<SellPage> {
       _categoryIndex = 0;
       _conditionIndex = null;
     });
-    _formKey.currentState?.reset();
-    // ลงขายแล้วต้องรอแอดมินตรวจสอบก่อนขึ้นหน้าร้าน (ดู Admin > Listings review)
+    if (!_isEdit) _formKey.currentState?.reset();
+    // ลงขายแล้วต้องรอแอดมินตรวจสอบก่อนขึ้นหน้าร้าน (ดู Admin > Items review)
     // TODO: ส่งไป API ให้สถานะสินค้าเป็น pending_review
     _showSnack(
       context,
-      'Submitted for review. We will notify you once approved.',
+      _isEdit
+          ? 'Changes saved. Your item will be reviewed again.'
+          : 'Submitted for review. Track its status in My items.',
     );
     Navigator.pop(context, true); // หน้านี้เปิดจาก My items จึงปิดกลับหลังส่ง
   }
@@ -120,21 +171,23 @@ class _SellPageState extends State<SellPage> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.maybePop(context),
         ),
-        const Expanded(
+        Expanded(
           child: Column(
             children: [
               Text(
-                'Sell an item',
-                style: TextStyle(
+                _isEdit ? 'Edit item' : 'Sell an item',
+                style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
                   color: _cInk,
                 ),
               ),
-              SizedBox(height: 4),
+              const SizedBox(height: 4),
               Text(
-                'Takes less than 2 minutes',
-                style: TextStyle(fontSize: 13, color: _cMuted),
+                _isEdit
+                    ? 'Saving sends it for review again'
+                    : 'Takes less than 2 minutes',
+                style: const TextStyle(fontSize: 13, color: _cMuted),
               ),
             ],
           ),
@@ -164,7 +217,9 @@ class _SellPageState extends State<SellPage> {
           TextFormField(
             controller: _titleCtrl,
             validator: (v) =>
-                (v == null || v.trim().isEmpty) ? 'Please enter a title' : null,
+                (v == null || v.trim().isEmpty)
+                ? 'Please enter a title'
+                : (v.trim().length > 100 ? 'Too long (max 100 characters)' : null),
             textCapitalization: TextCapitalization.sentences,
             decoration: _dec('e.g. Oak study desk'),
           ),
@@ -198,7 +253,7 @@ class _SellPageState extends State<SellPage> {
                 ChoiceChip(
                   label: Text(_conditions[i].$2),
                   selected: _conditionIndex == i,
-                  // กดซ้ำเพื่อยกเลิก (ส่ง unspecified)
+                  // กดซ้ำเพื่อยกเลิก (ส่ง null)
                   onSelected: (on) =>
                       setState(() => _conditionIndex = on ? i : null),
                   showCheckmark: false,
@@ -224,6 +279,7 @@ class _SellPageState extends State<SellPage> {
               final p = double.tryParse(v ?? '');
               if (p == null) return 'Please enter a price';
               if (p < 0) return 'Price cannot be negative';
+              if (p > 99999999) return 'Price is too high';
               return null;
             },
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -330,7 +386,7 @@ class _SellPageState extends State<SellPage> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Adding a deadline marks your listing as Urgent.',
+            'Adding a deadline marks your item as Urgent.',
             style: TextStyle(fontSize: 12, color: _cMuted),
           ),
           const SizedBox(height: 24),
@@ -344,7 +400,10 @@ class _SellPageState extends State<SellPage> {
           ),
           const SizedBox(height: 24),
 
-          _DarkButton(label: 'Publish listing', onPressed: _publish),
+          _DarkButton(
+            label: _isEdit ? 'Save and resubmit' : 'Publish item',
+            onPressed: _publish,
+          ),
         ],
       ),
     );

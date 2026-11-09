@@ -18,7 +18,11 @@ class _C {
   static const amberBg = Color(0xFFFBEBC2);
   static const amberFg = Color(0xFF8A6410);
   static const red = Color(0xFFB3402F);
+  static const redBg = Color(0xFFF8DADA);
 }
+
+// bank_accounts.status
+enum _BankStatus { pending, verified, rejected }
 
 class BankAccountPage extends StatefulWidget {
   const BankAccountPage({super.key});
@@ -44,7 +48,8 @@ class _BankAccountPageState extends State<BankAccountPage> {
   final _nameCtrl = TextEditingController(text: 'Maya Kim');
 
   String _bank = _banks.first;
-  bool _verified = true; // หลังแก้ไข/บันทึก จะกลับเป็นรอตรวจสอบ
+  // TODO: โหลดจาก bank_accounts.status (backend ตรวจชื่อบัญชีอัตโนมัติ ไม่มีหน้า admin)
+  _BankStatus _status = _BankStatus.verified; // หลังบันทึก จะกลับเป็น pending
   bool _bankError = false;
 
   @override
@@ -53,6 +58,12 @@ class _BankAccountPageState extends State<BankAccountPage> {
     _nameCtrl.dispose();
     super.dispose();
   }
+
+  (String, Color, Color) get _badge => switch (_status) {
+    _BankStatus.verified => ('Verified', _C.sageBg, _C.sage),
+    _BankStatus.pending => ('Pending', _C.amberBg, _C.amberFg),
+    _BankStatus.rejected => ('Rejected', _C.redBg, _C.red),
+  };
 
   String get _masked {
     final n = _numberCtrl.text;
@@ -90,9 +101,10 @@ class _BankAccountPageState extends State<BankAccountPage> {
     if (!ok) return;
 
     // TODO: ส่ง bank, number, name ไป API
-    // backend ควรตรวจว่าชื่อบัญชีตรงกับชื่อผู้ใช้ที่ลงทะเบียน แล้วตั้งสถานะ pending
+    // backend ตรวจชื่อบัญชีเทียบ users.display_name อัตโนมัติ: ตรง = verified, ไม่ตรง = rejected
+    // ระหว่างตรวจ bank_accounts.status = pending
     // ห้ามเก็บเลขบัญชีเป็นข้อความธรรมดาโดยไม่เข้ารหัส
-    setState(() => _verified = false);
+    setState(() => _status = _BankStatus.pending);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -249,15 +261,15 @@ class _BankAccountPageState extends State<BankAccountPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: _verified ? _C.sageBg : _C.amberBg,
+              color: _badge.$2,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              _verified ? 'Verified' : 'Pending',
+              _badge.$1,
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: _verified ? _C.sage : _C.amberFg,
+                color: _badge.$3,
               ),
             ),
           ),

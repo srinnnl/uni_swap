@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/view/user/campus_locations.dart';
 import 'package:uni_swap/view/user/sell_page.dart'; // ดึงหน้าลงขายมา
 
 const _cBg = Color(0xFFFAF9F6);
@@ -15,7 +16,18 @@ const _cSageBg = Color(0xFFD8E4DC);
 const _cSageFg = Color(0xFF3F6B52);
 
 // เปลี่ยนชื่อ Enum จาก ListingStatus เป็น ItemStatus
-enum ItemStatus { active, urgent, pending, actionRequired, rejected }
+// products.status: available=active/urgent (urgent คำนวณจาก clearance_deadline), pending_review=pending,
+// changes_requested=actionRequired, rejected, reserved (มีออเดอร์ค้างอยู่)
+enum ItemStatus {
+  active,
+  urgent,
+  pending,
+  actionRequired,
+  rejected,
+  reserved,
+  sold,
+  hidden,
+}
 
 // เปลี่ยนชื่อคลาส _Listing เป็น _Item
 class _Item {
@@ -25,6 +37,7 @@ class _Item {
     required this.subtitle,
     this.views,
     this.adminNote,
+    this.draft,
   });
 
   final ItemStatus status;
@@ -32,15 +45,24 @@ class _Item {
   final String subtitle;
   final int? views;
   final String? adminNote;
+  final SellDraft? draft; // ข้อมูลเดิมสำหรับหน้าแก้ไข (TODO: มาจาก API)
 }
 
 // เปลี่ยนตัวแปร _listings เป็น _items
-const _items = <_Item>[
+final _items = <_Item>[
   _Item(
     status: ItemStatus.actionRequired,
     title: 'Bean bag chair',
     subtitle: '15 THB · Lamduan 1 Dormitory',
     adminNote: 'Please add clearer photos of the front.',
+    draft: SellDraft(
+      productId: 1,
+      title: 'Bean bag chair',
+      price: 15,
+      categoryId: 1,
+      description: 'Comfy, lightly used.',
+      location: locationById(12),
+    ),
   ),
   _Item(
     status: ItemStatus.rejected,
@@ -52,18 +74,48 @@ const _items = <_Item>[
     status: ItemStatus.pending,
     title: 'Mini fridge',
     subtitle: '60 THB · Lamduan 2 Dormitory',
+    draft: SellDraft(
+      productId: 2,
+      title: 'Mini fridge',
+      price: 60,
+      categoryId: 7,
+      condition: 'good',
+      location: locationById(13),
+    ),
+  ),
+  _Item(
+    status: ItemStatus.reserved,
+    title: 'City bike',
+    subtitle: '120 THB · Lamduan 1 Dormitory',
   ),
   _Item(
     status: ItemStatus.urgent,
     title: 'Oak study desk',
     subtitle: '45 THB · Lamduan 1 Dormitory',
     views: 48,
+    draft: SellDraft(
+      productId: 3,
+      title: 'Oak study desk',
+      price: 45,
+      categoryId: 1,
+      condition: 'good',
+      location: locationById(12),
+      deadline: DateTime.now().add(const Duration(days: 3)),
+    ),
   ),
   _Item(
     status: ItemStatus.active,
     title: 'Acoustic guitar',
     subtitle: '80 THB · Lamduan 1 Dormitory',
     views: 31,
+    draft: SellDraft(
+      productId: 4,
+      title: 'Acoustic guitar',
+      price: 80,
+      categoryId: 9,
+      condition: 'like_new',
+      location: locationById(12),
+    ),
   ),
 ];
 
@@ -176,6 +228,15 @@ class MyItemsPage extends StatelessWidget {
                   subtitle: item.subtitle,
                   views: item.views,
                   adminNote: item.adminNote,
+                  // Edit item / Fix item -> เปิดหน้า Sell ในโหมดแก้ไข (บันทึกแล้วกลับไปรอตรวจ)
+                  onEdit: item.draft == null
+                      ? null
+                      : () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => SellPage(existing: item.draft),
+                          ),
+                        ),
                 ),
               ),
           ],
@@ -212,6 +273,7 @@ class _ItemCard extends StatelessWidget {
   final ItemStatus status;
   final int? views;
   final String? adminNote;
+  final VoidCallback? onEdit;
 
   const _ItemCard({
     required this.title,
@@ -220,6 +282,7 @@ class _ItemCard extends StatelessWidget {
     required this.status,
     this.views,
     this.adminNote,
+    this.onEdit,
   });
 
   @override
@@ -248,6 +311,21 @@ class _ItemCard extends StatelessWidget {
         badgeLabel = 'Urgent';
         badgeBg = _cRedBg;
         badgeFg = _cRedFg;
+        break;
+      case ItemStatus.reserved:
+        badgeLabel = 'Reserved';
+        badgeBg = _cAmberBg;
+        badgeFg = _cAmberFg;
+        break;
+      case ItemStatus.sold:
+        badgeLabel = 'Sold';
+        badgeBg = _cSageBg;
+        badgeFg = _cSageFg;
+        break;
+      case ItemStatus.hidden:
+        badgeLabel = 'Hidden';
+        badgeBg = const Color(0xFFF0EEE9);
+        badgeFg = _cMuted;
         break;
       case ItemStatus.active:
         badgeLabel = 'Active';
@@ -318,6 +396,11 @@ class _ItemCard extends StatelessWidget {
                       'Not visible yet',
                       style: TextStyle(fontSize: 11, color: _cMuted),
                     )
+                  else if (status == ItemStatus.reserved)
+                    const Text(
+                      'In an order',
+                      style: TextStyle(fontSize: 11, color: _cMuted),
+                    )
                   else if (status == ItemStatus.rejected)
                     const Text(
                       'Not published',
@@ -370,9 +453,13 @@ class _ItemCard extends StatelessWidget {
                   ),
                 ),
               ],
-              if (status != ItemStatus.rejected) ...[
+              if (status != ItemStatus.rejected &&
+                  status != ItemStatus.reserved &&
+                  status != ItemStatus.sold) ...[
                 const SizedBox(height: 10),
-                Row(
+                InkWell(
+                  onTap: onEdit,
+                  child: Row(
                   children: [
                     Text(
                       // แก้คำว่า listing เป็น item
@@ -395,6 +482,7 @@ class _ItemCard extends StatelessWidget {
                           : _cLink,
                     ),
                   ],
+                  ),
                 ),
               ],
             ],

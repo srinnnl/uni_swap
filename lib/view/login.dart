@@ -45,7 +45,8 @@ class _LoginPageState extends State<LoginPage> {
 
     final email = _emailCtrl.text.trim();
     // TODO: เรียก API login ด้วย email + password
-    //   ถ้า users.status ไม่ใช่ active (suspended / pending_verification) ให้แสดงข้อความแจ้งแทนการเข้าแอป
+    //   users.status ไม่ใช่ active ให้แสดงข้อความแจ้งแทนการเข้าแอป:
+    //     pending = รอแอดมินอนุมัติ, rejected = ไม่ผ่านการอนุมัติ, suspended = บัญชีถูกระงับ
     final session = _mockLogin(email);
     debugPrint('login: $email as ${session.role}');
 

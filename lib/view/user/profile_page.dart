@@ -30,7 +30,7 @@ class _ProfilePageState extends State<ProfilePage> {
   static const _username = 'mayakim';
   // static const _displayName = 'Maya';
 
-  // 2 โซนตาม DB (location_zones) รายการหอมาจาก campus_locations.dart
+  // 2 โซนตาม DB (enum zone: on_campus / off_campus) รายการหอมาจาก campus_locations.dart
   static final _zones = <String, List<String>>{
     for (final z in CampusZone.values)
       z.label: [for (final l in locationsIn(z)) l.name],
@@ -105,7 +105,7 @@ class _ProfilePageState extends State<ProfilePage> {
           child: IntrinsicHeight(
             child: Row(
               children: [
-                _stat('12', 'Listings'),
+                _stat('12', 'Items'),
                 const VerticalDivider(color: _cBorder, width: 1),
                 _stat('8', 'Sold'),
                 const VerticalDivider(color: _cBorder, width: 1),

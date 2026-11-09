@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/model/format.dart';
 import 'package:uni_swap/view/user/campus_locations.dart';
 import 'package:uni_swap/view/user/product_detail_page.dart';
 
@@ -11,22 +12,21 @@ class _C {
   static const surface = Color(0xFFF3F2EE);
 }
 
-/// รูปแบบข้อมูลสินค้า: ตัด minutes และ oldPrice ออกตามที่ตกลงกันค่ะ
 class _Product {
   const _Product({
     required this.id,
     required this.title,
     required this.price,
     required this.location,
-    this.imageUrl,
+    required this.imageUrl,
     this.urgent = false,
   });
 
-  final String id;
+  final int id; // products.product_id
   final String title;
-  final int price;
+  final double price; // products.price DECIMAL(10,2)
   final CampusLocation location;
-  final String? imageUrl; // ถ้าเป็น null จะแสดงรูปแทนที่ชั่วคราว
+  final String imageUrl; // ถ้าเป็น null จะแสดงรูปแทนที่ชั่วคราว
   final bool urgent;
 
   CampusZone get zone => location.zone;
@@ -37,29 +37,37 @@ class _Product {
 // ===== ข้อมูลตัวอย่าง: TODO แทนด้วยข้อมูลจาก API =====
 final _products = [
   _Product(
-    id: '1',
+    id: 1,
     title: 'Oak study desk',
     price: 45,
     location: locationById(12),
     urgent: true,
+    imageUrl:
+        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
   ),
   _Product(
-    id: '2',
+    id: 2,
     title: 'Acoustic guitar',
     price: 80,
     location: locationById(12),
+    imageUrl:
+        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
   ),
   _Product(
-    id: '3',
+    id: 3,
     title: 'Desk lamp',
     price: 12,
     location: locationById(13),
+    imageUrl:
+        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
   ),
   _Product(
-    id: '4',
+    id: 4,
     title: 'City bike',
     price: 120,
     location: locationById(7),
+    imageUrl:
+        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
   ),
 ];
 
@@ -212,12 +220,6 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ],
-        ),
-        IconButton(
-          icon: const Icon(Icons.notifications_none, color: _C.ink),
-          onPressed: () {
-            // TODO: เปิดหน้าแจ้งเตือน
-          },
         ),
       ],
     );
@@ -377,7 +379,7 @@ class _HomePageState extends State<HomePage> {
                 fit: StackFit.expand,
                 children: [
                   _buildImage(p.imageUrl),
-                  
+
                   if (p.urgent)
                     Positioned(
                       bottom: 8,
@@ -418,7 +420,7 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 4),
           Text(
-            '${p.price} THB',
+            formatPriceTHB(p.price),
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,

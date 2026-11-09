@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/model/format.dart';
+import 'package:uni_swap/model/order_status.dart';
 import 'package:uni_swap/view/user/order_details_page.dart';
 
 // ---- colors (local to this file) ----
@@ -17,45 +19,64 @@ const _cRedBg = Color(0xFFF8DADA);
 const _cRedFg = Color(0xFFB3402F);
 const _cLink = Color(0xFF4A5C8F);
 
-// สถานะต้องเรียงลำดับเดียวกับ OrderStage ใน order_details_page.dart
-// (แปลงกันด้วย index) และตรงกับ orders.status ใน DB:
-//   pending = requested, accepted, completed, cancelled
-// "นัดรับแล้ว" ดูจาก meetupPlace/meetupAt  "จ่ายแล้ว" ดูจาก paid
-enum _Status { pending, accepted, completed, cancelled }
-
+// ออเดอร์ 1 รายการ ตรงกับแถวใน orders (ใช้ OrderStatus กลางใน models/order_status.dart)
+// TODO: แทนด้วย class Order กลาง + Order.fromJson เมื่อต่อ API
 class _Order {
-  final String id;
+  final int id; // orders.order_id
   final String title;
-  final double price;
+  final double price; // orders.seller_price
   final String person; // seller (Buying tab) / buyer (Selling tab)
   final bool isBuying;
-  final String timeLabel;
+  final DateTime createdAt; // orders.created_at (API ส่ง UTC ให้แปลงด้วย toLocal())
   final Color thumbColor;
   final IconData thumbIcon;
-  _Status status;
-  bool paid; // payments.status = verified (จำลอง)
-  String? meetupPlace; // ผู้ซื้อเสนอตั้งแต่ตอนกด Request to buy
-  DateTime? meetupAt;
+  final String productLocation; // products.location_name
+  final double commissionRate; // orders.commission_rate
+  final double commissionAmount; // orders.commission_amount
+  final double sellerPayout; // orders.seller_payout
+  OrderStatus status;
+  String meetupPlace; // orders.meetup_location (NOT NULL)
+  DateTime? meetupAt; // orders.meetup_datetime
+  DateTime? paymentDeadline; // orders.payment_deadline
   int? rating;
+  String? reviewComment; // reviews.comment (ไม่เกิน 500 ตัวอักษร ไม่บังคับ)
 
-  _Order(
-    this.id,
-    this.title,
-    this.price,
-    this.person,
-    this.isBuying,
-    this.timeLabel,
-    this.thumbColor,
-    this.thumbIcon, {
-    this.status = _Status.pending,
-    this.paid = false,
-    this.meetupPlace,
+  _Order({
+    required this.id,
+    required this.title,
+    required this.price,
+    required this.person,
+    required this.isBuying,
+    required this.createdAt,
+    required this.thumbColor,
+    required this.thumbIcon,
+    required this.productLocation,
+    required this.meetupPlace,
+    required this.status,
     this.meetupAt,
-  });
+    this.paymentDeadline,
+    this.commissionRate = 5,
+  }) : commissionAmount = double.parse(
+         (price * commissionRate / 100).toStringAsFixed(2),
+       ),
+       sellerPayout =
+           price -
+           double.parse((price * commissionRate / 100).toStringAsFixed(2));
 
-  bool get isActive => status == _Status.pending || status == _Status.accepted;
+  // เลย payment_deadline แล้วยังไม่จ่าย แสดงเป็น expired (backend เป็นคนเปลี่ยนจริง)
+  OrderStatus get shown {
+    final due = paymentDeadline;
+    if (status == OrderStatus.pendingPayment &&
+        due != null &&
+        !due.isAfter(DateTime.now())) {
+      return OrderStatus.expired;
+    }
+    return status;
+  }
 
-  // สินค้าฟรี (ราคา 0) ข้ามขั้นจ่ายเงิน
+  bool get isActive => shown.isActive;
+
+  // สินค้าฟรี (ราคา 0) ไม่มีขั้นจ่ายเงิน
   bool get needsPayment => price > 0;
 }
 
@@ -64,6 +85,9 @@ DateTime _soon(int days, int hour, [int minute = 0]) {
   final n = DateTime.now();
   return DateTime(n.year, n.month, n.day + days, hour, minute);
 }
+
+DateTime _ago({int minutes = 0, int days = 0}) =>
+    DateTime.now().subtract(Duration(days: days, minutes: minutes));
 
 class OrdersPage extends StatefulWidget {
   const OrdersPage({super.key});
@@ -74,98 +98,124 @@ class OrdersPage extends StatefulWidget {
 
 class _OrdersPageState extends State<OrdersPage> {
   // Mock data (UI only)
-  // TODO: โหลดจาก API (orders + meetups + payments) แล้วแปลงเป็น _Order
-  // ทุกออเดอร์มีจุดนัดตั้งแต่ตอนกด Request to buy (ผู้ซื้อเสนอ ผู้ขายกด Accept = ยืนยัน)
-  final List<_Order> _orders = [
+  // TODO: โหลดจาก API (orders JOIN products JOIN users) แล้วแปลงเป็น _Order
+  // ทุกออเดอร์มีจุดนัดตั้งแต่ตอนกด Buy now และเริ่มที่ pending_payment
+  // (payment_deadline = created_at + 30 นาที) ไม่มีขั้นผู้ขายตอบรับ
+  late final List<_Order> _orders = [
     _Order(
-      'b1',
-      'Oak study desk',
-      45,
-      'Jamie',
-      true,
-      'Today, 10:24 AM',
-      const Color(0xFFD9DEE3),
-      Icons.desk_outlined,
-      status: _Status.accepted,
-      meetupPlace: 'Maple Hall lobby',
+      id: 101,
+      title: 'Oak study desk',
+      price: 45,
+      person: 'Jamie',
+      isBuying: true,
+      createdAt: _ago(minutes: 8),
+      paymentDeadline: _ago(minutes: 8).add(kPaymentWindow),
+      thumbColor: const Color(0xFFD9DEE3),
+      thumbIcon: Icons.desk_outlined,
+      productLocation: 'On-campus dorms · Lamduan 1 Dormitory',
+      status: OrderStatus.pendingPayment,
+      meetupPlace: 'Lamduan 1 Dormitory lobby',
       meetupAt: _soon(1, 17, 30),
     ),
     _Order(
-      'b2',
-      'Acoustic guitar',
-      80,
-      'Noah',
-      true,
-      'Yesterday',
-      const Color(0xFF4A4036),
-      Icons.music_note,
-      meetupPlace: 'Central Library entrance',
+      id: 102,
+      title: 'Acoustic guitar',
+      price: 80,
+      person: 'Noah',
+      isBuying: true,
+      createdAt: _ago(days: 1),
+      thumbColor: const Color(0xFF4A4036),
+      thumbIcon: Icons.music_note,
+      productLocation: 'On-campus dorms · Sakthong 2 Dormitory',
+      status: OrderStatus.paid,
+      meetupPlace: 'Main library',
       meetupAt: _soon(2, 18),
     ),
     _Order(
-      'b3',
-      'City bike',
-      0,
-      'Alex',
-      true,
-      'May 18',
-      const Color(0xFFB9B2A6),
-      Icons.pedal_bike,
-      status: _Status.completed,
-      meetupPlace: 'Main gate',
-      meetupAt: DateTime(DateTime.now().year, 5, 20, 16),
+      id: 103,
+      title: 'City bike',
+      price: 0,
+      person: 'Alex',
+      isBuying: true,
+      createdAt: _ago(days: 20),
+      thumbColor: const Color(0xFFB9B2A6),
+      thumbIcon: Icons.pedal_bike,
+      productLocation: 'Off-campus dorms · Kittiya Dormitory',
+      status: OrderStatus.completed,
+      meetupPlace: 'Student union entrance',
+      meetupAt: _ago(days: 18),
     ),
     _Order(
-      's1',
-      'Desk lamp',
-      12,
-      'Sam',
-      false,
-      'Today, 9:02 AM',
-      const Color(0xFFE9D9B0),
-      Icons.light_outlined,
-      meetupPlace: 'Student Center cafeteria',
+      id: 104,
+      title: 'Desk fan',
+      price: 12.5,
+      person: 'Pim',
+      isBuying: true,
+      createdAt: _ago(days: 3),
+      paymentDeadline: _ago(days: 3).add(kPaymentWindow),
+      thumbColor: const Color(0xFFD3DDE8),
+      thumbIcon: Icons.air,
+      productLocation: 'Off-campus dorms · Rattana Dormitory',
+      status: OrderStatus.pendingPayment, // เลย deadline -> แสดงเป็น Expired
+      meetupPlace: 'Main library',
+      meetupAt: _soon(-2, 16),
+    ),
+    _Order(
+      id: 201,
+      title: 'Desk lamp',
+      price: 12,
+      person: 'Sam',
+      isBuying: false,
+      createdAt: _ago(minutes: 5),
+      paymentDeadline: _ago(minutes: 5).add(kPaymentWindow),
+      thumbColor: const Color(0xFFE9D9B0),
+      thumbIcon: Icons.light_outlined,
+      productLocation: 'On-campus dorms · Lamduan 2 Dormitory',
+      status: OrderStatus.pendingPayment,
+      meetupPlace: 'Main library',
       meetupAt: _soon(1, 12),
     ),
     _Order(
-      's2',
-      'Calculus textbook',
-      20,
-      'Priya',
-      false,
-      'Yesterday',
-      const Color(0xFFC9D6CB),
-      Icons.menu_book,
-      status: _Status.accepted,
-      paid: true,
-      meetupPlace: 'Maple Hall lobby',
+      id: 202,
+      title: 'Calculus textbook',
+      price: 20,
+      person: 'Priya',
+      isBuying: false,
+      createdAt: _ago(days: 1),
+      thumbColor: const Color(0xFFC9D6CB),
+      thumbIcon: Icons.menu_book,
+      productLocation: 'On-campus dorms · Lamduan 2 Dormitory',
+      status: OrderStatus.readyForMeetup,
+      meetupPlace: 'Lamduan 2 Dormitory lobby',
       meetupAt: _soon(1, 15),
     ),
     _Order(
-      's3',
-      'Mini fridge',
-      60,
-      'Lee',
-      false,
-      'Mon',
-      const Color(0xFFD3DDE8),
-      Icons.kitchen,
-      meetupPlace: 'Westwood Condos lobby',
+      id: 203,
+      title: 'Mini fridge',
+      price: 60,
+      person: 'Lee',
+      isBuying: false,
+      createdAt: _ago(days: 2),
+      thumbColor: const Color(0xFFD3DDE8),
+      thumbIcon: Icons.kitchen,
+      productLocation: 'Off-campus dorms · PHUTARA APARTMENT MFU',
+      status: OrderStatus.refundRequested,
+      meetupPlace: 'Student union entrance',
       meetupAt: _soon(3, 11),
     ),
     _Order(
-      's4',
-      'Bean bag chair',
-      15,
-      'Mika',
-      false,
-      'May 10',
-      const Color(0xFFE3C9C9),
-      Icons.chair,
-      status: _Status.completed,
-      paid: true,
-      meetupPlace: 'Main gate',
-      meetupAt: DateTime(DateTime.now().year, 5, 12, 17),
+      id: 204,
+      title: 'Bean bag chair',
+      price: 15,
+      person: 'Mika',
+      isBuying: false,
+      createdAt: _ago(days: 25),
+      thumbColor: const Color(0xFFE3C9C9),
+      thumbIcon: Icons.chair,
+      productLocation: 'On-campus dorms · Lamduan 1 Dormitory',
+      status: OrderStatus.completed,
+      meetupPlace: 'Main library',
+      meetupAt: _ago(days: 23),
     ),
   ];
 
@@ -175,6 +225,7 @@ class _OrdersPageState extends State<OrdersPage> {
       _orders.where((o) => o.isBuying == _showBuying).toList();
   List<_Order> get _active => _current.where((o) => o.isActive).toList();
   List<_Order> get _past => _current.where((o) => !o.isActive).toList();
+  // ตัวเลขบนแท็บ: ออเดอร์ที่ยังดำเนินอยู่
   int _count(bool buying) =>
       _orders.where((o) => o.isBuying == buying && o.isActive).length;
 
@@ -282,18 +333,33 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
-  (String, Color, Color) _statusStyle(_Status s) => switch (s) {
-    _Status.pending => ('Pending', _cAmberBg, _cAmberFg),
-    _Status.accepted => ('Accepted', _cBlueBg, _cBlueFg),
-    _Status.completed => ('Completed', _cSage, _cSageDark),
-    _Status.cancelled => ('Cancelled', _cRedBg, _cRedFg),
+  (String, Color, Color) _statusStyle(OrderStatus s) => switch (s.tone) {
+    StatusTone.amber => (s.label, _cAmberBg, _cAmberFg),
+    StatusTone.blue => (s.label, _cBlueBg, _cBlueFg),
+    StatusTone.green => (s.label, _cSage, _cSageDark),
+    StatusTone.red => (s.label, _cRedBg, _cRedFg),
   };
 
+  // เวลาที่สร้างออเดอร์ แสดงแบบสั้น (Today, 10:24 AM / Yesterday / May 18)
+  String _createdLabel(DateTime t) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(t.year, t.month, t.day);
+    final diff = today.difference(day).inDays;
+    if (diff == 0) {
+      return 'Today, ${_formatTime(TimeOfDay.fromDateTime(t))}';
+    }
+    if (diff == 1) return 'Yesterday';
+    const m = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${m[t.month - 1]} ${t.day}';
+  }
+
   Widget _tile(_Order o, {bool dimmed = false}) {
-    final (label, bg, fg) = _statusStyle(o.status);
-    final priceText = o.price == 0
-        ? 'Free'
-        : '${o.price.toStringAsFixed(0)} THB';
+    final (label, bg, fg) = _statusStyle(o.shown);
+    final priceText = formatPriceTHB(o.price);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -327,7 +393,7 @@ class _OrdersPageState extends State<OrdersPage> {
                       children: [
                         _StatusBadge(label: label, bg: bg, fg: fg),
                         Text(
-                          o.timeLabel,
+                          _createdLabel(o.createdAt),
                           style: const TextStyle(fontSize: 11, color: _cMuted),
                         ),
                       ],
@@ -345,10 +411,10 @@ class _OrdersPageState extends State<OrdersPage> {
                       '$priceText · ${o.isBuying ? 'Seller' : 'Buyer'}: ${o.person}',
                       style: const TextStyle(fontSize: 12, color: _cMuted),
                     ),
-                    if (o.meetupPlace != null && o.meetupAt != null) ...[
+                    if (o.meetupAt != null && o.isActive) ...[
                       const SizedBox(height: 4),
                       Text(
-                        '${o.status == _Status.pending ? 'Proposed meet-up' : 'Meet'}: ${o.meetupPlace} · ${_formatDate(o.meetupAt!)} ${_formatTime(TimeOfDay.fromDateTime(o.meetupAt!))}',
+                        'Meet: ${o.meetupPlace} · ${_formatDate(o.meetupAt!)} ${_formatTime(TimeOfDay.fromDateTime(o.meetupAt!))}',
                         style: const TextStyle(fontSize: 12, color: _cSageDark),
                       ),
                     ],
@@ -364,31 +430,33 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
-  // เปิดหน้ารายละเอียด แล้วรับผลล่าสุดกลับมาทั้งก้อน (สถานะ, จ่ายแล้วหรือยัง, จุดนัด)
-  // เดิม pop ส่งกลับแค่สถานะ ทำให้ "จ่ายแล้ว" กับ "นัดรับ" หายเมื่อกลับมาหน้ารายการ
-  // (OrderStage กับ _Status เรียงลำดับเหมือนกัน จึงแปลงด้วย index ได้)
+  // เปิดหน้ารายละเอียด แล้วรับผลล่าสุด (สถานะ + จุดนัด) กลับมาอัปเดตรายการ
+  // ใช้ OrderStatus ตัวเดียวกันทั้งสองหน้า ไม่ต้องแปลงด้วย index อีกต่อไป
   Future<void> _openDetails(_Order o) async {
     final result = await Navigator.push<OrderResult>(
       context,
       MaterialPageRoute(
         builder: (_) => OrderDetailsPage(
-          orderId: '#US-${o.id.toUpperCase()}',
+          orderId: o.id,
           title: o.title,
           price: o.price,
           person: o.person,
           isBuying: o.isBuying,
-          stage: OrderStage.values[o.status.index],
-          requestedLabel: o.timeLabel,
+          status: o.status,
+          createdLabel: _createdLabel(o.createdAt),
           meetupPlace: o.meetupPlace,
           meetupAt: o.meetupAt,
-          paid: o.paid,
+          paymentDeadline: o.paymentDeadline,
+          productLocation: o.productLocation,
+          commissionRate: o.commissionRate,
+          commissionAmount: o.commissionAmount,
+          sellerPayout: o.sellerPayout,
         ),
       ),
     );
     if (result == null || !mounted) return;
     setState(() {
-      o.status = _Status.values[result.stage.index];
-      o.paid = result.paid;
+      o.status = result.status;
       o.meetupPlace = result.meetupPlace;
       o.meetupAt = result.meetupAt;
     });
@@ -415,52 +483,41 @@ class _OrdersPageState extends State<OrdersPage> {
   }
 
   Widget _actions(_Order o) {
-    switch (o.status) {
-      case _Status.pending:
+    switch (o.shown) {
+      case OrderStatus.pendingPayment:
+        // ผู้ซื้อ: จ่ายเงิน/ยกเลิกต่อในหน้ารายละเอียด (มี confirm dialog)
         if (o.isBuying) {
-          return Row(
-            children: [
-              _link('Waiting for seller', null),
-              const SizedBox(width: 16),
-              _link(
-                'Cancel',
-                () => setState(() => o.status = _Status.cancelled),
-              ),
-            ],
+          return _link(
+            o.price > 0 ? 'Pay now' : 'View order',
+            () => _openDetails(o),
+            arrow: true,
           );
         }
-        return Row(
-          children: [
-            _link('Accept', () => setState(() => o.status = _Status.accepted)),
-            const SizedBox(width: 16),
-            _link(
-              'Decline',
-              () => setState(() => o.status = _Status.cancelled),
-            ),
-          ],
+        return const Text(
+          'Waiting for buyer to pay',
+          style: TextStyle(fontSize: 12, color: _cMuted),
         );
 
-      case _Status.accepted:
-        // ผู้ซื้อ: ขั้นตอนถัดไปทั้งหมดทำในหน้ารายละเอียดหน้าเดียว (นัดรับ -> จ่าย -> ยืนยันรับของ)
+      case OrderStatus.paid || OrderStatus.readyForMeetup:
+        // ผู้ซื้อ: นัดรับของแล้วกด Confirm received ในหน้ารายละเอียด
         // ผู้ขาย: ไม่มีปุ่มปิดงานเอง เพราะ completed เกิดจากผู้ซื้อกด Confirm received เท่านั้น
         if (o.isBuying) {
-          final next = o.meetupAt == null
-              ? 'Arrange meet-up'
-              : (o.needsPayment && !o.paid)
-              ? 'Pay now'
-              : 'Confirm received';
-          return _link(next, () => _openDetails(o), arrow: true);
+          return _link('Confirm received', () => _openDetails(o), arrow: true);
         }
         return Text(
-          !o.needsPayment
-              ? 'Waiting for buyer to confirm receipt'
-              : o.paid
+          o.needsPayment
               ? 'Paid · waiting for buyer to confirm receipt'
-              : 'Waiting for buyer to pay',
+              : 'Waiting for buyer to confirm receipt',
           style: const TextStyle(fontSize: 12, color: _cMuted),
         );
 
-      case _Status.completed:
+      case OrderStatus.refundRequested:
+        return const Text(
+          'Refund under review by UniSwap',
+          style: TextStyle(fontSize: 12, color: _cMuted),
+        );
+
+      case OrderStatus.completed:
         if (!o.isBuying) return const SizedBox.shrink();
         if (o.rating != null) {
           return Text(
@@ -472,15 +529,20 @@ class _OrdersPageState extends State<OrdersPage> {
             ),
           );
         }
+        // reviews: ผู้ซื้อรีวิวผู้ขายได้หลังออเดอร์ completed (1 ออเดอร์ = 1 รีวิว)
         return _link('Leave a review', () => _reviewDialog(o));
 
-      case _Status.cancelled:
+      case OrderStatus.cancelled ||
+          OrderStatus.expired ||
+          OrderStatus.partiallyRefunded ||
+          OrderStatus.refunded:
         return const SizedBox.shrink();
     }
   }
 
   void _reviewDialog(_Order o) {
     int stars = 5;
+    final commentCtrl = TextEditingController();
 
     showDialog(
       context: context,
@@ -488,6 +550,7 @@ class _OrdersPageState extends State<OrdersPage> {
         builder: (ctx, setDialog) => AlertDialog(
           backgroundColor: _cBg,
           surfaceTintColor: Colors.transparent,
+          scrollable: true,
           title: Text('Review ${o.person}'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -511,6 +574,20 @@ class _OrdersPageState extends State<OrdersPage> {
                 'How was your experience?',
                 style: TextStyle(color: _cMuted, fontSize: 14),
               ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: commentCtrl,
+                maxLength: 500,
+                minLines: 3,
+                maxLines: 4,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  hintText: 'Add a comment (optional)',
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(),
+                ),
+              ),
             ],
           ),
           actions: [
@@ -521,7 +598,12 @@ class _OrdersPageState extends State<OrdersPage> {
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: _cInk),
               onPressed: () {
-                setState(() => o.rating = stars);
+                // TODO: API -> reviews: order_id, reviewer_id, seller_id, rating, comment (ว่างส่ง null)
+                final text = commentCtrl.text.trim();
+                setState(() {
+                  o.rating = stars;
+                  o.reviewComment = text.isEmpty ? null : text;
+                });
                 Navigator.pop(ctx);
               },
               child: const Text('Submit'),

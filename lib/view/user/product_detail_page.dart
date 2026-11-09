@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:uni_swap/model/format.dart';
 import 'package:uni_swap/model/order_status.dart';
+import 'package:uni_swap/model/product.dart';
 import 'package:uni_swap/view/user/arrange_meetup_page.dart';
 import 'package:uni_swap/view/user/product_categories.dart';
 import 'package:uni_swap/view/user/seller_profile_page.dart';
@@ -12,89 +13,6 @@ class _C {
   static const faint = Color(0xFFA9A8A2);
   static const border = Color(0xFFE6E4DD);
   static const surface = Color(0xFFF3F2EE);
-}
-
-class SellerInfo {
-  const SellerInfo({
-    required this.id,
-    required this.name,
-    required this.rating,
-    required this.sales,
-    required this.location,
-  });
-
-  final int id; // users.user_id (ใช้เปิดโปรไฟล์ผู้ขาย และเช็คว่าเป็นสินค้าของตัวเองไหม)
-  final String name; // users.display_name
-  // TODO: rating / sales ไม่มีใน SQL เวอร์ชันปัจจุบัน
-  //   ต้องรอตาราง reviews (ดู alter_request.sql) และนับจาก orders ที่ completed
-  final double rating;
-  final int sales;
-  final String location;
-
-  String get initials {
-    final parts = name.trim().split(RegExp(r'\s+'));
-    return parts.take(2).map((p) => p[0].toUpperCase()).join();
-  }
-}
-
-class ProductDetail {
-  const ProductDetail({
-    required this.id,
-    required this.title,
-    required this.price,
-    required this.place,
-    this.category,
-    this.description,
-    this.urgent = false,
-    this.daysLeft,
-    this.imageUrls = const [],
-    this.seller,
-    this.status = ProductStatus.available,
-    this.isOwnItem = false,
-  });
-
-  final int id; // products.product_id
-  final String title;
-  final double price; // products.price DECIMAL(10,2)
-  final String place;
-  final String? category;
-  final String? description;
-  final bool urgent;
-  final int? daysLeft;
-  final List<String> imageUrls;
-  final SellerInfo? seller;
-  final ProductStatus status; // reserved/sold = ซื้อไม่ได้
-  final bool isOwnItem; // seller_id == ผู้ใช้ที่ login (กันซื้อสินค้าตัวเอง)
-
-  factory ProductDetail.mock({
-    required int id,
-    required String title,
-    required double price,
-    required String place,
-    String? category,
-    bool urgent = false,
-  }) {
-    // TODO: แทนด้วย ProductDetail.fromJson(...) เมื่อมี API
-    return ProductDetail(
-      id: id,
-      title: title,
-      price: price,
-      place: place,
-      category: category,
-      description:
-          'Solid ${title.toLowerCase()} in great condition. A few small marks, '
-          'but sturdy and ready for a new home. Must go soon.',
-      urgent: urgent,
-      daysLeft: urgent ? 3 : null,
-      seller: SellerInfo(
-        id: 0,
-        name: 'Jamie Lee',
-        rating: 4.9,
-        sales: 18,
-        location: place.split(' · ').last,
-      ),
-    );
-  }
 }
 
 class ProductDetailPage extends StatefulWidget {
@@ -170,7 +88,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     //            (ต้องกันกรณีผู้ซื้อ 2 คนสั่งของชิ้นเดียวกันพร้อมกัน และ buyer_id == seller_id)
     //   ถ้า API ตอบ error (สินค้าถูกจองไปแล้ว) ให้แสดงข้อความและไม่ตั้ง _ordered
     setState(() => _ordered = true);
-    _toast('Order placed with $sellerName · pay within 30 minutes in My orders');
+    _toast(
+      'Order placed with $sellerName · pay within 30 minutes in My orders',
+    );
   }
 
   void _openSeller() {
@@ -232,7 +152,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   itemBuilder: (_, i) => Image.network(
                     _p.imageUrls[i],
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _imagePlaceholder(),
+                    errorBuilder: (_, _, _) => _imagePlaceholder(),
                     loadingBuilder: (_, child, progress) =>
                         progress == null ? child : _imagePlaceholder(),
                   ),

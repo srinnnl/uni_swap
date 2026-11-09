@@ -1,0 +1,36 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "description": "---",
+  "main": "db_config.js",
+  "scripts": {
+    "start": "node app.js",
+    "test": "node --check app.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@node-rs/argon2": "^2.2.2",
+    "cors": "^2.8.6",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.2",
+    "json-server": "^1.0.0-beta.15",
+    "jsonwebtoken": "^9.0.3",
+    "mysql": "^2.18.1",
+    "mysql2": "^3.24.6"
+  },
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/srinnnl/uni_swap.git"
+  },
+  "bugs": {
+    "url": "https://github.com/srinnnl/uni_swap/issues"
+  },
+  "homepage": "https://github.com/srinnnl/uni_swap#readme"
+}

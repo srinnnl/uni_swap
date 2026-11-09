@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/model/format.dart';
+import 'package:uni_swap/model/order_status.dart';
 import 'package:uni_swap/view/user/arrange_meetup_page.dart';
-import 'package:uni_swap/view/user/chat_page.dart';
-import 'package:uni_swap/view/user/report_product_page.dart';
+import 'package:uni_swap/view/user/product_categories.dart';
 import 'package:uni_swap/view/user/seller_profile_page.dart';
 
 class _C {
@@ -15,13 +16,17 @@ class _C {
 
 class SellerInfo {
   const SellerInfo({
+    required this.id,
     required this.name,
     required this.rating,
     required this.sales,
     required this.location,
   });
 
-  final String name;
+  final int id; // users.user_id (ใช้เปิดโปรไฟล์ผู้ขาย และเช็คว่าเป็นสินค้าของตัวเองไหม)
+  final String name; // users.display_name
+  // TODO: rating / sales ไม่มีใน SQL เวอร์ชันปัจจุบัน
+  //   ต้องรอตาราง reviews (ดู alter_request.sql) และนับจาก orders ที่ completed
   final double rating;
   final int sales;
   final String location;
@@ -44,11 +49,13 @@ class ProductDetail {
     this.daysLeft,
     this.imageUrls = const [],
     this.seller,
+    this.status = ProductStatus.available,
+    this.isOwnItem = false,
   });
 
-  final String id;
+  final int id; // products.product_id
   final String title;
-  final int price;
+  final double price; // products.price DECIMAL(10,2)
   final String place;
   final String? category;
   final String? description;
@@ -56,15 +63,18 @@ class ProductDetail {
   final int? daysLeft;
   final List<String> imageUrls;
   final SellerInfo? seller;
+  final ProductStatus status; // reserved/sold = ซื้อไม่ได้
+  final bool isOwnItem; // seller_id == ผู้ใช้ที่ login (กันซื้อสินค้าตัวเอง)
 
   factory ProductDetail.mock({
-    required String id,
+    required int id,
     required String title,
-    required int price,
+    required double price,
     required String place,
     String? category,
     bool urgent = false,
   }) {
+    // TODO: แทนด้วย ProductDetail.fromJson(...) เมื่อมี API
     return ProductDetail(
       id: id,
       title: title,
@@ -77,6 +87,7 @@ class ProductDetail {
       urgent: urgent,
       daysLeft: urgent ? 3 : null,
       seller: SellerInfo(
+        id: 0,
         name: 'Jamie Lee',
         rating: 4.9,
         sales: 18,
@@ -97,17 +108,32 @@ class ProductDetailPage extends StatefulWidget {
 
 class _ProductDetailPageState extends State<ProductDetailPage> {
   final _pageCtrl = PageController();
-  final _noteCtrl = TextEditingController();
   int _imageIndex = 0;
-  bool _isFavorite = false;
-  bool _requested = false;
+  bool _ordered = false;
 
   ProductDetail get _p => widget.product;
+
+  // ซื้อได้เฉพาะสินค้า available ที่ไม่ใช่ของตัวเอง และยังไม่ได้สั่งในหน้านี้
+  bool get _canBuy =>
+      _p.status == ProductStatus.available && !_p.isOwnItem && !_ordered;
+
+  String get _buttonLabel {
+    if (_p.isOwnItem) return 'Your item';
+    if (_ordered) return 'Order placed';
+    return switch (_p.status) {
+      ProductStatus.available => 'Buy now',
+      ProductStatus.reserved => 'Reserved',
+      ProductStatus.sold => 'Sold',
+      ProductStatus.hidden ||
+      ProductStatus.pendingReview ||
+      ProductStatus.changesRequested ||
+      ProductStatus.rejected => 'Unavailable',
+    };
+  }
 
   @override
   void dispose() {
     _pageCtrl.dispose();
-    _noteCtrl.dispose();
     super.dispose();
   }
 
@@ -117,7 +143,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _requestToBuy() async {
+  // Buy now: เลือกจุดนัด/เวลา แล้วสร้างออเดอร์ (pending_payment) ทันที
+  // ไม่มีขั้นรอผู้ขายตอบรับ (ตรงกับ DB ที่ orders เริ่มที่ pending_payment)
+  Future<void> _buyNow() async {
     final sellerName = _p.seller?.name ?? 'the seller';
     final confirmed = await Navigator.push<MeetupChoice>(
       context,
@@ -132,8 +160,17 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     );
 
     if (confirmed == null || !mounted) return;
-    setState(() => _requested = true);
-    _toast('Request sent to $sellerName');
+
+    // TODO: เรียก API สร้างออเดอร์
+    //   POST orders { product_id: _p.id,
+    //                 meetup_location: confirmed.spot,
+    //                 meetup_datetime: confirmed.when.toUtc().toIso8601String() }
+    //   backend: orders.status='pending_payment', payment_deadline = now + 30 นาที,
+    //            products.status 'available' -> 'reserved'
+    //            (ต้องกันกรณีผู้ซื้อ 2 คนสั่งของชิ้นเดียวกันพร้อมกัน และ buyer_id == seller_id)
+    //   ถ้า API ตอบ error (สินค้าถูกจองไปแล้ว) ให้แสดงข้อความและไม่ตั้ง _ordered
+    setState(() => _ordered = true);
+    _toast('Order placed with $sellerName · pay within 30 minutes in My orders');
   }
 
   void _openSeller() {
@@ -147,38 +184,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           location: _p.place,
           rating: s.rating,
           sales: s.sales,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _openReport() async {
-    final sent = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ReportProductPage(
-          productTitle: _p.title,
-          price: _p.price,
-          sellerName: _p.seller?.name ?? 'Seller',
-          imageUrl: _p.imageUrls.isEmpty ? null : _p.imageUrls.first,
-        ),
-      ),
-    );
-    if (sent == true && mounted) {
-      _toast('Report submitted. Thank you for helping keep UniSwap safe.');
-    }
-  }
-
-  void _openChat() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChatPage(
-          sellerName: _p.seller?.name ?? 'Seller',
-          productTitle: _p.title,
-          price: _p.price,
-          urgent: _p.urgent,
-          imageUrl: _p.imageUrls.isEmpty ? null : _p.imageUrls.first,
         ),
       ),
     );
@@ -241,15 +246,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             onTap: () => Navigator.maybePop(context),
           ),
         ),
-        Positioned(
-          top: topInset + 12,
-          right: 20,
-          child: _circleButton(
-            icon: _isFavorite ? Icons.favorite : Icons.favorite_border,
-            iconColor: _isFavorite ? Colors.red.shade400 : _C.ink,
-            onTap: () => setState(() => _isFavorite = !_isFavorite),
-          ),
-        ),
         if (count > 1)
           Positioned(
             bottom: 14,
@@ -310,26 +306,18 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            if (_p.urgent) _urgentBadge() else const SizedBox(height: 28),
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_horiz, color: _C.ink),
-              padding: EdgeInsets.zero,
-              color: Colors.white,
-              onSelected: (v) {
-                if (v == 'share') {
-                  _toast('Share coming soon');
-                } else {
-                  _openReport();
-                }
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'share', child: Text('Share')),
-                PopupMenuItem(value: 'report', child: Text('Report listing')),
-              ],
-            ),
+            if (_p.category != null) ...[
+              Icon(categoryIcon(_p.category), size: 16, color: _C.muted),
+              const SizedBox(width: 6),
+              Text(
+                _p.category!,
+                style: const TextStyle(fontSize: 12, color: _C.muted),
+              ),
+            ],
+            const Spacer(),
+            if (_p.urgent) _urgentBadge(),
           ],
         ),
         const SizedBox(height: 8),
@@ -344,7 +332,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         ),
         const SizedBox(height: 14),
         Text(
-          '${_p.price} THB',
+          formatPriceTHB(_p.price),
           style: const TextStyle(
             fontSize: 26,
             fontWeight: FontWeight.w700,
@@ -373,42 +361,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         ],
         if (seller != null) _buildSeller(seller),
         const SizedBox(height: 24),
-        Row(
-          children: [
-            Expanded(
-              child: SizedBox(
-                height: 52,
-                child: OutlinedButton.icon(
-                  onPressed: _openChat,
-                  icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                  label: const Text('Chat with seller'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _C.ink,
-                    backgroundColor: Colors.white,
-                    side: const BorderSide(color: _C.border),
-                    textStyle: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            TextButton.icon(
-              onPressed: _openReport,
-              icon: const Icon(Icons.outlined_flag, size: 18),
-              label: const Text('Report'),
-              style: TextButton.styleFrom(
-                foregroundColor: _C.muted,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }
@@ -432,16 +384,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     );
   }
 
-  IconData _categoryIcon(String? category) => switch (category) {
-    'Furniture' => Icons.chair_alt_outlined,
-    'Books' => Icons.menu_book_outlined,
-    'Tech' => Icons.computer_outlined,
-    'Music' => Icons.music_note_outlined,
-    'Transport' => Icons.pedal_bike_outlined,
-    _ => Icons.sell_outlined,
-  };
-
- 
   Widget _buildSeller(SellerInfo s) {
     return InkWell(
       onTap: _openSeller,
@@ -531,7 +473,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     style: TextStyle(fontSize: 12, color: _C.muted),
                   ),
                   Text(
-                    '${_p.price} THB',
+                    formatPriceTHB(_p.price),
                     style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w700,
@@ -544,7 +486,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               SizedBox(
                 height: 52,
                 child: FilledButton(
-                  onPressed: _requested ? null : _requestToBuy,
+                  onPressed: _canBuy ? _buyNow : null,
                   style: FilledButton.styleFrom(
                     backgroundColor: _C.ink,
                     foregroundColor: Colors.white,
@@ -556,7 +498,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     ),
                   ),
                   child: Text(
-                    _requested ? 'Request sent' : 'Request to buy',
+                    _buttonLabel,
                     style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,

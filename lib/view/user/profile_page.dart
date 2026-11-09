@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/view/user/campus_locations.dart';
 import 'bank_account_page.dart';
 import 'package:uni_swap/view/login.dart';
-import 'package:uni_swap/view/user/messages_page.dart';
-import 'package:uni_swap/view/user/my_listings_page.dart';
 import 'package:uni_swap/view/user/request_location_page.dart';
-import 'package:uni_swap/view/user/favorites_page.dart';
 
 // ---- colors (local to this file) ----
 const _cBg = Color(0xFFFAF9F6);
@@ -32,17 +30,14 @@ class _ProfilePageState extends State<ProfilePage> {
   static const _username = 'mayakim';
   // static const _displayName = 'Maya';
 
-  static const _zones = <String, List<String>>{
-    'หอใน (On-campus dorm)': [
-      'North Campus · Maple Hall',
-      'North Campus · Oak Hall',
-      'South Campus · Pine Hall',
-    ],
-    'หอนอก (Off-campus dorm)': ['Soi 5 · Green Dorm', 'Soi 9 · Sunrise Dorm'],
-    'คอนโด (Condo)': ['Westwood Condos', 'Campus View Condo'],
+  // 2 โซนตาม DB (enum zone: on_campus / off_campus) รายการหอมาจาก campus_locations.dart
+  static final _zones = <String, List<String>>{
+    for (final z in CampusZone.values)
+      z.label: [for (final l in locationsIn(z)) l.name],
   };
 
-  String _location = 'North Campus · Maple Hall';
+  // TODO: โหลดที่พักปัจจุบันของผู้ใช้จาก API (users.residence_location_id)
+  String _location = locationsIn(CampusZone.onCampus).first.name;
 
   @override
   Widget build(BuildContext context) {
@@ -110,7 +105,7 @@ class _ProfilePageState extends State<ProfilePage> {
           child: IntrinsicHeight(
             child: Row(
               children: [
-                _stat('12', 'Listings'),
+                _stat('12', 'Items'),
                 const VerticalDivider(color: _cBorder, width: 1),
                 _stat('8', 'Sold'),
                 const VerticalDivider(color: _cBorder, width: 1),
@@ -136,36 +131,6 @@ class _ProfilePageState extends State<ProfilePage> {
           'My location',
           _location,
           _pickLocation,
-        ),
-
-        _menuTile(Icons.favorite_border, 'My favorites', 'Saved items', () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const FavoritesPage()),
-          );
-        }),
-
-        _menuTile(
-          Icons.inventory_2_outlined,
-          'My listings',
-          '3 active listings',
-          () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const MyListingsPage()),
-            );
-          },
-        ),
-        _menuTile(
-          Icons.chat_bubble_outline,
-          'Messages',
-          '2 unread conversations',
-          () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const MessagesPage()),
-            );
-          },
         ),
 
         const SizedBox(height: 22),

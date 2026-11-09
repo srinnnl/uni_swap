@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'admin_listings_page.dart';
+import 'admin_categories_page.dart';
+import 'admin_items_page.dart';
 import 'admin_locations_page.dart';
 import 'admin_reports_page.dart';
 import 'admin_users_page.dart';
@@ -109,6 +110,7 @@ class AdminPage extends StatelessWidget {
             const SizedBox(height: 16),
 
             // Statistics
+            // TODO: ตัวเลขทั้งหมดในหน้านี้เป็นข้อมูลจำลอง ให้เพื่อนทำ API สรุปตัวเลข (users, items, reports ที่ pending)
             GridView(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -126,13 +128,7 @@ class AdminPage extends StatelessWidget {
                   note: '+12%',
                   onTap: () => _open(context, const AdminUsersPage()),
                 ),
-                _StatCard(
-                  icon: Icons.flag_outlined,
-                  label: 'Reports',
-                  value: '3',
-                  note: 'Review',
-                  onTap: () => _open(context, const AdminReportsPage()),
-                ),
+                
                 _StatCard(
                   icon: Icons.location_on_outlined,
                   label: 'Locations',
@@ -142,10 +138,17 @@ class AdminPage extends StatelessWidget {
                 ),
                 _StatCard(
                   icon: Icons.inventory_2_outlined,
-                  label: 'Listings',
+                  label: 'Items',
                   value: '4',
                   note: 'All items',
-                  onTap: () => _open(context, const AdminListingsPage()),
+                  onTap: () => _open(context, const AdminItemsPage()),
+                ),
+                _StatCard(
+                  icon: Icons.sell_outlined,
+                  label: 'Categories',
+                  value: '11',
+                  note: 'Manage',
+                  onTap: () => _open(context, const AdminCategoriesPage()),
                 ),
               ],
             ),
@@ -155,7 +158,7 @@ class AdminPage extends StatelessWidget {
             // Pending approval - highlighted card
             _PendingApprovalCard(
               count: '4',
-              onTap: () => _open(context, const AdminListingsPage()),
+              onTap: () => _open(context, const AdminItemsPage()),
             ),
 
             const SizedBox(height: 30),
@@ -164,53 +167,11 @@ class AdminPage extends StatelessWidget {
             _sectionHeader('Needs attention', 'View all'),
             const SizedBox(height: 14),
 
-            _AppCard(
-              onTap: () => _open(context, const AdminReportsPage()),
-              child: Row(
-                children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: const BoxDecoration(
-                      color: _cRedBg,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.priority_high,
-                      color: _cRedFg,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '3 reported products',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: _cInk,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Review community reports',
-                          style: TextStyle(fontSize: 11, color: _cMuted),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right, color: _cMuted),
-                ],
-              ),
-            ),
-
+           
             const SizedBox(height: 12),
 
             _AppCard(
-              onTap: () => _open(context, const AdminListingsPage()),
+              onTap: () => _open(context, const AdminItemsPage()),
               child: Row(
                 children: [
                   Container(
@@ -232,7 +193,7 @@ class AdminPage extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '4 listings awaiting review',
+                          '4 items awaiting review',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
@@ -252,10 +213,48 @@ class AdminPage extends StatelessWidget {
               ),
             ),
 
+            const SizedBox(height: 12),
+
+            _AppCard(
+              onTap: () => _open(context, const AdminReportsPage()),
+              child: const Row(
+                children: [
+                  CircleAvatar(
+                    radius: 23,
+                    backgroundColor: _cRedBg,
+                    child: Icon(Icons.flag_outlined, color: _cRedFg, size: 22),
+                  ),
+                  SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Reports to review',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: _cInk,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Check problems reported by buyers and sellers',
+                          style: TextStyle(fontSize: 11, color: _cMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, color: _cMuted),
+                ],
+              ),
+            ),
+
             const SizedBox(height: 30),
 
             // Recent activity
-            _sectionHeader('Recent activity', 'See log'),
+            // ไม่มีตาราง log ใน DB: ดึงจาก timestamp ที่มี (users.created_at, products.reviewed_at, location_requests.resolved_at) หรือตัดส่วนนี้
+            _sectionHeader('Recent activity', ''),
             const SizedBox(height: 8),
 
             const _ActivityRow(
@@ -418,7 +417,7 @@ class _PendingApprovalCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     const Text(
-                      'Listings waiting for your review',
+                      'Items waiting for your review',
                       style: TextStyle(fontSize: 11, color: _cAmberFg),
                     ),
                     const SizedBox(height: 8),

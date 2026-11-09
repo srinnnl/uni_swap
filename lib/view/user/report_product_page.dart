@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-
-// ไฟล์นี้ใช้งานได้ด้วยตัวเอง: หน้ารายงานสินค้า (เปิดจากปุ่ม Report ในหน้าสินค้า)
+import 'package:uni_swap/model/format.dart';
+// ไฟล์นี้ใช้งานได้ด้วยตัวเอง: หน้ารายงานปัญหาของออเดอร์ (เปิดจาก Order details > Report a problem)
 // กด Submit แล้วจะ pop กลับพร้อมค่า true
 
 class _C {
@@ -16,15 +16,17 @@ class _C {
 class ReportProductPage extends StatefulWidget {
   const ReportProductPage({
     super.key,
+    required this.orderId,
     required this.productTitle,
     required this.price,
-    required this.sellerName,
+    required this.personName,
     this.imageUrl,
   });
 
+  final int orderId; // reports.order_id
   final String productTitle;
-  final int price;
-  final String sellerName;
+  final double price;
+  final String personName; // อีกฝ่ายของออเดอร์ (ผู้ขาย หรือ ผู้ซื้อ)
   final String? imageUrl;
 
   @override
@@ -33,12 +35,12 @@ class ReportProductPage extends StatefulWidget {
 
 class _ReportProductPageState extends State<ReportProductPage> {
   // (ค่าที่ส่ง API, ข้อความที่แสดง)
-  // ค่าเหล่านี้ตรงกับ reports.reason ใน DB และหน้า Admin > Reports
+  // ค่าเหล่านี้ตรงกับ enum reports.report_type ใน DB และหน้า Admin > Reports
   static const _reasons = <(String, String)>[
-    ('misleading', 'Misleading information'),
-    ('prohibited_item', 'Prohibited item'),
-    ('scam', 'Suspected scam'),
-    ('already_sold', 'Already sold'),
+    ('product_problem', 'Problem with the item'),
+    ('seller_problem', 'Problem with the seller / buyer'),
+    ('payment_problem', 'Payment problem'),
+    ('refund_problem', 'Refund problem'),
     ('other', 'Other'),
   ];
 
@@ -60,8 +62,9 @@ class _ReportProductPageState extends State<ReportProductPage> {
       return;
     }
 
-    // TODO: ส่งไป API -> reason: _reasons[_reason].$1, details: details
-    // (admin จะเห็นในหน้า Reports และจัดกลุ่มตามสินค้า)
+    // TODO: ส่งไป API (ตาราง reports): order_id: widget.orderId, report_type: _reasons[_reason].$1,
+    //   reason: details (NOT NULL ส่ง '' ได้ถ้าไม่ได้กรอก), status เริ่มต้น = pending
+    // (admin จะเห็นในหน้า Reports และจัดกลุ่มตามสินค้าของออเดอร์)
     Navigator.pop(context, true);
   }
 
@@ -139,7 +142,7 @@ class _ReportProductPageState extends State<ReportProductPage> {
           child: Column(
             children: [
               const Text(
-                'Report product',
+                'Report a problem',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
@@ -209,7 +212,7 @@ class _ReportProductPageState extends State<ReportProductPage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${widget.price} THB · ${widget.sellerName}',
+                  '${formatPriceTHB(widget.price)} · ${widget.personName}',
                   style: const TextStyle(fontSize: 11, color: _C.muted),
                 ),
               ],

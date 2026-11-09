@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/view/user/campus_locations.dart';
 
 class _C {
   static const bg = Color(0xFFF7F6F2);
@@ -7,14 +8,6 @@ class _C {
   static const hint = Color(0xFFA9A8A2);
   static const border = Color(0xFFE6E4DD);
 }
-
-/// รายการที่พัก (ตัวอย่าง) ภายหลังเปลี่ยนเป็นของจริง หรือดึงจาก API
-const _residences = [
-  'North Campus · Maple Hall',
-  'North Campus · Oak Hall',
-  'South Campus · Cedar Hall',
-  'Off campus',
-];
 
 /// ตัวเลือกสำหรับคนที่หาที่พักของตัวเองไม่เจอ (ส่งให้ admin ตรวจสอบ)
 const _otherOption = 'Other (not listed)';
@@ -36,7 +29,13 @@ class _RegisterPageState extends State<RegisterPage> {
   final _customResidenceCtrl = TextEditingController(); // ที่พักที่พิมพ์เอง
 
   bool _obscure = true;
-  String? _residence;
+  // ที่พัก: _zone + _location (null + มี _zone = เลือก Other รอแอดมินตรวจ)
+  CampusZone? _zone;
+  CampusLocation? _location;
+
+  bool get _isOther => _zone != null && _location == null;
+  String? get _residenceLabel =>
+      _zone == null ? null : (_location?.name ?? _otherOption);
   bool _residenceError = false;
 
   @override
@@ -53,10 +52,10 @@ class _RegisterPageState extends State<RegisterPage> {
   // ===== จุดเชื่อมต่อ API: ให้เพื่อนแก้ฟังก์ชันนี้ =====
   void _submit() {
     final formOk = _formKey.currentState!.validate();
-    setState(() => _residenceError = _residence == null);
-    if (!formOk || _residence == null) return;
+    setState(() => _residenceError = _zone == null);
+    if (!formOk || _zone == null) return;
 
-    final isOther = _residence == _otherOption;
+    final isOther = _isOther;
     final data = {
       // users.display_name (UI โชว์ชื่อเต็มคู่กับ @username ทั้งแอป)
       'fullName': _fullNameCtrl.text.trim(),
@@ -66,18 +65,24 @@ class _RegisterPageState extends State<RegisterPage> {
       'password': _passwordCtrl.text,
       // ถ้าเลือก Other: residence เป็น null และส่งชื่อที่พิมพ์เองให้ admin ตรวจ
       // backend ควรเก็บเป็นสถานะ pending (approved / merged / rejected ภายหลัง)
-      'residence': isOther ? null : _residence,
+      // users.residence_zone / residence_location_id (ต้องรอเพื่อน ALTER ตาม alter_request.sql)
+      // ส่ง zone เป็น code ('on_campus' / 'off_campus') ตรงกับ enum ใน DB
+      'residenceZone': _zone!.code,
+      'residenceLocationId': _location?.id,
       'customResidence': isOther ? _customResidenceCtrl.text.trim() : null,
     };
     debugPrint('register: ${data['username']} (pending: $isOther)');
 
     // TODO: ส่ง data ไปที่ API สมัครสมาชิก แล้วค่อยกลับหน้า Login เมื่อสำเร็จ
+    //   ผู้สมัครใหม่ได้ users.status='pending' (ไม่มี OTP) ต้องรอ admin อนุมัติก่อนเข้าใช้ได้
+    //   studentId ส่งเป็นข้อความ (DB ควรเป็น CHAR(10)) ถ้า email/username/studentId ซ้ำ
+    //   API จะตอบ error ให้แสดงใต้ช่องที่ซ้ำ
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           isOther
-              ? 'Account created! Your residence is waiting for admin review.'
-              : 'Account created! Please sign in.',
+              ? 'Account created! An admin will review your account and residence before you can sign in.'
+              : 'Account created! You can sign in once an admin approves it.',
         ),
       ),
     );
@@ -85,29 +90,16 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   Future<void> _pickResidence() async {
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      backgroundColor: Colors.white,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final r in [..._residences, _otherOption])
-              ListTile(
-                title: Text(r),
-                trailing: r == _residence
-                    ? const Icon(Icons.check, color: _C.ink)
-                    : null,
-                onTap: () => Navigator.pop(context, r),
-              ),
-          ],
-        ),
-      ),
+    final picked = await showCampusLocationPicker(
+      context,
+      zone: _zone,
+      selected: _location,
+      otherLabel: _otherOption,
     );
     if (picked != null) {
       setState(() {
-        _residence = picked;
+        _zone = picked.zone;
+        _location = picked.location;
         _residenceError = false;
       });
     }
@@ -276,7 +268,10 @@ class _RegisterPageState extends State<RegisterPage> {
               validator: (v) {
                 final text = v?.trim() ?? '';
                 if (text.length < 3) return 'At least 3 characters';
-                if (text.contains(' ')) return 'No spaces allowed';
+                if (text.length > 30) return 'Too long (max 30 characters)';
+                if (!RegExp(r'^[A-Za-z0-9_.]+$').hasMatch(text)) {
+                  return 'Use letters, numbers, _ or . only';
+                }
                 return null;
               },
             ),
@@ -301,7 +296,7 @@ class _RegisterPageState extends State<RegisterPage> {
               ),
             ),
             _buildResidenceField(),
-            if (_residence == _otherOption)
+            if (_isOther)
               _buildField(
                 label: 'Your residence name',
                 hint: 'e.g. Sunrise Apartment',
@@ -475,10 +470,10 @@ class _RegisterPageState extends State<RegisterPage> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    _residence ?? 'Select your residence',
+                    _residenceLabel ?? 'Select your residence',
                     style: TextStyle(
                       fontSize: 15,
-                      color: _residence == null ? _C.hint : _C.ink,
+                      color: _zone == null ? _C.hint : _C.ink,
                     ),
                   ),
                 ),

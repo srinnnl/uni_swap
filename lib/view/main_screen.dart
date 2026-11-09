@@ -6,16 +6,15 @@ import 'package:uni_swap/view/user/home_page.dart';
 import 'package:uni_swap/view/user/orders_page.dart';
 import 'package:uni_swap/view/user/profile_page.dart';
 import 'package:uni_swap/view/user/search_page.dart';
-import 'package:uni_swap/view/user/sell_page.dart';
+// import 'package:uni_swap/view/user/sell_page.dart';
+import 'package:uni_swap/view/user/my_items_page.dart';
 
 class _C {
   static const bg = Color(0xFFFAF9F6);
   static const ink = Color(0xFF2F2F2B);
   static const muted = Color(0xFF8C8B84);
-  static const border = Color(0xFFE6E4DD);
 }
 
-// ===== ค่าปรับแต่งหน้าตาแถบเมนู (มินิมอล + กระจกฝ้า) =====
 const _blurAmount = 30.0; // ความเบลอของพื้นหลัง (ยิ่งมากยิ่งฟุ้ง)
 const _barOpacity = 0.3; // ความขาวทึบ (0.3 คือโปร่งแสง 70% ให้เห็นพื้นหลัง)
 const _barTop = 16.0; // ระยะที่แถบลดระดับลงมาให้ปุ่ม Sell ลอยเหนือขอบ
@@ -38,7 +37,8 @@ class _MainScreenState extends State<MainScreen> {
   final List<Widget> _pages = const [
     HomePage(),
     SearchPage(),
-    SellPage(),
+    // SellPage(),
+    MyItemsPage(),
     OrdersPage(),
     ProfilePage(),
   ];
@@ -69,7 +69,6 @@ class _BarBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // แถบเรียบๆ ไม่มีรอยเว้า พร้อมเอฟเฟกต์กระจกฝ้าและขอบบนสะท้อนแสงสีขาว
     return Positioned.fill(
       top: _barTop,
       child: ClipRect(

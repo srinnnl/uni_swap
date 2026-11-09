@@ -1,753 +1,293 @@
-// UniSwap API - teacher-style Express + mysql2 callbacks
-// Install: npm install express cors mysql2 @node-rs/argon2 jsonwebtoken
-// Run: node server.js
-// IMPORTANT: Set JWT_KEY in your environment before deployment.
-// This is a teaching/demo API baseline. Review payment/order state transitions
-// and add production email + file-storage services before real deployment.
-
+// UniSwap API aligned to the local project_mobile_app MySQL schema.
 const express = require('express');
 const cors = require('cors');
-const con = require('./db_config');
-const argon2 = require('@node-rs/argon2');
 const jwt = require('jsonwebtoken');
+const argon2 = require('@node-rs/argon2');
+const con = require('./db_config');
 
 const app = express();
+const PORT = Number(process.env.PORT || 3000);
+const JWT_KEY = process.env.JWT_KEY || 'uni-swap-local-development-key-change-me';
+const zones = ['on_campus', 'off_campus'];
+const orderStates = ['pending_payment', 'paid', 'ready_for_meetup', 'completed', 'cancelled', 'expired', 'refund_requested', 'partially_refunded', 'refunded'];
+
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
-const JWT_KEY = process.env.JWT_KEY || 'CHANGE_THIS_UNSAFE_DEMO_KEY';
-const PORT = 3000;
-
-// ---------- Common helpers ----------
-function auth(req, res, next) {
-    const header = req.headers.authorization;
-    if (!header || !header.startsWith('Bearer ')) {
-        return res.status(401).json({ success: false, message: 'Token required' });
-    }
-
-    const token = header.substring(7);
-    jwt.verify(token, JWT_KEY, (err, decoded) => {
-        if (err) return res.status(401).json({ success: false, message: 'Invalid or expired token' });
-
-        // The token alone is not enough: a suspended/deleted user, or a changed role,
-        // must take effect immediately instead of when the 1-day token expires.
-        con.query('SELECT role, status FROM users WHERE user_id = ?', [decoded.user_id], (err, rows) => {
-            if (err) return queryError(res, err);
-            if (rows.length === 0 || rows[0].status !== 'active') {
-                return res.status(403).json({ success: false, message: 'Account is not active' });
-            }
-            req.user = { ...decoded, role: rows[0].role };
-            next();
-        });
-    });
-}
-
-function adminOnly(req, res, next) {
-    if (!req.user || req.user.role !== 'admin') {
-        return res.status(403).json({ success: false, message: 'Admin only' });
-    }
-    next();
-}
-
-function queryError(res, err) {
+const db = (sql, values = []) => new Promise((resolve, reject) => con.query(sql, values, (err, rows) => err ? reject(err) : resolve(rows)));
+const validId = value => /^[1-9]\d*$/.test(String(value));
+const validText = (value, max, required = false) => value === undefined || value === null ? !required : typeof value === 'string' && value.trim().length <= max && (!required || value.trim().length > 0);
+const bad = (res, message) => res.status(400).json({ success: false, message });
+function dbError(res, err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ success: false, message: 'This record already exists' });
+    if ([1452, 1366, 1265, 3819].includes(err.errno)) return bad(res, 'Invalid related record or value');
     console.error(err);
     return res.status(500).json({ success: false, message: 'Database error' });
 }
+function getPaging(req, res) {
+    const page = req.query.page === undefined ? 1 : Number(req.query.page);
+    const limit = req.query.limit === undefined ? 20 : Number(req.query.limit);
+    if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) { bad(res, 'page must be >= 1 and limit must be 1-100'); return null; }
+    return { page, limit, offset: (page - 1) * limit };
+}
+function sendPage(res, rows, paging) { return res.json({ success: true, data: rows.slice(0, paging.limit), page: paging.page, limit: paging.limit, has_more: rows.length > paging.limit }); }
+async function transaction(work) {
+    // mysql2's promise wrapper prevents a callback Query object from being
+    // accidentally awaited during the transaction flow.
+    const conn = await con.promise().getConnection();
+    try {
+        await conn.beginTransaction();
+        const result = await work(async (sql, values = []) => (await conn.query(sql, values))[0]);
+        await conn.commit();
+        return result;
+    } catch (err) {
+        await conn.rollback();
+        throw err;
+    } finally {
+        conn.release();
+    }
+}
+async function auth(req, res, next) {
+    const header = req.get('authorization');
+    if (!header || !header.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Token required' });
+    try {
+        const token = jwt.verify(header.slice(7), JWT_KEY);
+        const users = await db('SELECT user_id,email,display_name,username,role,status FROM users WHERE user_id=?', [token.user_id]);
+        if (!users.length || users[0].status !== 'active') return res.status(403).json({ success: false, message: 'Account is not active' });
+        req.user = users[0]; return next();
+    } catch (_) { return res.status(401).json({ success: false, message: 'Invalid or expired token' }); }
+}
+const adminOnly = (req, res, next) => req.user.role === 'admin' ? next() : res.status(403).json({ success: false, message: 'Admin only' });
+const notFound = (res, message) => res.status(404).json({ success: false, message });
 
-function isPositiveId(value) {
-    return Number.isInteger(Number(value)) && Number(value) > 0;
+app.get('/api/health', async (_req, res) => { try { await db('SELECT 1'); res.json({ success: true, database: 'connected' }); } catch (err) { dbError(res, err); } });
+
+// ---------- Authentication / profile ----------
+app.post('/api/register', async (req, res) => {
+    const b = req.body || {};
+    const studentId = b.student_id ?? b.studentId;
+    const displayName = b.display_name ?? b.displayName ?? b.fullName;
+    const zone = b.residence_zone ?? b.residenceZone;
+    const locationId = b.residence_location_id ?? b.residenceLocationId;
+    const customResidence = b.custom_residence ?? b.customResidence;
+    const email = String(b.email || '').trim().toLowerCase();
+    if (!/^\d{10}$/.test(String(studentId || '')) || !validText(b.username, 50, true) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !validText(displayName, 100, true) || typeof b.password !== 'string' || b.password.length < 8 || !zones.includes(zone) || (locationId != null && !validId(locationId)) || !validText(customResidence, 150)) return bad(res, 'Invalid registration details');
+    try {
+        if (locationId) {
+            const locations = await db('SELECT location_id FROM locations WHERE location_id=? AND zone=? AND is_active=1', [locationId, zone]);
+            if (!locations.length) return bad(res, 'Residence does not exist or is inactive');
+        } else if (!validText(customResidence, 150, true)) return bad(res, 'customResidence is required when residence is not listed');
+        const hash = argon2.hashSync(b.password);
+        const result = await transaction(async query => {
+            const user = await query('INSERT INTO users (student_id,username,email,password_hash,display_name,residence_zone,residence_location_id) VALUES (?,?,?,?,?,?,?)', [studentId, b.username.trim(), email, hash, displayName.trim(), zone, locationId || null]);
+            if (!locationId) await query('INSERT INTO location_requests (user_id,name,zone,reason) VALUES (?,?,?,?)', [user.insertId, customResidence.trim(), zone, 'Requested during registration']);
+            return user;
+        });
+        res.status(201).json({ success: true, user_id: result.insertId, status: 'pending', message: 'Registration submitted for admin approval' });
+    } catch (err) { dbError(res, err); }
+});
+app.post('/api/login', async (req, res) => {
+    const { email, password } = req.body || {};
+    if (!email || !password) return bad(res, 'email and password are required');
+    try {
+        const rows = await db('SELECT user_id,email,password_hash,display_name,username,role,status,residence_zone,residence_location_id FROM users WHERE email=?', [String(email).trim().toLowerCase()]);
+        if (!rows.length || !argon2.verifySync(rows[0].password_hash, String(password))) return res.status(401).json({ success: false, message: 'Invalid email or password' });
+        const user = rows[0];
+        if (user.status !== 'active') return res.status(403).json({ success: false, message: `Account is ${user.status}` });
+        delete user.password_hash;
+        res.json({ success: true, token: jwt.sign({ user_id: user.user_id, role: user.role }, JWT_KEY, { expiresIn: '1d' }), user });
+    } catch (err) { dbError(res, err); }
+});
+app.get('/api/profile', auth, async (req, res) => {
+    try { const rows = await db('SELECT u.user_id,u.student_id,u.username,u.email,u.display_name,u.residence_zone,u.residence_location_id,u.role,u.status,u.created_at,l.name AS residence_name FROM users u LEFT JOIN locations l ON l.location_id=u.residence_location_id WHERE u.user_id=?', [req.user.user_id]); res.json({ success: true, data: rows[0] }); } catch (err) { dbError(res, err); }
+});
+app.put('/api/profile', auth, async (req, res) => {
+    const b = req.body || {}; const name = b.display_name ?? b.displayName;
+    if (!validText(name, 100, true) || (b.username !== undefined && !validText(b.username, 50, true))) return bad(res, 'Invalid display name or username');
+    try { await db('UPDATE users SET display_name=?,username=COALESCE(?,username) WHERE user_id=?', [name.trim(), b.username?.trim() || null, req.user.user_id]); res.json({ success: true, message: 'Profile updated' }); } catch (err) { dbError(res, err); }
+});
+
+// ---------- Catalogue and member dashboard ----------
+app.get('/api/categories', async (_req, res) => { try { res.json({ success: true, data: await db('SELECT category_id,name,emoji FROM categories WHERE is_active=1 ORDER BY name') }); } catch (err) { dbError(res, err); } });
+app.get('/api/locations', async (req, res) => {
+    if (req.query.zone && !zones.includes(req.query.zone)) return bad(res, 'Invalid zone');
+    try { const rows = await db(`SELECT location_id,zone,name FROM locations WHERE is_active=1${req.query.zone ? ' AND zone=?' : ''} ORDER BY zone,name`, req.query.zone ? [req.query.zone] : []); res.json({ success: true, data: rows }); } catch (err) { dbError(res, err); }
+});
+app.get('/api/dashboard', auth, async (req, res) => {
+    const userId = req.user.user_id;
+    try {
+        const [counts, listings, orders, requests] = await Promise.all([
+            db(`SELECT (SELECT COUNT(*) FROM products WHERE seller_id=?) AS my_listings,(SELECT COUNT(*) FROM products WHERE seller_id=? AND status='pending_review') AS listings_to_review,(SELECT COUNT(*) FROM products WHERE seller_id=? AND status='changes_requested') AS listings_to_fix,(SELECT COUNT(*) FROM orders WHERE buyer_id=? AND status IN ('pending_payment','paid','ready_for_meetup')) AS buying_active,(SELECT COUNT(*) FROM orders WHERE seller_id=? AND status IN ('pending_payment','paid','ready_for_meetup')) AS selling_active,(SELECT COUNT(*) FROM refunds WHERE requested_by=? AND refund_status='pending') AS refunds_pending`, [userId,userId,userId,userId,userId,userId]),
+            db("SELECT product_id,title,price,status,review_note,created_at FROM products WHERE seller_id=? ORDER BY updated_at DESC,product_id DESC LIMIT 5", [userId]),
+            db(`SELECT o.order_id,o.status,o.total_amount,o.meetup_location,o.meetup_datetime,o.created_at,p.title,CASE WHEN o.buyer_id=? THEN 'buying' ELSE 'selling' END AS perspective FROM orders o JOIN products p ON p.product_id=o.product_id WHERE o.buyer_id=? OR o.seller_id=? ORDER BY o.updated_at DESC,o.order_id DESC LIMIT 5`, [userId,userId,userId]),
+            db("SELECT request_id,status,name,zone FROM location_requests WHERE user_id=? AND status IN ('pending','reviewing') ORDER BY created_at DESC LIMIT 1", [userId])
+        ]);
+        res.json({ success: true, data: { user: req.user, counts: counts[0], recent_listings: listings, recent_orders: orders, pending_location_request: requests[0] || null } });
+    } catch (err) { dbError(res, err); }
+});
+
+app.get('/api/products', async (req, res) => {
+    const { keyword, category_id, zone, location_id, sort = 'newest' } = req.query;
+    if ((category_id && !validId(category_id)) || (location_id && !validId(location_id)) || (zone && !zones.includes(zone)) || !validText(keyword, 150)) return bad(res, 'Invalid product filter');
+    const paging = getPaging(req, res); if (!paging) return;
+    const orderBy = { newest: 'p.created_at DESC', price_asc: 'p.price ASC,p.product_id DESC', price_desc: 'p.price DESC,p.product_id DESC', urgent: 'p.urgency_level DESC,p.created_at DESC' }[sort]; if (!orderBy) return bad(res, 'Invalid sort');
+    const clauses = ["p.status='available'", "u.status='active'"]; const values = [];
+    if (keyword) { clauses.push('(p.title LIKE ? OR p.description LIKE ?)'); values.push(`%${keyword.trim()}%`, `%${keyword.trim()}%`); }
+    if (category_id) { clauses.push('p.category_id=?'); values.push(category_id); } if (zone) { clauses.push('p.zone=?'); values.push(zone); } if (location_id) { clauses.push('p.location_id=?'); values.push(location_id); }
+    try { const rows = await db(`SELECT p.product_id,p.title,p.description,p.price,p.item_condition,p.urgency_level,p.zone,p.location_name,p.location_id,p.clearance_deadline,p.created_at,p.category_id,COALESCE(c.name,p.category) AS category_name,u.user_id AS seller_id,u.display_name AS seller_name,(SELECT image_url FROM product_images WHERE product_id=p.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url FROM products p JOIN users u ON u.user_id=p.seller_id LEFT JOIN categories c ON c.category_id=p.category_id WHERE ${clauses.join(' AND ')} ORDER BY ${orderBy} LIMIT ? OFFSET ?`, [...values,paging.limit + 1,paging.offset]); sendPage(res, rows, paging); } catch (err) { dbError(res, err); }
+});
+app.get('/api/products/:product_id', async (req, res) => {
+    if (!validId(req.params.product_id)) return bad(res, 'Invalid product_id');
+    try { const rows = await db(`SELECT p.*,u.display_name AS seller_name,u.username,COALESCE(c.name,p.category) AS category_name FROM products p JOIN users u ON u.user_id=p.seller_id LEFT JOIN categories c ON c.category_id=p.category_id WHERE p.product_id=? AND p.status='available'`, [req.params.product_id]); if (!rows.length) return notFound(res, 'Product not found'); const images = await db('SELECT image_id,image_url,display_order FROM product_images WHERE product_id=? ORDER BY display_order,image_id', [req.params.product_id]); await db('UPDATE products SET view_count=view_count+1 WHERE product_id=?', [req.params.product_id]); res.json({ success: true, data: { ...rows[0], view_count: Number(rows[0].view_count) + 1, images } }); } catch (err) { dbError(res, err); }
+});
+function getProductInput(b) {
+    const x = b || {}; const locationId = x.location_id ?? x.locationId; const locationName = x.location_name ?? x.locationName;
+    if (!validId(x.category_id ?? x.categoryId) || !validText(x.title, 150, true) || !validText(x.description, 5000) || !/^\d+(\.\d{1,2})?$/.test(String(x.price)) || Number(x.price) > 99999999.99 || (x.item_condition != null && !['new','like_new','good','fair'].includes(x.item_condition)) || !['normal','urgent','very_urgent'].includes(x.urgency_level || x.urgencyLevel || 'normal') || !zones.includes(x.zone) || !validId(locationId) || !validText(locationName, 255, true) || !validText(x.location_detail ?? x.locationDetail, 255)) return null;
+    return { categoryId: x.category_id ?? x.categoryId, title: x.title.trim(), description: x.description?.trim() || null, price: Number(x.price), condition: x.item_condition || null, urgency: x.urgency_level ?? x.urgencyLevel ?? 'normal', zone: x.zone, locationId, locationName: locationName.trim(), locationDetail: (x.location_detail ?? x.locationDetail)?.trim() || null, deadline: x.clearance_deadline ?? x.clearanceDeadline ?? null };
+}
+app.post('/api/products', auth, async (req, res) => {
+    const x = getProductInput(req.body); if (!x) return bad(res, 'Invalid product details');
+    try { const locations = await db('SELECT location_id FROM locations WHERE location_id=? AND zone=? AND is_active=1', [x.locationId,x.zone]); const cats = await db('SELECT name FROM categories WHERE category_id=? AND is_active=1', [x.categoryId]); if (!locations.length || !cats.length) return bad(res, 'Category or pickup location is unavailable'); const result = await db(`INSERT INTO products (seller_id,title,description,category,category_id,price,item_condition,urgency_level,zone,location_name,location_id,location_detail,clearance_deadline,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'pending_review')`, [req.user.user_id,x.title,x.description,cats[0].name,x.categoryId,x.price,x.condition,x.urgency,x.zone,x.locationName,x.locationId,x.locationDetail,x.deadline]); res.status(201).json({ success: true, product_id: result.insertId, status: 'pending_review' }); } catch (err) { dbError(res, err); }
+});
+app.get('/api/my/listings', auth, async (req, res) => { const paging = getPaging(req, res); if (!paging) return; try { const rows = await db(`SELECT p.*,COALESCE(c.name,p.category) AS category_name,(SELECT image_url FROM product_images WHERE product_id=p.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url FROM products p LEFT JOIN categories c ON c.category_id=p.category_id WHERE p.seller_id=? ORDER BY p.updated_at DESC,p.product_id DESC LIMIT ? OFFSET ?`, [req.user.user_id,paging.limit + 1,paging.offset]); sendPage(res, rows, paging); } catch (err) { dbError(res, err); } });
+app.put('/api/products/:product_id', auth, async (req, res) => { if (!validId(req.params.product_id)) return bad(res, 'Invalid product_id'); const x = getProductInput(req.body); if (!x) return bad(res, 'Invalid product details'); try { const result = await db(`UPDATE products SET title=?,description=?,category_id=?,price=?,item_condition=?,urgency_level=?,zone=?,location_name=?,location_id=?,location_detail=?,clearance_deadline=?,status='pending_review',review_note=NULL,reject_reason=NULL WHERE product_id=? AND seller_id=? AND status IN ('pending_review','changes_requested','rejected','available')`, [x.title,x.description,x.categoryId,x.price,x.condition,x.urgency,x.zone,x.locationName,x.locationId,x.locationDetail,x.deadline,req.params.product_id,req.user.user_id]); if (!result.affectedRows) return res.status(409).json({ success: false, message: 'Listing cannot be edited in its current state' }); res.json({ success: true, status: 'pending_review' }); } catch (err) { dbError(res, err); } });
+app.post('/api/products/:product_id/images', auth, async (req, res) => { const b = req.body || {}; const url = b.image_url ?? b.imageUrl; const order = b.display_order ?? b.displayOrder ?? 1; if (!validId(req.params.product_id) || !validText(url, 500, true) || !Number.isInteger(Number(order)) || Number(order) < 1) return bad(res, 'Invalid image'); try { const owner = await db('SELECT product_id FROM products WHERE product_id=? AND seller_id=?', [req.params.product_id,req.user.user_id]); if (!owner.length) return notFound(res, 'Product not found'); const result = await db('INSERT INTO product_images (product_id,image_url,display_order) VALUES (?,?,?)', [req.params.product_id,url.trim(),order]); res.status(201).json({ success: true, image_id: result.insertId }); } catch (err) { dbError(res, err); } });
+
+// ---------- Purchase flow ----------
+app.post('/api/orders', auth, async (req, res) => {
+    const { product_id, meetup_location, meetup_datetime } = req.body || {};
+    if (!validId(product_id) || !validText(meetup_location, 255, true) || (meetup_datetime && Number.isNaN(Date.parse(meetup_datetime)))) return bad(res, 'Invalid order details');
+    try { const result = await transaction(async query => { const products = await query("SELECT * FROM products WHERE product_id=? AND status='available' FOR UPDATE", [product_id]); if (!products.length) throw Object.assign(new Error('Product not available'), { status: 409 }); const product = products[0]; if (Number(product.seller_id) === Number(req.user.user_id)) throw Object.assign(new Error('Cannot buy your own product'), { status: 400 }); const price = Number(product.price); const order = await query('INSERT INTO orders (product_id,buyer_id,seller_id,seller_price,total_amount,seller_payout,meetup_location,meetup_datetime,payment_deadline) VALUES (?,?,?,?,?,?,?,?,DATE_ADD(UTC_TIMESTAMP(),INTERVAL 24 HOUR))', [product_id,req.user.user_id,product.seller_id,price,price,price,meetup_location.trim(),meetup_datetime ? new Date(meetup_datetime) : null]); await query("UPDATE products SET status='reserved' WHERE product_id=?", [product_id]); return order; }); res.status(201).json({ success: true, order_id: result.insertId, status: 'pending_payment' }); } catch (err) { err.status ? res.status(err.status).json({ success: false, message: err.message }) : dbError(res, err); }
+});
+app.get('/api/orders', auth, async (req, res) => { const paging = getPaging(req, res); if (!paging) return; try { const rows = await db(`SELECT o.*,p.title,p.location_name,b.display_name AS buyer_name,s.display_name AS seller_name,(SELECT image_url FROM product_images WHERE product_id=o.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url,CASE WHEN o.buyer_id=? THEN 'buying' ELSE 'selling' END AS perspective FROM orders o JOIN products p ON p.product_id=o.product_id JOIN users b ON b.user_id=o.buyer_id JOIN users s ON s.user_id=o.seller_id WHERE o.buyer_id=? OR o.seller_id=? ORDER BY o.updated_at DESC,o.order_id DESC LIMIT ? OFFSET ?`, [req.user.user_id,req.user.user_id,req.user.user_id,paging.limit + 1,paging.offset]); sendPage(res, rows, paging); } catch (err) { dbError(res, err); } });
+app.put('/api/orders/:order_id/meetup', auth, async (req, res) => { const { meetup_location, meetup_datetime } = req.body || {}; if (!validId(req.params.order_id) || !validText(meetup_location, 255, true) || (meetup_datetime && Number.isNaN(Date.parse(meetup_datetime)))) return bad(res, 'Invalid meetup'); try { const result = await db("UPDATE orders SET meetup_location=?,meetup_datetime=? WHERE order_id=? AND (buyer_id=? OR seller_id=?) AND status IN ('pending_payment','paid','ready_for_meetup')", [meetup_location.trim(),meetup_datetime ? new Date(meetup_datetime) : null,req.params.order_id,req.user.user_id,req.user.user_id]); if (!result.affectedRows) return res.status(409).json({ success: false, message: 'Order cannot be updated' }); res.json({ success: true, message: 'Meetup updated' }); } catch (err) { dbError(res, err); } });
+app.post('/api/orders/:order_id/pay', auth, async (req, res) => { const b = req.body || {}; const method = b.payment_method ?? b.paymentMethod ?? 'gateway'; const reference = b.transaction_ref ?? b.transactionRef; const slip = b.payment_slip_url ?? b.paymentSlipUrl; if (!validId(req.params.order_id) || !['gateway','bank_transfer','cash','free'].includes(method) || !validText(reference,150) || !validText(slip,500)) return bad(res, 'Invalid payment'); try { const result = await transaction(async query => { const orders = await query("SELECT * FROM orders WHERE order_id=? AND buyer_id=? AND status='pending_payment' FOR UPDATE", [req.params.order_id,req.user.user_id]); if (!orders.length) throw Object.assign(new Error('Order is not awaiting payment'), { status: 409 }); const order = orders[0]; await query("INSERT INTO payments (order_id,payment_method,transaction_ref,payment_slip_url,amount,payment_status,seller_transfer_status,paid_at) VALUES (?,?,?,?,?,'paid','held',UTC_TIMESTAMP())", [order.order_id,method,reference || null,slip || null,order.total_amount]); await query("UPDATE orders SET status='ready_for_meetup' WHERE order_id=?", [order.order_id]); return order; }); res.json({ success: true, order_id: result.order_id, status: 'ready_for_meetup' }); } catch (err) { err.status ? res.status(err.status).json({ success: false, message: err.message }) : dbError(res, err); } });
+app.post('/api/orders/:order_id/received', auth, async (req, res) => { if (!validId(req.params.order_id)) return bad(res, 'Invalid order_id'); try { const result = await transaction(async query => { const orders = await query("SELECT * FROM orders WHERE order_id=? AND buyer_id=? AND status='ready_for_meetup' FOR UPDATE", [req.params.order_id,req.user.user_id]); if (!orders.length) throw Object.assign(new Error('Order is not ready to complete'), { status: 409 }); const order = orders[0]; await query("UPDATE orders SET status='completed',received_at=UTC_TIMESTAMP() WHERE order_id=?", [order.order_id]); await query("UPDATE products SET status='sold' WHERE product_id=?", [order.product_id]); await query("UPDATE payments SET seller_transfer_status='pending' WHERE order_id=?", [order.order_id]); return order; }); res.json({ success: true, order_id: result.order_id, status: 'completed' }); } catch (err) { err.status ? res.status(err.status).json({ success: false, message: err.message }) : dbError(res, err); } });
+app.post('/api/orders/:order_id/cancel', auth, async (req, res) => { if (!validId(req.params.order_id)) return bad(res, 'Invalid order_id'); try { await transaction(async query => { const orders = await query("SELECT * FROM orders WHERE order_id=? AND buyer_id=? AND status='pending_payment' FOR UPDATE", [req.params.order_id,req.user.user_id]); if (!orders.length) throw Object.assign(new Error('Order cannot be cancelled'), { status: 409 }); await query("UPDATE orders SET status='cancelled' WHERE order_id=?", [req.params.order_id]); await query("UPDATE products SET status='available' WHERE product_id=?", [orders[0].product_id]); }); res.json({ success: true, status: 'cancelled' }); } catch (err) { err.status ? res.status(err.status).json({ success: false, message: err.message }) : dbError(res, err); } });
+app.post('/api/orders/:order_id/refunds', auth, async (req, res) => { const { reason } = req.body || {}; if (!validId(req.params.order_id) || !validText(reason,5000,true)) return bad(res, 'Invalid refund reason'); try { const result = await db("INSERT INTO refunds (order_id,requested_by,refund_amount,reason) SELECT order_id,?,total_amount,? FROM orders WHERE order_id=? AND buyer_id=? AND status IN ('paid','ready_for_meetup')", [req.user.user_id,reason.trim(),req.params.order_id,req.user.user_id]); if (!result.affectedRows) return res.status(409).json({ success: false, message: 'Refund cannot be requested for this order' }); await db("UPDATE orders SET status='refund_requested' WHERE order_id=?", [req.params.order_id]); res.status(201).json({ success: true, refund_id: result.insertId, status: 'pending' }); } catch (err) { dbError(res, err); } });
+
+// ---------- Reports and residence requests ----------
+app.post('/api/reports', auth, async (req, res) => { const b = req.body || {}; const orderId = b.order_id ?? b.orderId; const type = b.report_type ?? b.reportType ?? 'other'; const evidence = b.evidence_url ?? b.evidenceUrl; if (!validId(orderId) || !['product_problem','payment_problem','refund_problem','seller_problem','other'].includes(type) || !validText(b.reason,5000,true) || !validText(evidence,500)) return bad(res, 'Invalid report'); try { const access = await db('SELECT order_id FROM orders WHERE order_id=? AND (buyer_id=? OR seller_id=?)', [orderId,req.user.user_id,req.user.user_id]); if (!access.length) return res.status(403).json({ success: false, message: 'Order access denied' }); const result = await db('INSERT INTO reports (reporter_id,order_id,report_type,reason,evidence_url) VALUES (?,?,?,?,?)', [req.user.user_id,orderId,type,b.reason.trim(),evidence?.trim() || null]); res.status(201).json({ success: true, report_id: result.insertId, status: 'pending' }); } catch (err) { dbError(res, err); } });
+app.post('/api/location-requests', auth, async (req, res) => { const { name, zone, address, reason } = req.body || {}; if (!validText(name,150,true) || !zones.includes(zone) || !validText(address,255) || !validText(reason,5000)) return bad(res, 'Invalid location request'); try { const result = await db('INSERT INTO location_requests (user_id,name,zone,address,reason) VALUES (?,?,?,?,?)', [req.user.user_id,name.trim(),zone,address?.trim() || null,reason?.trim() || null]); res.status(201).json({ success: true, request_id: result.insertId, status: 'pending' }); } catch (err) { dbError(res, err); } });
+
+// ---------- Admin dashboard and moderation ----------
+app.get('/api/admin/dashboard', auth, adminOnly, async (_req, res) => { try { const [overview,listings,reports,locations] = await Promise.all([db("SELECT (SELECT COUNT(*) FROM users) AS users_total,(SELECT COUNT(*) FROM users WHERE status='pending') AS users_pending,(SELECT COUNT(*) FROM products WHERE status='available') AS items_live,(SELECT COUNT(*) FROM products WHERE status='pending_review') AS items_pending,(SELECT COUNT(*) FROM reports WHERE status IN ('pending','reviewing')) AS reports_open,(SELECT COUNT(*) FROM location_requests WHERE status IN ('pending','reviewing')) AS locations_pending,(SELECT COUNT(*) FROM categories WHERE is_active=1) AS categories_active,(SELECT COUNT(*) FROM refunds WHERE refund_status='pending') AS refunds_pending"),db("SELECT p.product_id,p.title,p.price,p.created_at,u.display_name AS seller_name,c.name AS category_name FROM products p JOIN users u ON u.user_id=p.seller_id LEFT JOIN categories c ON c.category_id=p.category_id WHERE p.status='pending_review' ORDER BY p.created_at LIMIT 5"),db("SELECT r.report_id,r.report_type,r.reason,r.status,r.created_at,p.title,o.order_id FROM reports r LEFT JOIN orders o ON o.order_id=r.order_id LEFT JOIN products p ON p.product_id=o.product_id WHERE r.status IN ('pending','reviewing') ORDER BY r.created_at DESC LIMIT 5"),db("SELECT r.request_id,r.name,r.zone,r.status,r.created_at,u.display_name AS requester_name FROM location_requests r JOIN users u ON u.user_id=r.user_id WHERE r.status IN ('pending','reviewing') ORDER BY r.created_at DESC LIMIT 5")]); res.json({ success: true, data: { overview: overview[0], pending_listings: listings, open_reports: reports, pending_location_requests: locations } }); } catch (err) { dbError(res, err); } });
+app.get('/api/admin/users', auth, adminOnly, async (req, res) => { const status = req.query.status; if (status && !['pending','active','suspended','rejected'].includes(status)) return bad(res, 'Invalid status'); const paging = getPaging(req,res); if (!paging) return; try { const rows = await db(`SELECT user_id,student_id,username,email,display_name,residence_zone,residence_location_id,role,status,created_at FROM users${status ? ' WHERE status=?' : ''} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...(status ? [status] : []),paging.limit + 1,paging.offset]); sendPage(res,rows,paging); } catch (err) { dbError(res,err); } });
+app.put('/api/admin/users/:user_id/status', auth, adminOnly, async (req,res) => { const { status } = req.body || {}; if (!validId(req.params.user_id) || !['active','suspended','rejected'].includes(status)) return bad(res,'Invalid user status'); try { const result = await db("UPDATE users SET status=?,verified_by=?,verified_at=UTC_TIMESTAMP() WHERE user_id=? AND role='member'",[status,req.user.user_id,req.params.user_id]); if (!result.affectedRows) return notFound(res,'Member not found'); res.json({success:true,status}); } catch(err) { dbError(res,err); } });
+app.get('/api/admin/listings', auth, adminOnly, async (req,res) => { const status = req.query.status || 'pending_review'; if (!['pending_review','changes_requested','rejected','available','reserved','sold','hidden','all'].includes(status)) return bad(res,'Invalid listing status'); const paging=getPaging(req,res); if(!paging)return; try { const rows=await db(`SELECT p.*,u.display_name AS seller_name,c.name AS category_name FROM products p JOIN users u ON u.user_id=p.seller_id LEFT JOIN categories c ON c.category_id=p.category_id${status==='all'?'':' WHERE p.status=?'} ORDER BY p.created_at LIMIT ? OFFSET ?`,[...(status==='all'?[]:[status]),paging.limit+1,paging.offset]);sendPage(res,rows,paging);}catch(err){dbError(res,err);} });
+app.put('/api/admin/listings/:product_id/review', auth, adminOnly, async (req,res) => { const b=req.body||{}; const map={approve:'available',changes_requested:'changes_requested',reject:'rejected'}; if(!validId(req.params.product_id)||!map[b.action]||!validText(b.review_note ?? b.reviewNote,5000,b.action!=='approve')||(b.action==='reject'&&!['prohibited_item','misleading','poor_photos','duplicate','other'].includes(b.reject_reason ?? b.rejectReason)))return bad(res,'Invalid review'); try {const result=await db("UPDATE products SET status=?,review_note=?,reject_reason=?,reviewed_by=?,reviewed_at=UTC_TIMESTAMP() WHERE product_id=? AND status='pending_review'",[map[b.action],(b.review_note ?? b.reviewNote)?.trim()||null,b.action==='reject'?(b.reject_reason ?? b.rejectReason):null,req.user.user_id,req.params.product_id]);if(!result.affectedRows)return res.status(409).json({success:false,message:'Listing is not awaiting review'});res.json({success:true,status:map[b.action]});}catch(err){dbError(res,err);} });
+app.get('/api/admin/reports', auth, adminOnly, async (req,res) => { const paging=getPaging(req,res);if(!paging)return;try{const rows=await db('SELECT r.*,u.display_name AS reporter_name,o.product_id,p.title AS product_title FROM reports r JOIN users u ON u.user_id=r.reporter_id LEFT JOIN orders o ON o.order_id=r.order_id LEFT JOIN products p ON p.product_id=o.product_id ORDER BY r.created_at DESC LIMIT ? OFFSET ?',[paging.limit+1,paging.offset]);sendPage(res,rows,paging);}catch(err){dbError(res,err);}});
+app.put('/api/admin/reports/:report_id', auth, adminOnly, async (req,res) => { const b=req.body||{};if(!validId(req.params.report_id)||!['reviewing','resolved','rejected'].includes(b.status)||!validText(b.admin_note ?? b.adminNote,5000))return bad(res,'Invalid report resolution');try{await transaction(async query=>{const reports=await query('SELECT order_id FROM reports WHERE report_id=? FOR UPDATE',[req.params.report_id]);if(!reports.length)throw Object.assign(new Error('Report not found'),{status:404});await query(`UPDATE reports SET status=?,reviewed_by=?,admin_note=?,resolved_at=${b.status==='reviewing'?'NULL':'UTC_TIMESTAMP()'} WHERE report_id=?`,[b.status,req.user.user_id,(b.admin_note ?? b.adminNote)?.trim()||null,req.params.report_id]);if(b.hide_product===true&&reports[0].order_id)await query("UPDATE products p JOIN orders o ON o.product_id=p.product_id SET p.status='hidden' WHERE o.order_id=?",[reports[0].order_id]);});res.json({success:true,status:b.status});}catch(err){err.status?res.status(err.status).json({success:false,message:err.message}):dbError(res,err);}});
+
+app.get('/api/admin/categories', auth, adminOnly, async (_req, res) => {
+    try {
+        const rows = await db(`SELECT c.category_id,c.name,c.emoji,c.is_active,c.created_at,
+            COUNT(p.product_id) AS product_count FROM categories c
+            LEFT JOIN products p ON p.category_id=c.category_id GROUP BY c.category_id ORDER BY c.name`);
+        res.json({ success: true, data: rows });
+    } catch (err) { dbError(res, err); }
+});
+app.post('/api/admin/categories', auth, adminOnly, async (req, res) => {
+    const { name, emoji = '🏷️', is_active = true } = req.body || {};
+    if (!validText(name, 100, true) || !validText(emoji, 16, true) || typeof is_active !== 'boolean') return bad(res, 'Invalid category');
+    try { const result = await db('INSERT INTO categories (name,emoji,is_active) VALUES (?,?,?)', [name.trim(), emoji.trim(), is_active]); res.status(201).json({ success: true, category_id: result.insertId }); } catch (err) { dbError(res, err); }
+});
+app.put('/api/admin/categories/:category_id', auth, adminOnly, async (req, res) => {
+    const { name, emoji, is_active } = req.body || {};
+    if (!validId(req.params.category_id) || !validText(name, 100, true) || !validText(emoji, 16, true) || typeof is_active !== 'boolean') return bad(res, 'Invalid category');
+    try { const result = await db('UPDATE categories SET name=?,emoji=?,is_active=? WHERE category_id=?', [name.trim(), emoji.trim(), is_active, req.params.category_id]); if (!result.affectedRows) return notFound(res, 'Category not found'); res.json({ success: true, message: 'Category updated' }); } catch (err) { dbError(res, err); }
+});
+
+app.get('/api/admin/locations', auth, adminOnly, async (req, res) => {
+    if (req.query.zone && !zones.includes(req.query.zone)) return bad(res, 'Invalid zone');
+    try { const rows = await db(`SELECT location_id,zone,name,is_active,created_at FROM locations${req.query.zone ? ' WHERE zone=?' : ''} ORDER BY zone,name`, req.query.zone ? [req.query.zone] : []); res.json({ success: true, data: rows }); } catch (err) { dbError(res, err); }
+});
+app.post('/api/admin/locations', auth, adminOnly, async (req, res) => {
+    const { name, zone } = req.body || {}; if (!validText(name, 150, true) || !zones.includes(zone)) return bad(res, 'Invalid location');
+    try { const result = await db('INSERT INTO locations (name,zone) VALUES (?,?)', [name.trim(), zone]); res.status(201).json({ success: true, location_id: result.insertId }); } catch (err) { dbError(res, err); }
+});
+app.put('/api/admin/locations/:location_id', auth, adminOnly, async (req, res) => {
+    const { name, is_active } = req.body || {}; if (!validId(req.params.location_id) || !validText(name, 150, true) || typeof is_active !== 'boolean') return bad(res, 'Invalid location');
+    try { const result = await db('UPDATE locations SET name=?,is_active=? WHERE location_id=?', [name.trim(), is_active, req.params.location_id]); if (!result.affectedRows) return notFound(res, 'Location not found'); res.json({ success: true, message: 'Location updated' }); } catch (err) { dbError(res, err); }
+});
+app.get('/api/admin/location-requests', auth, adminOnly, async (req, res) => {
+    const status = req.query.status; if (status && !['pending','reviewing','approved','merged','rejected'].includes(status)) return bad(res, 'Invalid status');
+    const paging = getPaging(req, res); if (!paging) return;
+    try { const rows = await db(`SELECT r.*,u.display_name AS requester_name,u.username FROM location_requests r JOIN users u ON u.user_id=r.user_id${status ? ' WHERE r.status=?' : ''} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`, [...(status ? [status] : []), paging.limit + 1, paging.offset]); sendPage(res, rows, paging); } catch (err) { dbError(res, err); }
+});
+app.put('/api/admin/location-requests/:request_id/review', auth, adminOnly, async (req, res) => {
+    const { action, merge_into_location_id } = req.body || {};
+    if (!validId(req.params.request_id) || !['reviewing','approve','merge','reject'].includes(action) || (action === 'merge' && !validId(merge_into_location_id))) return bad(res, 'Invalid location review');
+    try {
+        const result = await transaction(async query => {
+            const requests = await query("SELECT * FROM location_requests WHERE request_id=? AND status IN ('pending','reviewing') FOR UPDATE", [req.params.request_id]);
+            if (!requests.length) throw Object.assign(new Error('Location request is not open'), { status: 409 });
+            const request = requests[0];
+            if (action === 'reviewing') { await query("UPDATE location_requests SET status='reviewing',handled_by=? WHERE request_id=?", [req.user.user_id, request.request_id]); return { status: 'reviewing' }; }
+            if (action === 'reject') { await query("UPDATE location_requests SET status='rejected',handled_by=?,resolved_at=UTC_TIMESTAMP() WHERE request_id=?", [req.user.user_id, request.request_id]); return { status: 'rejected' }; }
+            let locationId;
+            if (action === 'approve') {
+                const inserted = await query('INSERT INTO locations (name,zone) VALUES (?,?)', [request.name, request.zone]);
+                locationId = inserted.insertId;
+                await query("UPDATE location_requests SET status='approved',approved_location_id=?,handled_by=?,resolved_at=UTC_TIMESTAMP() WHERE request_id=?", [locationId,req.user.user_id,request.request_id]);
+            } else {
+                const locations = await query('SELECT location_id FROM locations WHERE location_id=? AND zone=? AND is_active=1', [merge_into_location_id,request.zone]);
+                if (!locations.length) throw Object.assign(new Error('Merge target is unavailable'), { status: 400 });
+                locationId = locations[0].location_id;
+                await query("UPDATE location_requests SET status='merged',merged_into_location_id=?,handled_by=?,resolved_at=UTC_TIMESTAMP() WHERE request_id=?", [locationId,req.user.user_id,request.request_id]);
+            }
+            await query('UPDATE users SET residence_zone=?,residence_location_id=? WHERE user_id=?', [request.zone,locationId,request.user_id]);
+            return { status: action === 'approve' ? 'approved' : 'merged', location_id: locationId };
+        });
+        res.json({ success: true, ...result });
+    } catch (err) { err.status ? res.status(err.status).json({ success: false, message: err.message }) : dbError(res, err); }
+});
+
+// Development data is opt-in and never overwrites a database that already has users.
+// It makes the two dashboards and the main marketplace flow testable immediately.
+app.post('/api/dev/seed', async (_req, res) => {
+    if (process.env.NODE_ENV === 'production') return notFound(res, 'API endpoint not found');
+    try {
+        const result = await transaction(async query => {
+            const existing = await query('SELECT COUNT(*) AS total FROM users');
+            if (existing[0].total) throw Object.assign(new Error('Database already has users; seed was not applied'), { status: 409 });
+            const locations = await query("SELECT location_id,zone,name FROM locations WHERE is_active=1 ORDER BY location_id LIMIT 2");
+            const categories = await query('SELECT category_id,name FROM categories WHERE is_active=1 ORDER BY category_id LIMIT 1');
+            if (locations.length < 2 || !categories.length) throw Object.assign(new Error('Seed requires active locations and categories'), { status: 409 });
+            const hash = argon2.hashSync('Demo12345!');
+            const admin = await query("INSERT INTO users (student_id,username,email,password_hash,display_name,residence_zone,residence_location_id,role,status) VALUES ('0000000001','admin_demo','admin@unisw.ap',?,'Admin Demo',? ,?,'admin','active')", [hash,locations[0].zone,locations[0].location_id]);
+            const maya = await query("INSERT INTO users (student_id,username,email,password_hash,display_name,residence_zone,residence_location_id,role,status) VALUES ('0000000002','maya_demo','maya@unisw.ap',?,'Maya Demo',? ,?,'member','active')", [hash,locations[0].zone,locations[0].location_id]);
+            const niran = await query("INSERT INTO users (student_id,username,email,password_hash,display_name,residence_zone,residence_location_id,role,status) VALUES ('0000000003','niran_demo','niran@unisw.ap',?,'Niran Demo',? ,?,'member','active')", [hash,locations[1].zone,locations[1].location_id]);
+            const p = (seller, title, price, status, location) => query('INSERT INTO products (seller_id,title,description,category,category_id,price,zone,location_name,location_id,status) VALUES (?,?,?,?,?,?,?,?,?,?)', [seller,title,`${title} for dashboard testing`,categories[0].name,categories[0].category_id,price,location.zone,location.name,location.location_id,status]);
+            const pending = await p(maya.insertId, 'Study desk (pending)', 450, 'pending_review', locations[0]);
+            await p(maya.insertId, 'Lamp (needs changes)', 120, 'changes_requested', locations[0]);
+            await p(niran.insertId, 'Campus bicycle', 950, 'available', locations[1]);
+            const orderedProduct = await p(niran.insertId, 'Textbook bundle', 300, 'reserved', locations[1]);
+            const order = await query("INSERT INTO orders (product_id,buyer_id,seller_id,seller_price,total_amount,seller_payout,status,meetup_location,meetup_datetime) VALUES (?,?,?,?,?,?, 'ready_for_meetup', ?, DATE_ADD(UTC_TIMESTAMP(),INTERVAL 1 DAY))", [orderedProduct.insertId,maya.insertId,niran.insertId,300,300,300,locations[0].name]);
+            await query("INSERT INTO payments (order_id,payment_method,amount,payment_status,seller_transfer_status,paid_at) VALUES (?,'gateway',300,'paid','held',UTC_TIMESTAMP())", [order.insertId]);
+            await query("INSERT INTO reports (reporter_id,order_id,report_type,reason,status) VALUES (?,?,'product_problem','Demo report awaiting review','pending')", [maya.insertId,order.insertId]);
+            await query("INSERT INTO location_requests (user_id,name,zone,reason,status) VALUES (?,?,?,'Demo location request','pending')", [maya.insertId,'Demo Residence',locations[0].zone]);
+            return { admin: admin.insertId, maya: maya.insertId, niran: niran.insertId, pending_product: pending.insertId, order: order.insertId };
+        });
+        res.status(201).json({ success: true, message: 'Demo data created', credentials: { admin: 'admin@unisw.ap / Demo12345!', member: 'maya@unisw.ap / Demo12345!' }, data: result });
+    } catch (err) { err.status ? res.status(err.status).json({ success: false, message: err.message }) : dbError(res, err); }
+});
+
+app.use((err,_req,res,_next)=>err instanceof SyntaxError&&'body'in err?bad(res,'Invalid JSON body'):dbError(res,err));
+app.use((_req,res)=>res.status(404).json({success:false,message:'API endpoint not found'}));
+
+function startServer() {
+    const server = app.listen(PORT, '0.0.0.0', () => {
+        console.log(`UniSwap API running at http://localhost:${PORT}`);
+        console.log('Press Ctrl+C to stop the API.');
+    });
+    server.on('error', err => {
+        if (err.code === 'EADDRINUSE') console.error(`Port ${PORT} is already in use. Stop the other Node server or run: $env:PORT=3001; npm start`);
+        else console.error('Unable to start API:', err);
+        process.exitCode = 1;
+    });
+    return server;
 }
 
-// ---------- Health ----------
-app.get('/api/health', (req, res) => {
-    con.query('SELECT 1 AS ok', (err, result) => {
-        if (err) return queryError(res, err);
-        res.json({ success: true, message: 'API is running', database: result[0].ok });
-    });
-});
-
-// ---------- Authentication ----------
-app.post('/api/register', (req, res) => {
-    const { university_id, student_id, email, password, display_name } = req.body;
-
-    if (!university_id || !student_id || !email || !password || !display_name) {
-        return res.status(400).json({ success: false, message: 'Missing required fields' });
-    }
-    if (!/^[0-9]{10}$/.test(String(student_id))) {
-        return res.status(400).json({ success: false, message: 'student_id must be 10 digits' });
-    }
-    if (String(password).length < 8) {
-        return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
-    }
-
-    const cleanEmail = String(email).trim().toLowerCase();
-    if (cleanEmail.length > 254 || !/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(cleanEmail)) {
-        return res.status(400).json({ success: false, message: 'Invalid email format' });
-    }
-    const cleanName = String(display_name).trim();
-    if (!cleanName) {
-        return res.status(400).json({ success: false, message: 'display_name must not be blank' });
-    }
-    const hash = argon2.hashSync(String(password));
-
-    const universitySql = 'SELECT university_id FROM universities WHERE university_id = ? AND is_active = 1';
-    con.query(universitySql, [university_id], (err, universityResult) => {
-        if (err) return queryError(res, err);
-        if (universityResult.length === 0) {
-            return res.status(400).json({ success: false, message: 'Invalid university_id' });
-        }
-
-        const sql = `INSERT INTO users
-            (university_id, student_id, email, password_hash, display_name, role, status)
-            VALUES (?, ?, ?, ?, ?, 'member', 'pending_verification')`;
-        con.query(sql, [university_id, student_id, cleanEmail, hash, cleanName], (err, result) => {
-            if (err) {
-                if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ success: false, message: 'Email or student ID already exists' });
-                return queryError(res, err);
-            }
-
-            // Demo behavior: account remains pending until email verification is implemented.
-            res.status(201).json({
-                success: true,
-                message: 'Registered. Email verification is required before login.',
-                user_id: result.insertId,
-                status: 'pending_verification'
-            });
-        });
-    });
-});
-
-// Development-only verification endpoint. Replace with emailed one-time token in production.
-app.post('/api/dev/verify-user/:user_id', (req, res) => {
-    if (!isPositiveId(req.params.user_id)) return res.status(400).json({ success: false, message: 'Invalid user_id' });
-
-    con.query(
-        `UPDATE users SET status = 'active', email_verified_at = UTC_TIMESTAMP(3)
-         WHERE user_id = ? AND status = 'pending_verification'`,
-        [req.params.user_id],
-        (err, result) => {
-            if (err) return queryError(res, err);
-            if (result.affectedRows === 0) return res.status(404).json({ success: false, message: 'Pending user not found' });
-            res.json({ success: true, message: 'User verified (development only)' });
-        }
-    );
-});
-
-app.post('/api/login', (req, res) => {
-    const { email, password } = req.body;
-    if (!email || !password) {
-        return res.status(400).json({ success: false, message: 'Email and password are required' });
-    }
-
-    const sql = 'SELECT user_id, email, password_hash, display_name, role, status, email_verified_at FROM users WHERE email = ?';
-    con.query(sql, [String(email).trim().toLowerCase()], (err, result) => {
-        if (err) return queryError(res, err);
-        if (result.length === 0) return res.status(401).json({ success: false, message: 'Invalid email or password' });
-
-        const user = result[0];
-        let samePassword = false;
-        try {
-            samePassword = argon2.verifySync(user.password_hash, String(password));
-        } catch (e) {
-            console.error(e);
-            return res.status(500).json({ success: false, message: 'Password verification error' });
-        }
-
-        if (!samePassword) return res.status(401).json({ success: false, message: 'Invalid email or password' });
-        if (user.status !== 'active' || !user.email_verified_at) {
-            return res.status(403).json({ success: false, message: 'Account is not active or email is not verified' });
-        }
-
-        const payload = { user_id: user.user_id, email: user.email, role: user.role };
-        const token = jwt.sign(payload, JWT_KEY, { expiresIn: '1d' });
-
-        res.json({
-            success: true,
-            message: 'Login successful',
-            token,
-            user: {
-                user_id: user.user_id,
-                email: user.email,
-                display_name: user.display_name,
-                role: user.role
-            }
-        });
-    });
-});
-
-// ---------- User profile ----------
-app.get('/api/profile', auth, (req, res) => {
-    con.query(
-        `SELECT user_id, university_id, student_id, email, display_name, avatar_storage_key, role, status, created_at
-         FROM users WHERE user_id = ?`,
-        [req.user.user_id],
-        (err, result) => {
-            if (err) return queryError(res, err);
-            if (result.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
-            res.json({ success: true, data: result[0] });
-        }
-    );
-});
-
-app.put('/api/profile', auth, (req, res) => {
-    const { display_name, avatar_storage_key } = req.body;
-    if (!display_name || !String(display_name).trim()) {
-        return res.status(400).json({ success: false, message: 'display_name is required' });
-    }
-
-    con.query(
-        'UPDATE users SET display_name = ?, avatar_storage_key = ? WHERE user_id = ? AND status = ?',
-        [String(display_name).trim(), avatar_storage_key || null, req.user.user_id, 'active'],
-        (err, result) => {
-            if (err) return queryError(res, err);
-            if (result.affectedRows === 0) return res.status(404).json({ success: false, message: 'User not found' });
-            res.json({ success: true, message: 'Profile updated' });
-        }
-    );
-});
-
-// ---------- Categories ----------
-app.get('/api/categories', (req, res) => {
-    con.query('SELECT category_id, name FROM categories WHERE is_active = 1 ORDER BY category_id', (err, result) => {
-        if (err) return queryError(res, err);
-        res.json({ success: true, data: result });
-    });
-});
-
-// ---------- Products ----------
-app.get('/api/products', (req, res) => {
-    const { keyword, category_id, min_price, max_price, sort } = req.query;
-    let sql = `SELECT p.product_id, p.seller_id, u.display_name AS seller_name,
-                      p.category_id, c.name AS category_name, p.title, p.description,
-                      p.price, p.item_condition, p.visibility, p.clearance_deadline,
-                      p.is_urgent, p.created_at
-               FROM products p
-               JOIN users u ON p.seller_id = u.user_id
-               JOIN categories c ON p.category_id = c.category_id
-               WHERE p.visibility = 'active'`;
-    const values = [];
-
-    if (keyword) {
-        sql += ' AND (p.title LIKE ? OR p.description LIKE ?)';
-        values.push('%' + keyword + '%', '%' + keyword + '%');
-    }
-    if (category_id) {
-        if (!isPositiveId(category_id)) return res.status(400).json({ success: false, message: 'Invalid category_id' });
-        sql += ' AND p.category_id = ?';
-        values.push(category_id);
-    }
-    if (min_price !== undefined) {
-        if (isNaN(Number(min_price)) || Number(min_price) < 0) return res.status(400).json({ success: false, message: 'Invalid min_price' });
-        sql += ' AND p.price >= ?';
-        values.push(Number(min_price));
-    }
-    if (max_price !== undefined) {
-        if (isNaN(Number(max_price)) || Number(max_price) < 0) return res.status(400).json({ success: false, message: 'Invalid max_price' });
-        sql += ' AND p.price <= ?';
-        values.push(Number(max_price));
-    }
-
-    if (sort === 'price_asc') sql += ' ORDER BY p.price ASC';
-    else if (sort === 'price_desc') sql += ' ORDER BY p.price DESC';
-    else if (sort === 'urgent') sql += ' ORDER BY p.is_urgent DESC, p.created_at DESC';
-    else sql += ' ORDER BY p.created_at DESC';
-
-    con.query(sql, values, (err, result) => {
-        if (err) return queryError(res, err);
-        res.json({ success: true, count: result.length, data: result });
-    });
-});
-
-app.get('/api/products/:product_id', (req, res) => {
-    if (!isPositiveId(req.params.product_id)) return res.status(400).json({ success: false, message: 'Invalid product_id' });
-
-    const sql = `SELECT p.*, u.display_name AS seller_name, c.name AS category_name
-                 FROM products p
-                 JOIN users u ON p.seller_id = u.user_id
-                 JOIN categories c ON p.category_id = c.category_id
-                 WHERE p.product_id = ? AND p.visibility = 'active'`;
-    con.query(sql, [req.params.product_id], (err, result) => {
-        if (err) return queryError(res, err);
-        if (result.length === 0) return res.status(404).json({ success: false, message: 'Product not found' });
-
-        con.query('SELECT image_id, storage_key, sort_order FROM product_images WHERE product_id = ? ORDER BY sort_order', [req.params.product_id], (err, images) => {
-            if (err) return queryError(res, err);
-            res.json({ success: true, data: result[0], images });
-        });
-    });
-});
-
-app.post('/api/products', auth, (req, res) => {
-    const { category_id, title, description, price, item_condition, clearance_deadline, is_urgent } = req.body;
-    const allowed = ['new', 'like_new', 'good', 'fair'];
-
-    if (!category_id || !title || !description || price === undefined || !item_condition) {
-        return res.status(400).json({ success: false, message: 'Missing required fields' });
-    }
-    if (!isPositiveId(category_id) || Number(price) <= 0 || isNaN(Number(price)) || !allowed.includes(item_condition)) {
-        return res.status(400).json({ success: false, message: 'Invalid category, price or item_condition' });
-    }
-
-    const cleanTitle = String(title).trim();
-    if (!cleanTitle) {
-        return res.status(400).json({ success: false, message: 'title must not be blank' });
-    }
-
-    const sql = `INSERT INTO products
-        (seller_id, category_id, title, description, price, item_condition, clearance_deadline, is_urgent)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
-    con.query(sql, [
-        req.user.user_id, category_id, cleanTitle, description,
-        Number(price), item_condition, clearance_deadline || null, is_urgent ? 1 : 0
-    ], (err, result) => {
-        if (err) {
-            if (err.code === 'ER_NO_REFERENCED_ROW_2') return res.status(400).json({ success: false, message: 'Category not found' });
-            return queryError(res, err);
-        }
-        res.status(201).json({ success: true, message: 'Product created', product_id: result.insertId });
-    });
-});
-
-app.put('/api/products/:product_id', auth, (req, res) => {
-    const { category_id, title, description, price, item_condition, visibility, clearance_deadline, is_urgent } = req.body;
-    const allowedCondition = ['new', 'like_new', 'good', 'fair'];
-    const allowedVisibility = ['active', 'hidden', 'removed'];
-
-    if (!isPositiveId(req.params.product_id)) return res.status(400).json({ success: false, message: 'Invalid product_id' });
-    if (!isPositiveId(category_id) || !title || !description || price === undefined || !allowedCondition.includes(item_condition) || !allowedVisibility.includes(visibility)) {
-        return res.status(400).json({ success: false, message: 'Invalid or missing product fields' });
-    }
-    if (Number(price) <= 0 || isNaN(Number(price))) return res.status(400).json({ success: false, message: 'Price must be greater than 0' });
-    const cleanTitle = String(title).trim();
-    if (!cleanTitle) return res.status(400).json({ success: false, message: 'title must not be blank' });
-
-    const sql = `UPDATE products SET category_id=?, title=?, description=?, price=?,
-                 item_condition=?, visibility=?, clearance_deadline=?, is_urgent=?
-                 WHERE product_id=? AND seller_id=?`;
-    con.query(sql, [
-        category_id, cleanTitle, description, Number(price), item_condition,
-        visibility, clearance_deadline || null, is_urgent ? 1 : 0,
-        req.params.product_id, req.user.user_id
-    ], (err, result) => {
-        if (err) {
-            if (err.code === 'ER_NO_REFERENCED_ROW_2') return res.status(400).json({ success: false, message: 'Category not found' });
-            return queryError(res, err);
-        }
-        if (result.affectedRows === 0) return res.status(404).json({ success: false, message: 'Product not found or not owned by you' });
-        res.json({ success: true, message: 'Product updated' });
-    });
-});
-
-app.delete('/api/products/:product_id', auth, (req, res) => {
-    if (!isPositiveId(req.params.product_id)) return res.status(400).json({ success: false, message: 'Invalid product_id' });
-    con.query(
-        `UPDATE products SET visibility = 'removed' WHERE product_id = ? AND seller_id = ?`,
-        [req.params.product_id, req.user.user_id],
-        (err, result) => {
-            if (err) return queryError(res, err);
-            if (result.affectedRows === 0) return res.status(404).json({ success: false, message: 'Product not found or not owned by you' });
-            res.json({ success: true, message: 'Product removed' });
-        }
-    );
-});
-
-// Product images store storage keys only; actual upload/storage is a separate implementation.
-app.post('/api/products/:product_id/images', auth, (req, res) => {
-    const { storage_key, sort_order } = req.body;
-    if (!storage_key) return res.status(400).json({ success: false, message: 'storage_key is required' });
-
-    const hasOrder = sort_order !== undefined && sort_order !== null && sort_order !== '';
-    if (hasOrder && (!Number.isInteger(Number(sort_order)) || Number(sort_order) < 0 || Number(sort_order) > 65535)) {
-        return res.status(400).json({ success: false, message: 'sort_order must be an integer between 0 and 65535' });
-    }
-
-    con.query('SELECT product_id FROM products WHERE product_id = ? AND seller_id = ?', [req.params.product_id, req.user.user_id], (err, rows) => {
-        if (err) return queryError(res, err);
-        if (rows.length === 0) return res.status(404).json({ success: false, message: 'Product not found or not owned by you' });
-
-        // product_images has UNIQUE (product_id, sort_order), so when the client sends no
-        // sort_order, append after the current last image instead of always using 0.
-        con.query('SELECT COALESCE(MAX(sort_order) + 1, 0) AS next_order FROM product_images WHERE product_id = ?', [req.params.product_id], (err, next) => {
-            if (err) return queryError(res, err);
-            const order = hasOrder ? Number(sort_order) : Number(next[0].next_order);
-
-            con.query(
-                'INSERT INTO product_images (product_id, storage_key, sort_order) VALUES (?, ?, ?)',
-                [req.params.product_id, storage_key, order],
-                (err, result) => {
-                    if (err) {
-                        if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ success: false, message: 'sort_order already used for this product' });
-                        return queryError(res, err);
-                    }
-                    res.status(201).json({ success: true, image_id: result.insertId });
-                }
-            );
-        });
-    });
-});
-
-app.delete('/api/product-images/:image_id', auth, (req, res) => {
-    const sql = `DELETE pi FROM product_images pi
-                 JOIN products p ON pi.product_id = p.product_id
-                 WHERE pi.image_id = ? AND p.seller_id = ?`;
-    con.query(sql, [req.params.image_id, req.user.user_id], (err, result) => {
-        if (err) return queryError(res, err);
-        if (result.affectedRows === 0) return res.status(404).json({ success: false, message: 'Image not found or not owned by you' });
-        res.json({ success: true, message: 'Image deleted' });
-    });
-});
-
-// ---------- Conversations and messages ----------
-app.post('/api/conversations', auth, (req, res) => {
-    const { product_id } = req.body;
-    if (!isPositiveId(product_id)) return res.status(400).json({ success: false, message: 'Valid product_id is required' });
-
-    con.query(`SELECT product_id, seller_id FROM products WHERE product_id = ? AND visibility = 'active'`, [product_id], (err, products) => {
-        if (err) return queryError(res, err);
-        if (products.length === 0) return res.status(404).json({ success: false, message: 'Product not found' });
-        if (Number(products[0].seller_id) === Number(req.user.user_id)) return res.status(400).json({ success: false, message: 'Seller cannot start a buyer conversation with own product' });
-
-        con.query(
-            'INSERT INTO conversations (product_id, buyer_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE conversation_id = LAST_INSERT_ID(conversation_id)',
-            [product_id, req.user.user_id],
-            (err, result) => {
-                if (err) return queryError(res, err);
-                res.status(201).json({ success: true, conversation_id: result.insertId });
-            }
-        );
-    });
-});
-
-app.get('/api/conversations', auth, (req, res) => {
-    const sql = `SELECT DISTINCT c.conversation_id, c.product_id, c.buyer_id, p.title
-                 FROM conversations c
-                 JOIN products p ON c.product_id = p.product_id
-                 LEFT JOIN messages m ON m.conversation_id = c.conversation_id
-                 WHERE c.buyer_id = ? OR p.seller_id = ?
-                 ORDER BY c.created_at DESC`;
-    con.query(sql, [req.user.user_id, req.user.user_id], (err, result) => {
-        if (err) return queryError(res, err);
-        res.json({ success: true, data: result });
-    });
-});
-
-app.get('/api/conversations/:conversation_id/messages', auth, (req, res) => {
-    const accessSql = `SELECT c.conversation_id FROM conversations c
-                       JOIN products p ON c.product_id = p.product_id
-                       WHERE c.conversation_id = ? AND (c.buyer_id = ? OR p.seller_id = ?)`;
-    con.query(accessSql, [req.params.conversation_id, req.user.user_id, req.user.user_id], (err, access) => {
-        if (err) return queryError(res, err);
-        if (access.length === 0) return res.status(403).json({ success: false, message: 'Conversation access denied' });
-
-        const sql = `SELECT message_id, conversation_id, sender_id, body, read_at, created_at
-                     FROM messages WHERE conversation_id = ? AND deleted_at IS NULL
-                     ORDER BY created_at, message_id`;
-        con.query(sql, [req.params.conversation_id], (err, result) => {
-            if (err) return queryError(res, err);
-            res.json({ success: true, data: result });
-        });
-    });
-});
-
-app.post('/api/conversations/:conversation_id/messages', auth, (req, res) => {
-    const { body } = req.body;
-    if (!body || !String(body).trim()) return res.status(400).json({ success: false, message: 'Message body is required' });
-
-    const accessSql = `SELECT c.conversation_id FROM conversations c
-                       JOIN products p ON c.product_id = p.product_id
-                       WHERE c.conversation_id = ? AND (c.buyer_id = ? OR p.seller_id = ?)`;
-    con.query(accessSql, [req.params.conversation_id, req.user.user_id, req.user.user_id], (err, access) => {
-        if (err) return queryError(res, err);
-        if (access.length === 0) return res.status(403).json({ success: false, message: 'Conversation access denied' });
-
-        con.query(
-            'INSERT INTO messages (conversation_id, sender_id, body) VALUES (?, ?, ?)',
-            [req.params.conversation_id, req.user.user_id, String(body).trim()],
-            (err, result) => {
-                if (err) return queryError(res, err);
-                res.status(201).json({ success: true, message_id: result.insertId });
-            }
-        );
-    });
-});
-
-// ---------- Orders (safe basic claim; payment workflow intentionally not implemented here) ----------
-app.post('/api/orders', auth, (req, res) => {
-    const { product_id, platform_bank_account_id } = req.body;
-    if (!isPositiveId(product_id) || !isPositiveId(platform_bank_account_id)) {
-        return res.status(400).json({ success: false, message: 'product_id and platform_bank_account_id are required' });
-    }
-
-    // A transaction needs its own connection from the pool. If requests shared one
-    // connection they would run inside the same transaction and could roll each other back.
-    con.getConnection((err, conn) => {
-        if (err) return queryError(res, err);
-
-        // Always hand the connection back, whichever way the request ends.
-        const finish = (send) => { conn.release(); send(); };
-        const abort = (send) => conn.rollback(() => finish(send));
-
-        conn.beginTransaction((err) => {
-            if (err) return finish(() => queryError(res, err));
-
-            const productSql = `SELECT p.product_id, p.seller_id, p.title, p.price
-                                FROM products p WHERE p.product_id = ? AND p.visibility = 'active' FOR UPDATE`;
-            conn.query(productSql, [product_id], (err, products) => {
-                if (err) return abort(() => queryError(res, err));
-                if (products.length === 0) return abort(() => res.status(404).json({ success: false, message: 'Product not available' }));
-
-                const p = products[0];
-                if (Number(p.seller_id) === Number(req.user.user_id)) {
-                    return abort(() => res.status(400).json({ success: false, message: 'Cannot buy your own product' }));
-                }
-
-                conn.query('SELECT platform_bank_account_id FROM platform_bank_accounts WHERE platform_bank_account_id = ? AND is_active = 1', [platform_bank_account_id], (err, banks) => {
-                    if (err) return abort(() => queryError(res, err));
-                    if (banks.length === 0) return abort(() => res.status(400).json({ success: false, message: 'Platform bank account not found or inactive' }));
-
-                    const insertSql = `INSERT INTO orders
-                        (product_id, buyer_id, platform_bank_account_id, product_title_snapshot,
-                         total_amount, receiving_bank_name_snapshot, receiving_bank_number_snapshot,
-                         receiving_bank_holder_snapshot, payment_due_at)
-                        SELECT ?, ?, ?, ?, ?, bank_name, account_number, account_holder_name,
-                               DATE_ADD(UTC_TIMESTAMP(3), INTERVAL 30 MINUTE)
-                        FROM platform_bank_accounts WHERE platform_bank_account_id = ?`;
-                    conn.query(insertSql, [product_id, req.user.user_id, platform_bank_account_id, p.title, p.price, platform_bank_account_id], (err, result) => {
-                        if (err) {
-                            return abort(() => {
-                                if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ success: false, message: 'Product already has an active order' });
-                                queryError(res, err);
-                            });
-                        }
-
-                        conn.query(
-                            `INSERT INTO order_status_history (order_id, actor_id, from_status, to_status, reason)
-                             VALUES (?, ?, NULL, 'awaiting_payment', 'Order created')`,
-                            [result.insertId, req.user.user_id],
-                            (err) => {
-                                if (err) return abort(() => queryError(res, err));
-                                conn.commit((err) => {
-                                    if (err) return abort(() => queryError(res, err));
-                                    finish(() => res.status(201).json({ success: true, message: 'Order created; payment workflow must be completed separately', order_id: result.insertId }));
-                                });
-                            }
-                        );
-                    });
-                });
-            });
-        });
-    });
-});
-
-app.get('/api/orders', auth, (req, res) => {
-    const sql = `SELECT order_id, product_id, product_title_snapshot, total_amount, status,
-                        payment_due_at, buyer_received_at, created_at
-                 FROM orders WHERE buyer_id = ? ORDER BY created_at DESC`;
-    con.query(sql, [req.user.user_id], (err, result) => {
-        if (err) return queryError(res, err);
-        res.json({ success: true, data: result });
-    });
-});
-
-app.get('/api/orders/:order_id', auth, (req, res) => {
-    const sql = `SELECT o.* FROM orders o
-                 JOIN products p ON o.product_id = p.product_id
-                 WHERE o.order_id = ? AND (o.buyer_id = ? OR p.seller_id = ?)`;
-    con.query(sql, [req.params.order_id, req.user.user_id, req.user.user_id], (err, result) => {
-        if (err) return queryError(res, err);
-        if (result.length === 0) return res.status(404).json({ success: false, message: 'Order not found' });
-        res.json({ success: true, data: result[0] });
-    });
-});
-
-app.post('/api/orders/:order_id/cancel', auth, (req, res) => {
-    con.getConnection((err, conn) => {
-        if (err) return queryError(res, err);
-
-        const finish = (send) => { conn.release(); send(); };
-        const abort = (send) => conn.rollback(() => finish(send));
-
-        conn.beginTransaction((err) => {
-            if (err) return finish(() => queryError(res, err));
-            conn.query(
-                `SELECT order_id, status FROM orders WHERE order_id = ? AND buyer_id = ? FOR UPDATE`,
-                [req.params.order_id, req.user.user_id],
-                (err, rows) => {
-                    if (err) return abort(() => queryError(res, err));
-                    if (rows.length === 0) return abort(() => res.status(404).json({ success: false, message: 'Order not found' }));
-                    if (!['awaiting_payment', 'slip_submitted'].includes(rows[0].status)) {
-                        return abort(() => res.status(409).json({ success: false, message: 'Order cannot be cancelled in current status' }));
-                    }
-
-                    conn.query(
-                        `UPDATE orders SET status='cancelled', closed_at=UTC_TIMESTAMP(3), close_reason='Cancelled by buyer'
-                         WHERE order_id = ?`,
-                        [req.params.order_id],
-                        (err) => {
-                            if (err) return abort(() => queryError(res, err));
-                            conn.query(
-                                `INSERT INTO order_status_history (order_id, actor_id, from_status, to_status, reason)
-                                 VALUES (?, ?, ?, 'cancelled', 'Cancelled by buyer')`,
-                                [req.params.order_id, req.user.user_id, rows[0].status],
-                                (err) => {
-                                    if (err) return abort(() => queryError(res, err));
-                                    conn.commit((err) => {
-                                        if (err) return abort(() => queryError(res, err));
-                                        finish(() => res.json({ success: true, message: 'Order cancelled' }));
-                                    });
-                                }
-                            );
-                        }
-                    );
-                }
-            );
-        });
-    });
-});
-
-// ---------- Meetups ----------
-app.post('/api/orders/:order_id/meetup', auth, (req, res) => {
-    const { place_name, place_details, scheduled_at } = req.body;
-    if (!place_name || !scheduled_at || isNaN(Date.parse(scheduled_at))) {
-        return res.status(400).json({ success: false, message: 'place_name and valid scheduled_at are required' });
-    }
-
-    const accessSql = `SELECT o.order_id, p.seller_id, o.buyer_id
-                       FROM orders o JOIN products p ON o.product_id = p.product_id
-                       WHERE o.order_id = ? AND (o.buyer_id = ? OR p.seller_id = ?)
-                         AND o.status IN ('payment_held','ready_for_meetup')`;
-    con.query(accessSql, [req.params.order_id, req.user.user_id, req.user.user_id], (err, rows) => {
-        if (err) return queryError(res, err);
-        if (rows.length === 0) return res.status(403).json({ success: false, message: 'Order not accessible or not ready for meetup' });
-
-        con.query(
-            `INSERT INTO meetups (order_id, proposed_by, place_name, place_details, scheduled_at)
-             VALUES (?, ?, ?, ?, ?)`,
-            [req.params.order_id, req.user.user_id, place_name, place_details || null, scheduled_at],
-            (err, result) => {
-                if (err) {
-                    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ success: false, message: 'Meetup already exists for this order' });
-                    return queryError(res, err);
-                }
-                res.status(201).json({ success: true, meetup_id: result.insertId, status: 'proposed' });
-            }
-        );
-    });
-});
-
-app.put('/api/meetups/:meetup_id/confirm', auth, (req, res) => {
-    const sql = `UPDATE meetups m
-                 JOIN orders o ON m.order_id = o.order_id
-                 JOIN products p ON o.product_id = p.product_id
-                 SET m.status='confirmed', m.seller_confirmed_at=UTC_TIMESTAMP(3)
-                 WHERE m.meetup_id = ? AND p.seller_id = ? AND m.status='proposed'`;
-    con.query(sql, [req.params.meetup_id, req.user.user_id], (err, result) => {
-        if (err) return queryError(res, err);
-        if (result.affectedRows === 0) return res.status(404).json({ success: false, message: 'Meetup not found, not yours to confirm, or not proposed' });
-        res.json({ success: true, message: 'Meetup confirmed' });
-    });
-});
-
-// ---------- Reviews ----------
-app.post('/api/reviews', auth, (req, res) => {
-    const { order_id, rating, comment } = req.body;
-    if (!isPositiveId(order_id) || !Number.isInteger(Number(rating)) || Number(rating) < 1 || Number(rating) > 5) {
-        return res.status(400).json({ success: false, message: 'Valid order_id and rating 1-5 are required' });
-    }
-
-    con.query(
-        `SELECT order_id FROM orders WHERE order_id = ? AND buyer_id = ? AND status = 'completed'`,
-        [order_id, req.user.user_id],
-        (err, rows) => {
-            if (err) return queryError(res, err);
-            if (rows.length === 0) return res.status(403).json({ success: false, message: 'Only buyer of completed order can review' });
-
-            con.query(
-                'INSERT INTO reviews (order_id, rating, comment) VALUES (?, ?, ?)',
-                [order_id, Number(rating), comment || null],
-                (err, result) => {
-                    if (err) {
-                        if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ success: false, message: 'Review already exists for this order' });
-                        return queryError(res, err);
-                    }
-                    res.status(201).json({ success: true, review_id: result.insertId });
-                }
-            );
-        }
-    );
-});
-
-app.get('/api/products/:product_id/reviews', (req, res) => {
-    const sql = `SELECT r.review_id, r.order_id, r.rating, r.comment, r.created_at,
-                        o.buyer_id
-                 FROM reviews r JOIN orders o ON r.order_id = o.order_id
-                 WHERE o.product_id = ? AND r.visibility = 'visible'
-                 ORDER BY r.created_at DESC`;
-    con.query(sql, [req.params.product_id], (err, result) => {
-        if (err) return queryError(res, err);
-        res.json({ success: true, data: result });
-    });
-});
-
-// ---------- Reports ----------
-app.post('/api/reports', auth, (req, res) => {
-    const { reported_user_id, reported_product_id, reported_message_id, reported_review_id, reason } = req.body;
-    const targets = [reported_user_id, reported_product_id, reported_message_id, reported_review_id].filter(v => v !== undefined && v !== null && v !== '');
-    if (targets.length !== 1 || !reason || !String(reason).trim()) {
-        return res.status(400).json({ success: false, message: 'Provide exactly one report target and a reason' });
-    }
-    if (!isPositiveId(targets[0])) {
-        return res.status(400).json({ success: false, message: 'Report target id must be a positive integer' });
-    }
-
-    const sql = `INSERT INTO reports
-        (reporter_id, reported_user_id, reported_product_id, reported_message_id, reported_review_id, reason)
-        VALUES (?, ?, ?, ?, ?, ?)`;
-    con.query(sql, [
-        req.user.user_id,
-        reported_user_id || null,
-        reported_product_id || null,
-        reported_message_id || null,
-        reported_review_id || null,
-        String(reason).trim()
-    ], (err, result) => {
-        if (err) {
-            if (err.code === 'ER_NO_REFERENCED_ROW_2') return res.status(400).json({ success: false, message: 'Report target does not exist' });
-            return queryError(res, err);
-        }
-        res.status(201).json({ success: true, report_id: result.insertId, status: 'open' });
-    });
-});
-
-app.get('/api/admin/reports', auth, adminOnly, (req, res) => {
-    con.query('SELECT * FROM reports ORDER BY created_at DESC', (err, result) => {
-        if (err) return queryError(res, err);
-        res.json({ success: true, data: result });
-    });
-});
-
-app.put('/api/admin/reports/:report_id', auth, adminOnly, (req, res) => {
-    const { status, resolution_note } = req.body;
-    const allowed = ['reviewing', 'resolved', 'dismissed'];
-    if (!allowed.includes(status)) return res.status(400).json({ success: false, message: 'Invalid report status' });
-
-    const sql = `UPDATE reports SET status = ?,
-                 resolved_by = CASE WHEN ? IN ('resolved','dismissed') THEN ? ELSE NULL END,
-                 resolved_at = CASE WHEN ? IN ('resolved','dismissed') THEN UTC_TIMESTAMP(3) ELSE NULL END,
-                 resolution_note = ?
-                 WHERE report_id = ?`;
-    con.query(sql, [status, status, req.user.user_id, status, resolution_note || null, req.params.report_id], (err, result) => {
-        if (err) return queryError(res, err);
-        if (result.affectedRows === 0) return res.status(404).json({ success: false, message: 'Report not found' });
-        res.json({ success: true, message: 'Report updated' });
-    });
-});
-
-// ---------- 404 ----------
-app.use((req, res) => {
-    res.status(404).json({ success: false, message: 'API endpoint not found' });
-});
-
-app.listen(PORT, () => {
-    console.log('UniSwap API running at http://localhost:' + PORT);
-});
+if(require.main===module)startServer();
+module.exports=app;

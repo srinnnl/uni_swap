@@ -13,14 +13,35 @@ const _cAmberFg = Color(0xFF8A6410);
 const _cRedBg = Color(0xFFF8DADA);
 const _cRedFg = Color(0xFFB3402F);
 
+// reports.status: fresh = pending, review = reviewing (high ไม่มีใน DB ให้ API คำนวณ เช่น รายงานต่อสินค้า >= 3)
 enum _RStatus { high, fresh, review }
+
+// รายงานผูกกับออเดอร์ (reports.order_id) รวมกลุ่มตามสินค้าของออเดอร์ (orders.product_id)
+const _typeLabels = <String, String>{
+  'product_problem': 'Problem with the item',
+  'seller_problem': 'Problem with the seller / buyer',
+  'payment_problem': 'Payment problem',
+  'refund_problem': 'Refund problem',
+  'other': 'Other',
+};
 
 class _Report {
   final String product;
-  final String reason;
+  final String type; // reports.report_type
   final int count;
+  final String orderRef; // reports.order_id
+  final String detail; // reports.reason (ข้อความที่ผู้ใช้เขียน อาจว่าง)
   _RStatus status;
-  _Report(this.product, this.reason, this.count, this.status);
+  _Report(
+    this.product,
+    this.type,
+    this.count,
+    this.status, {
+    this.orderRef = '',
+    this.detail = '',
+  });
+
+  String get reason => _typeLabels[type] ?? type;
 }
 
 class AdminReportsPage extends StatefulWidget {
@@ -35,9 +56,12 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
 
   // Mock data (UI only)
   final List<_Report> _reports = [
-    _Report('MacBook Air M2', 'Suspected scam', 3, _RStatus.high),
-    _Report('Oak study desk', 'Misleading information', 1, _RStatus.fresh),
-    _Report('Event tickets', 'Prohibited item', 2, _RStatus.review),
+    _Report('MacBook Air M2', 'seller_problem', 3, _RStatus.high,
+        orderRef: '#US-12', detail: 'Seller did not show up at the meetup.'),
+    _Report('Oak study desk', 'product_problem', 1, _RStatus.fresh,
+        orderRef: '#US-7', detail: 'Item looks different from the photos.'),
+    _Report('Event tickets', 'payment_problem', 2, _RStatus.review,
+        orderRef: '#US-9'),
   ];
 
   String _query = '';
@@ -105,6 +129,8 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
           const SizedBox(height: 16),
           _InfoRow('Reason', r.reason),
           _InfoRow('Reports', '${r.count}'),
+          if (r.orderRef.isNotEmpty) _InfoRow('Order', r.orderRef),
+          if (r.detail.isNotEmpty) _InfoRow('Details', r.detail),
           const Divider(height: 1, color: _cBorder),
           const SizedBox(height: 20),
           if (r.status != _RStatus.review) ...[
@@ -112,6 +138,7 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
               filled: false,
               label: 'Mark as reviewing',
               onPressed: () {
+                // TODO: API -> reports.status='reviewing', reviewed_by=admin
                 setState(() => r.status = _RStatus.review);
                 Navigator.pop(ctx);
               },
@@ -124,26 +151,31 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
             onPressed: () {
               setState(() => _reports.remove(r));
               Navigator.pop(ctx);
+              // TODO: API -> reports.status='rejected', admin_note, reviewed_by, resolved_at
               _snack(context, 'Report dismissed (mock)');
             },
           ),
-          const SizedBox(height: 10),
-          _ActionButton(
-            danger: true,
-            label: 'Remove product',
-            onPressed: () async {
-              final ok = await _confirm(
-                ctx,
-                title: 'Remove product?',
-                message: '"${r.product}" will be removed from the marketplace.',
-                confirmLabel: 'Remove',
-              );
-              if (!ok || !mounted) return;
-              setState(() => _reports.remove(r));
-              if (ctx.mounted) Navigator.pop(ctx);
-              _snack(context, 'Product removed (mock)');
-            },
-          ),
+          // ซ่อนสินค้าใช้ได้เฉพาะรายงานเรื่องสินค้า (ปัญหาเงิน/รีฟันด์ไม่เกี่ยวกับการซ่อนสินค้า)
+          if (r.type == 'product_problem') ...[
+            const SizedBox(height: 10),
+            _ActionButton(
+              danger: true,
+              label: 'Remove product',
+              onPressed: () async {
+                final ok = await _confirm(
+                  ctx,
+                  title: 'Remove product?',
+                  message: '"${r.product}" will be removed from the marketplace.',
+                  confirmLabel: 'Remove',
+                );
+                if (!ok || !mounted) return;
+                setState(() => _reports.remove(r));
+                if (ctx.mounted) Navigator.pop(ctx);
+                // TODO: API -> products.status='hidden' + reports.status='resolved', admin_note, resolved_at
+                _snack(context, 'Product removed (mock)');
+              },
+            ),
+          ],
         ],
       );
     });
@@ -159,7 +191,7 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
           children: [
             _Header(
               title: 'Reports',
-              subtitle: '${_reports.length} open product reports',
+              subtitle: '${_reports.length} open reports',
             ),
             _SearchRow(
               hint: 'Search reports',

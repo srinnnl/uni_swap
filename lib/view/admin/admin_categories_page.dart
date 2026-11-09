@@ -32,6 +32,7 @@ class _AdminCategoriesPageState extends State<AdminCategoriesPage> {
   static const _filters = ['All', 'Active', 'Inactive'];
 
   // Mock data (UI only)
+  // categories: name (UNIQUE), emoji, is_active / count = นับ products ตาม category_id
   final List<_Cat> _cats = [
     _Cat('Furniture', '🪑', 184, true),
     _Cat('Books', '📚', 142, true),
@@ -82,7 +83,8 @@ class _AdminCategoriesPageState extends State<AdminCategoriesPage> {
           });
           _snack(context, cat == null ? 'Category added (mock)' : 'Category saved (mock)');
         },
-        onDelete: cat == null
+        // ลบได้เฉพาะหมวดที่ไม่มีสินค้าเลย (products.category_id เป็น FK) ถ้ามีสินค้าให้ปิดด้วยสวิตช์ Active แทน
+        onDelete: (cat == null || cat.count > 0)
             ? null
             : () async {
                 final ok = await _confirm(ctx,

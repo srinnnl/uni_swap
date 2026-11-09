@@ -15,14 +15,26 @@ const _cAmberFg = Color(0xFF8A6410);
 const _cRedBg = Color(0xFFF8DADA);
 const _cRedFg = Color(0xFFB3402F);
 
-enum _UStatus { admin, verified, fresh, suspended }
+// users.status ใน DB (ส่วน role = 'admin' แยกเป็น isAdmin)
+enum _UStatus { pending, active, suspended, rejected }
 
 class _User {
-  final String name;
-  final String handle;
-  final String detail;
+  final int id; // users.user_id
+  final String name; // users.display_name
+  final String handle; // users.username
+  final String studentId; // users.student_id (เก็บเป็นข้อความ รักษาเลข 0 นำหน้า)
+  final String email;
+  final bool isAdmin; // users.role == 'admin'
   _UStatus status;
-  _User(this.name, this.handle, this.detail, this.status);
+  _User(
+    this.id,
+    this.name,
+    this.handle,
+    this.studentId,
+    this.email,
+    this.status, {
+    this.isAdmin = false,
+  });
 }
 
 class AdminUsersPage extends StatefulWidget {
@@ -33,32 +45,53 @@ class AdminUsersPage extends StatefulWidget {
 }
 
 class _AdminUsersPageState extends State<AdminUsersPage> {
-  static const _filters = ['All', 'Admin', 'Verified', 'New', 'Suspended'];
+  static const _filters = [
+    'All',
+    'Admin',
+    'Active',
+    'Pending',
+    'Suspended',
+    'Rejected',
+  ];
 
   // Mock data (UI only)
+  // TODO: โหลดจาก API (users) ผู้สมัครใหม่เป็น pending รอ admin อนุมัติ (ไม่มี OTP)
   final List<_User> _users = [
-    _User('Maya Kim', 'mayakim', 'Maple Hall', _UStatus.admin),
-    _User('Jamie Lee', 'jamielee', '18 sales', _UStatus.verified),
-    _User('Noah Park', 'noahp', '7 sales', _UStatus.verified),
-    _User('Alex Smith', 'alexs', 'Joined May 2025', _UStatus.fresh),
+    _User(1, 'Maya Kim', 'mayakim', '6731501001', 'admin@lamduan.mfu.ac.th',
+        _UStatus.active,
+        isAdmin: true),
+    _User(2, 'Jamie Lee', 'jamielee', '6731501002', 'jamie@lamduan.mfu.ac.th',
+        _UStatus.active),
+    _User(3, 'Noah Park', 'noahp', '6731501003', 'noah@lamduan.mfu.ac.th',
+        _UStatus.active),
+    _User(4, 'Alex Smith', 'alexs', '6731501004', 'alex@lamduan.mfu.ac.th',
+        _UStatus.pending),
+    _User(5, 'Pim Chai', 'pimc', '6731501005', 'pim@lamduan.mfu.ac.th',
+        _UStatus.rejected),
   ];
 
   String _query = '';
   String _filter = 'All';
 
-  String _label(_UStatus s) => switch (s) {
-    _UStatus.admin => 'Admin',
-    _UStatus.verified => 'Verified',
-    _UStatus.fresh => 'New',
-    _UStatus.suspended => 'Suspended',
-  };
+  // แอดมินแสดงเป็น Admin เสมอ นอกนั้นแสดงตาม users.status
+  String _label(_User u) {
+    if (u.isAdmin) return 'Admin';
+    return switch (u.status) {
+      _UStatus.pending => 'Pending',
+      _UStatus.active => 'Active',
+      _UStatus.suspended => 'Suspended',
+      _UStatus.rejected => 'Rejected',
+    };
+  }
 
-  (Color, Color) _colors(_UStatus s) => switch (s) {
-    _UStatus.admin => (_cBlueBg, _cBlueFg),
-    _UStatus.verified => (_cSage, _cSageDark),
-    _UStatus.fresh => (_cAmberBg, _cAmberFg),
-    _UStatus.suspended => (_cRedBg, _cRedFg),
-  };
+  (Color, Color) _colors(_User u) {
+    if (u.isAdmin) return (_cBlueBg, _cBlueFg);
+    return switch (u.status) {
+      _UStatus.pending => (_cAmberBg, _cAmberFg),
+      _UStatus.active => (_cSage, _cSageDark),
+      _UStatus.suspended || _UStatus.rejected => (_cRedBg, _cRedFg),
+    };
+  }
 
   List<_User> get _visible {
     final q = _query.trim().toLowerCase();
@@ -66,8 +99,10 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       final matchQ =
           q.isEmpty ||
           u.name.toLowerCase().contains(q) ||
-          u.handle.toLowerCase().contains(q);
-      final matchF = _filter == 'All' || _label(u.status) == _filter;
+          u.handle.toLowerCase().contains(q) ||
+          u.studentId.contains(q) ||
+          u.email.toLowerCase().contains(q);
+      final matchF = _filter == 'All' || _label(u) == _filter;
       return matchQ && matchF;
     }).toList();
   }
@@ -77,8 +112,21 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     if (r != null) setState(() => _filter = r);
   }
 
+  // เปลี่ยนสถานะผู้ใช้ แล้วปิดชีต + แจ้งผล
+  // TODO: เรียก API แทน setState
+  //   approve: status='active', verified_by=admin, verified_at=now
+  //   reject:  status='rejected'
+  //   suspend / restore: status='suspended' / 'active'
+  //   กฎ suspend: login ไม่ได้, API ซ่อนสินค้าของผู้ใช้ที่ status != active ตอนอ่าน (ไม่แก้ products.status)
+  //   ออเดอร์ที่ค้างอยู่ดำเนินต่อได้ แต่สร้างออเดอร์ใหม่ไม่ได้
+  void _setStatus(BuildContext ctx, _User u, _UStatus next, String message) {
+    setState(() => u.status = next);
+    Navigator.pop(ctx);
+    _snack(context, '${u.name} $message (mock)');
+  }
+
   void _openUser(_User u) {
-    final (bg, fg) = _colors(u.status);
+    final (bg, fg) = _colors(u);
     _showSheet(context, (ctx) {
       return Column(
         mainAxisSize: MainAxisSize.min,
@@ -111,46 +159,47 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                   ],
                 ),
               ),
-              _Badge(label: _label(u.status), bg: bg, fg: fg),
+              _Badge(label: _label(u), bg: bg, fg: fg),
             ],
           ),
           const SizedBox(height: 16),
-          _InfoRow('Info', u.detail),
+          _InfoRow('Student ID', u.studentId),
+          const Divider(height: 1, color: _cBorder),
+          _InfoRow('Email', u.email),
           const Divider(height: 1, color: _cBorder),
           const SizedBox(height: 20),
-          if (u.status == _UStatus.fresh) ...[
+          // ผู้สมัครใหม่ (pending) หรือถูกปฏิเสธไปแล้ว: อนุมัติได้
+          if (!u.isAdmin &&
+              (u.status == _UStatus.pending ||
+                  u.status == _UStatus.rejected)) ...[
             _ActionButton(
-              label: 'Verify user',
-              onPressed: () {
-                setState(() => u.status = _UStatus.verified);
-                Navigator.pop(ctx);
-                _snack(context, '${u.name} verified (mock)');
-              },
+              label: 'Approve user',
+              onPressed: () =>
+                  _setStatus(ctx, u, _UStatus.active, 'approved'),
             ),
             const SizedBox(height: 10),
           ],
-          if (u.status != _UStatus.admin)
+          if (!u.isAdmin && u.status == _UStatus.pending)
             _ActionButton(
               filled: false,
-              danger: u.status != _UStatus.suspended,
-              label: u.status == _UStatus.suspended
-                  ? 'Restore user'
-                  : 'Suspend user',
-              onPressed: () {
-                final suspending = u.status != _UStatus.suspended;
-                setState(
-                  () => u.status = suspending
-                      ? _UStatus.suspended
-                      : _UStatus.verified,
-                );
-                Navigator.pop(ctx);
-                _snack(
-                  context,
-                  suspending
-                      ? '${u.name} suspended (mock)'
-                      : '${u.name} restored (mock)',
-                );
-              },
+              danger: true,
+              label: 'Reject user',
+              onPressed: () =>
+                  _setStatus(ctx, u, _UStatus.rejected, 'rejected'),
+            ),
+          if (!u.isAdmin && u.status == _UStatus.active)
+            _ActionButton(
+              filled: false,
+              danger: true,
+              label: 'Suspend user',
+              onPressed: () =>
+                  _setStatus(ctx, u, _UStatus.suspended, 'suspended'),
+            ),
+          if (!u.isAdmin && u.status == _UStatus.suspended)
+            _ActionButton(
+              filled: false,
+              label: 'Restore user',
+              onPressed: () => _setStatus(ctx, u, _UStatus.active, 'restored'),
             ),
         ],
       );
@@ -165,9 +214,9 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       body: SafeArea(
         child: Column(
           children: [
-            const _Header(
+            _Header(
               title: 'Users',
-              subtitle: '2,418 registered students',
+              subtitle: '${_users.length} registered students', // TODO: นับจาก API
             ),
             _SearchRow(
               hint: 'Search users',
@@ -188,10 +237,10 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                             iconBg: _cSage,
                             iconFg: _cSageDark,
                             title: u.name,
-                            subtitle: '@${u.handle} · ${u.detail}',
-                            badge: _label(u.status),
-                            badgeBg: _colors(u.status).$1,
-                            badgeFg: _colors(u.status).$2,
+                            subtitle: '@${u.handle} · ${u.studentId}',
+                            badge: _label(u),
+                            badgeBg: _colors(u).$1,
+                            badgeFg: _colors(u).$2,
                             onTap: () => _openUser(u),
                           ),
                       ],

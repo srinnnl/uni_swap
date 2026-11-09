@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
-// ไฟล์นี้ใช้งานได้ด้วยตัวเอง: หน้านัดรับสินค้า (เปิดหลังกด Request to buy)
+// หน้านัดรับสินค้า: เปิดหลังกด Buy now (ก่อนสร้างออเดอร์) และตอนผู้ซื้อกด Edit meet-up
 // กด Confirm แล้วจะ pop กลับพร้อมจุดนัดพบและเวลา (MeetupChoice)
+// ตรงกับ orders.meetup_location (บังคับ) และ orders.meetup_datetime
+
+import 'package:uni_swap/model/format.dart';
 
 typedef MeetupChoice = ({String spot, DateTime when});
 
@@ -22,28 +25,51 @@ class ArrangeMeetupPage extends StatefulWidget {
     required this.price,
     required this.sellerName,
     required this.sellerLocation,
+    // ใช้ตอนแก้จุดนัดของออเดอร์ที่มีอยู่ เพื่อให้ฟอร์มขึ้นค่าเดิม
+    this.initialSpot,
+    this.initialWhen,
   });
 
   final String productTitle;
-  final int price;
+  final double price;
   final String sellerName;
-  final String sellerLocation; // เช่น 'North Campus · Maple Hall'
+  final String sellerLocation; // เช่น 'On-campus dorms · Lamduan 1 Dormitory'
+  final String? initialSpot;
+  final DateTime? initialWhen;
 
   @override
   State<ArrangeMeetupPage> createState() => _ArrangeMeetupPageState();
 }
 
 class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
-  // TODO: ดึงจุดนัดพบที่เหมาะกับที่พักของผู้ขายจาก API
-  static const _spots = [
-    'Maple Hall lobby',
-    'North Campus library',
-    'Student union entrance',
-  ];
+  // DB เก็บจุดนัดเป็นข้อความ (orders.meetup_location) ไม่มีตารางจุดนัด
+  // TODO: ถ้าเพื่อนเพิ่มตารางจุดนัดพบ ให้ดึงจาก API แทน
+  List<String> get _spots {
+    final spots = [
+      '$_building lobby',
+      'Main library',
+      'Student union entrance',
+    ];
+    final initial = widget.initialSpot;
+    if (initial != null && !spots.contains(initial)) spots.insert(0, initial);
+    return spots;
+  }
 
-  int _spot = 0;
-  DateTime _date = DateTime.now().add(const Duration(days: 1));
-  TimeOfDay _time = const TimeOfDay(hour: 17, minute: 30);
+  late int _spot;
+  late DateTime _date;
+  late TimeOfDay _time;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialSpot;
+    _spot = initial == null ? 0 : _spots.indexOf(initial);
+    final when = widget.initialWhen;
+    _date = when ?? DateTime.now().add(const Duration(days: 1));
+    _time = when == null
+        ? const TimeOfDay(hour: 17, minute: 30)
+        : TimeOfDay.fromDateTime(when);
+  }
 
   String get _building => widget.sellerLocation.split(' · ').last;
 
@@ -88,8 +114,10 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
       return;
     }
 
-    // TODO: ส่งไป API -> spot: _spots[_spot], when: when
-    // (ส่งพร้อมคำขอซื้อ แล้วผู้ขายตอบรับ/ปฏิเสธที่หน้า Orders)
+    // หน้านี้ยังไม่เรียก API เอง แค่ส่งค่ากลับให้หน้าที่เปิด
+    //   สร้างออเดอร์ใหม่: POST orders { product_id, meetup_location, meetup_datetime }
+    //   แก้จุดนัดของออเดอร์เดิม: TODO ถามเพื่อนว่ามี endpoint แก้ meetup_* ไหม
+    // meetup_datetime ควรส่งเป็น UTC: when.toUtc().toIso8601String()
     Navigator.pop<MeetupChoice>(context, (spot: _spots[_spot], when: when));
   }
 
@@ -176,7 +204,7 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
               ),
               const SizedBox(height: 4),
               Text(
-                '${widget.productTitle} · ${widget.price} THB',
+                '${widget.productTitle} · ${formatPriceTHB(widget.price)}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 13, color: _C.muted),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/view/user/campus_locations.dart';
 
 // ---- colors (local to this file) ----
 const _cBg = Color(0xFFFAF9F6);
@@ -31,47 +32,36 @@ class AdminLocationsPage extends StatefulWidget {
 
 class _AdminLocationsPageState extends State<AdminLocationsPage> {
   static const _filters = ['All', 'Pending', 'Reviewing'];
-  static const _areas = [
-    'North Campus',
-    'South Campus',
-    'East Campus',
-    'West Campus',
-    'Off-campus dorm',
-    'Condo',
-  ];
+  // ตรงกับ location_requests.zone ใน DB (enum on_campus / off_campus)
+  static final _areas = [for (final z in CampusZone.values) z.label];
 
   // ที่พักที่อนุมัติแล้ว (ตัวอย่าง) ไว้เป็นปลายทางของการ Merge
   // TODO: ดึงจาก API (ควรใช้ locationId ไม่ใช่ชื่อ)
-  static const _existing = [
-    'North Campus · Maple Hall',
-    'North Campus · Oak Hall',
-    'South Campus · Cedar Hall',
-    'East Campus · Willow Hall',
-  ];
+  static final _existing = [for (final l in kCampusLocations) l.place];
 
   // Mock data (UI only)
   final List<_Loc> _locs = [
     _Loc(
       'Riverside Residence',
-      'North Campus',
+      'On-campus dorms',
       'Requested by Maya K.',
       _LStatus.pending,
     ),
     _Loc(
       'The Grove Condos',
-      'East Campus',
+      'Off-campus dorms',
       'Requested by Arun P.',
       _LStatus.pending,
     ),
     _Loc(
       'Cedar Student Living',
-      'South Campus',
+      'Off-campus dorms',
       'Requested by Lina W.',
       _LStatus.pending,
     ),
     _Loc(
       'Hilltop Apartments',
-      'West Campus',
+      'On-campus dorms',
       'Requested yesterday',
       _LStatus.reviewing,
     ),
@@ -139,6 +129,8 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
             onPressed: () {
               setState(() => _locs.remove(l));
               Navigator.pop(ctx);
+              // TODO: API: INSERT locations แล้วตั้ง location_requests.status='approved', approved_location_id,
+              //   handled_by, resolved_at และ users.residence_location_id ของผู้ขอ
               _snack(context, '${l.name} approved (mock)');
             },
           ),
@@ -152,8 +144,8 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
               if (target == null || !mounted) return;
               setState(() => _locs.remove(l));
               if (ctx.mounted) Navigator.pop(ctx);
-              // TODO: backend: ย้ายผู้ใช้ทุกคนที่ผูกกับคำขอนี้ไปที่ locationId
-              // ของ target แล้วปิดคำขอ (ผู้ใช้ไม่ต้องทำอะไร)
+              // TODO: backend: location_requests.status='merged', merged_into_location_id=target,
+              //   handled_by, resolved_at และ users.residence_location_id ของผู้ขอ (1 คำขอ = 1 ผู้ใช้)
               _snack(context, '${l.name} merged into $target (mock)');
             },
           ),
@@ -176,6 +168,7 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
             onPressed: () {
               setState(() => _locs.remove(l));
               Navigator.pop(ctx);
+              // TODO: API: location_requests.status='rejected', handled_by, resolved_at
               _snack(context, '${l.name} rejected (mock)');
             },
           ),

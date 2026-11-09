@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/model/format.dart';
 
 class _C {
   static const bg = Color(0xFFFAF9F6);
@@ -10,24 +11,27 @@ class _C {
   static const star = Color(0xFFD9A21B);
 }
 
-class _Listing {
-  const _Listing(this.title, this.price, {this.imageUrl});
+class _Item {
+  const _Item(this.title, this.price, {this.imageUrl});
   final String title;
-  final int price;
+  final double price;
   final String? imageUrl;
 }
 
+// reviews JOIN users (ผู้รีวิว) JOIN orders/products (สินค้าที่ซื้อ)
 class _Review {
   const _Review({
     required this.reviewer,
     required this.rating,
     required this.product,
     required this.date,
+    this.comment,
   });
-  final String reviewer;
-  final int rating;
+  final String reviewer; // users.display_name
+  final int rating; // reviews.rating (1-5)
   final String product;
-  final String date;
+  final String date; // reviews.created_at
+  final String? comment; // reviews.comment (ไม่บังคับ)
 }
 
 class SellerProfilePage extends StatefulWidget {
@@ -51,11 +55,11 @@ class SellerProfilePage extends StatefulWidget {
 }
 
 class _SellerProfilePageState extends State<SellerProfilePage> {
-  static const _listings = [
-    _Listing('Oak study desk', 45),
-    _Listing('Desk lamp', 12),
-    _Listing('Bookshelf', 30),
-    _Listing('Mini fridge', 60),
+  static const _items = [
+    _Item('Oak study desk', 45),
+    _Item('Desk lamp', 12),
+    _Item('Bookshelf', 30),
+    _Item('Mini fridge', 60),
   ];
 
   static const _reviews = [
@@ -64,12 +68,14 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
       rating: 5,
       product: 'Acoustic guitar',
       date: 'May 18',
+      comment: 'Great condition, easy to meet up!',
     ),
     _Review(
       reviewer: 'Alex S.',
       rating: 5,
       product: 'City bike',
       date: 'May 10',
+      comment: 'Smooth handover, would buy again.',
     ),
     _Review(
       reviewer: 'Priya N.',
@@ -104,7 +110,7 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
             const SizedBox(height: 24),
             _buildTabs(),
             const SizedBox(height: 18),
-            if (_tab == 0) _buildListings() else _buildReviews(),
+            if (_tab == 0) _buildItems() else _buildReviews(),
           ],
         ),
       ),
@@ -268,19 +274,19 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
 
     return Row(
       children: [
-        tab(0, 'Listings', _listings.length),
+        tab(0, 'Items', _items.length),
         tab(1, 'Reviews', _reviews.length),
       ],
     );
   }
 
-  Widget _buildListings() {
-    if (_listings.isEmpty) return const _Empty('No active listings');
+  Widget _buildItems() {
+    if (_items.isEmpty) return const _Empty('No active items');
 
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: _listings.length,
+      itemCount: _items.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         crossAxisSpacing: 16,
@@ -288,7 +294,7 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
         childAspectRatio: 0.78,
       ),
       itemBuilder: (_, i) {
-        final l = _listings[i];
+        final l = _items[i];
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -333,7 +339,7 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
             ),
             const SizedBox(height: 2),
             Text(
-              '${l.price} THB',
+              formatPriceTHB(l.price),
               style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
@@ -422,6 +428,13 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
           const SizedBox(height: 6),
           _Stars(r.rating),
           const SizedBox(height: 8),
+          if (r.comment != null && r.comment!.isNotEmpty) ...[
+            Text(
+              r.comment!,
+              style: const TextStyle(fontSize: 13, height: 1.4, color: _C.ink),
+            ),
+            const SizedBox(height: 8),
+          ],
           Text(
             'Bought: ${r.product}',
             style: const TextStyle(fontSize: 11, color: _C.muted),

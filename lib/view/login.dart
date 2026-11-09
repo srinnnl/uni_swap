@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/controller/app_controllers.dart';
+import 'package:uni_swap/controller/api_client.dart';
 import 'package:uni_swap/view/main_screen.dart';
 import 'package:uni_swap/view/admin/admin_page.dart';
 import 'package:uni_swap/view/user/register_page.dart';
@@ -23,6 +25,7 @@ class _LoginPageState extends State<LoginPage> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   bool _obscure = true;
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -31,30 +34,35 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  // ===== จำลองการ login (mock) =====
-  // role ตรงกับ users.role ใน DB: 'member' / 'admin'
-  // ตอนเดโม: อีเมลที่ขึ้นต้นด้วย admin@ จะเข้าหน้าแอดมิน
-  ({String token, String role}) _mockLogin(String email) {
-    final role = email.toLowerCase().startsWith('admin@') ? 'admin' : 'member';
-    return (token: 'mock-token-$role', role: role);
-  }
-
-  // ===== จุดเชื่อมต่อ API =====
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-
-    final email = _emailCtrl.text.trim();
-    // TODO: เรียก API login ด้วย email + password
-    //   users.status ไม่ใช่ active ให้แสดงข้อความแจ้งแทนการเข้าแอป:
-    //     pending = รอแอดมินอนุมัติ, rejected = ไม่ผ่านการอนุมัติ, suspended = บัญชีถูกระงับ
-    final session = _mockLogin(email);
-    debugPrint('login: $email as ${session.role}');
-
-    final Widget home = session.role == 'admin'
-        ? const AdminPage()
-        : const MainScreen();
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => home));
+    setState(() => _isSubmitting = true);
+    try {
+      final result = await authController.login(
+        email: _emailCtrl.text.trim(),
+        password: _passwordCtrl.text,
+      );
+      if (!mounted) return;
+      final role = (result['user'] as Map?)?['role']?.toString();
+      final Widget home = role == 'admin'
+          ? const AdminPage()
+          : const MainScreen();
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => home),
+      );
+    } on ApiException catch (error) {
+      if (mounted) _showError(error.message);
+    } catch (_) {
+      if (mounted) _showError('Could not sign in. Please try again.');
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
+
+  void _showError(String message) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(message)));
 
   void _goRegister() => Navigator.push(
     context,
@@ -220,7 +228,7 @@ class _LoginPageState extends State<LoginPage> {
               width: double.infinity,
               height: 52,
               child: FilledButton(
-                onPressed: _submit,
+                onPressed: _isSubmitting ? null : _submit,
                 style: FilledButton.styleFrom(
                   backgroundColor: _C.ink,
                   foregroundColor: Colors.white,
@@ -228,9 +236,12 @@ class _LoginPageState extends State<LoginPage> {
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                child: const Text(
-                  'Sign in',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                child: Text(
+                  _isSubmitting ? 'Signing in…' : 'Sign in',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),

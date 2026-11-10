@@ -58,10 +58,7 @@ class _ProfilePageState extends State<ProfilePage> {
             const Expanded(
               child: Center(child: _PageHeader(title: 'Profile')),
             ),
-            IconButton(
-              icon: const Icon(Icons.more_horiz),
-              onPressed: () => _showSnack(context, 'Settings (coming soon)'),
-            ),
+            const SizedBox(width: 48),
           ],
         ),
         const SizedBox(height: 20),

@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
-import 'api_client.dart';
+import '../model/enums.dart';
+import '../controller/api_client.dart';
 
 /// Authentication/profile state. Token is kept in memory during this sprint.
+/// ใช้ร่วมกันทั้ง member และ admin (แยกด้วย role ที่ server ส่งมา)
 class AuthController extends ChangeNotifier {
   AuthController(this._api);
   final ApiClient _api;
@@ -15,6 +17,10 @@ class AuthController extends ChangeNotifier {
   bool get isAuthenticated => _token != null;
   bool get isBusy => _busy;
 
+  /// role ที่ไม่รู้จัก/ไม่มี จะถือเป็น member (สิทธิ์ต่ำสุด)
+  UserRole get role => UserRole.fromApi(_user?['role']);
+  bool get isAdmin => isAuthenticated && role == UserRole.admin;
+
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
@@ -25,11 +31,13 @@ class AuthController extends ChangeNotifier {
         'login',
         body: {'email': email.trim(), 'password': password},
       );
-      _token = result['token']?.toString();
-      _user = _asMap(result['user']);
-      if (_token == null) {
+      final token = result['token']?.toString();
+      // เช็ก token ก่อนเซ็ต state ใดๆ จะได้ไม่มี user ค้างโดยไม่มี token
+      if (token == null || token.isEmpty) {
         throw const ApiException('The login response did not contain a token.');
       }
+      _token = token;
+      _user = _asMap(result['user']);
       notifyListeners();
       return result;
     } finally {

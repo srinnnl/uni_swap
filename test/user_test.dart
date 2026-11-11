@@ -19,7 +19,7 @@ void main() {
       final user = User.fromJson(json);
 
       expect(user.id, 101);
-      expect(user.studentId, '6731501151');
+      expect(user.studentId, '6731501234');
       expect(user.username, 'frontend_hero');
       expect(user.email, 'hero@student.ac.th');
       expect(user.displayName, 'Frontend Hero');

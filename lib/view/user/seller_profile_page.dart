@@ -118,26 +118,28 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
   }
 
   Widget _buildHeader() {
-    return Row(
-      children: [
-        IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.maybePop(context),
-        ),
-        const Expanded(
-          child: Center(
-            child: Text(
-              'Seller',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: _C.ink,
-              ),
+    return SizedBox(
+      height: 48,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          const Text(
+            'Seller',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: _C.ink,
             ),
           ),
-        ),
-        const SizedBox(width: 48),
-      ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => Navigator.maybePop(context),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

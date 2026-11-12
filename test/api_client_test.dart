@@ -1,3 +1,5 @@
+//(การต่อ URL, แนบ Token, แปลง JSON, และจัดการ Network/Server Error)
+
 // นำเข้าไลบรารีสำหรับจัดการการทำงานแบบ Asynchronous (เช่น TimeoutException)
 import 'dart:async';
 

@@ -1,3 +1,5 @@
+//ตัวช่วยจำลอง fakeApi และเก็บประวัติ RecordedCall ให้ไฟล์เทสต์ของ Controller นำไปเรียกใช้
+
 // นำเข้าไลบรารีสำหรับแปลงข้อมูลระหว่าง JSON String กับออบเจกต์ใน Dart (jsonEncode / jsonDecode)
 import 'dart:convert';
 

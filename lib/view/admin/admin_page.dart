@@ -4,7 +4,6 @@ import 'admin_items_page.dart';
 import 'admin_locations_page.dart';
 import 'admin_reports_page.dart';
 import 'admin_users_page.dart';
-import 'admin_refunds_page.dart';
 import 'package:uni_swap/view/login.dart';
 
 // ---- colors ----
@@ -150,20 +149,6 @@ class AdminPage extends StatelessWidget {
                   value: '11',
                   note: 'Manage',
                   onTap: () => _open(context, const AdminCategoriesPage()),
-                ),
-                _StatCard(
-                  icon: Icons.report_outlined,
-                  label: 'Report',
-                  value: '3',
-                  note: 'Review',
-                  onTap: () => _open(context, const AdminRefundsPage()),
-                ),
-                _StatCard(
-                  icon: Icons.currency_exchange,
-                  label: 'Refunds',
-                  value: '3',
-                  note: 'Review',
-                  onTap: () => _open(context, const AdminRefundsPage()),
                 ),
               ],
             ),

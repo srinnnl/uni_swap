@@ -217,7 +217,6 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
     setState(() => _raw = OrderStatus.cancelled);
   }
 
-  // ยกเลิกหลังจ่าย = ขอคืนเงิน: ไม่คืนทันที ต้องรอ admin อนุมัติ (ตาราง refunds)
   Future<void> _requestRefund() async {
     final reason = await showDialog<String>(
       context: context,
@@ -283,11 +282,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
 
   void _close() => Navigator.pop(
     context,
-    OrderResult(
-      status: _raw,
-      meetupPlace: _meetupPlace,
-      meetupAt: _meetupAt,
-    ),
+    OrderResult(status: _raw, meetupPlace: _meetupPlace, meetupAt: _meetupAt),
   );
 
   @override
@@ -633,39 +628,43 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   };
 
   Widget _buildSpecialStatus() {
-    final (IconData icon, Color color, String title, String detail) =
-        switch (_status) {
-          OrderStatus.cancelled => (
-            Icons.cancel_outlined,
-            _C.redFg,
-            'This order was cancelled',
-            'The item is available to other buyers again.',
-          ),
-          OrderStatus.expired => (
-            Icons.timer_off_outlined,
-            _C.redFg,
-            'Payment time ran out',
-            'This order expired and the item is available again.',
-          ),
-          OrderStatus.refundRequested => (
-            Icons.hourglass_top_outlined,
-            _C.amberFg,
-            'Refund requested',
-            'UniSwap is reviewing your request. We will update this order.',
-          ),
-          OrderStatus.partiallyRefunded => (
-            Icons.undo_outlined,
-            _C.blueFg,
-            'Partially refunded',
-            'Part of your payment was returned by UniSwap.',
-          ),
-          _ => (
-            Icons.undo_outlined,
-            _C.blueFg,
-            'Refunded',
-            'Your payment was returned by UniSwap.',
-          ),
-        };
+    final (
+      IconData icon,
+      Color color,
+      String title,
+      String detail,
+    ) = switch (_status) {
+      OrderStatus.cancelled => (
+        Icons.cancel_outlined,
+        _C.redFg,
+        'This order was cancelled',
+        'The item is available to other buyers again.',
+      ),
+      OrderStatus.expired => (
+        Icons.timer_off_outlined,
+        _C.redFg,
+        'Payment time ran out',
+        'This order expired and the item is available again.',
+      ),
+      OrderStatus.refundRequested => (
+        Icons.hourglass_top_outlined,
+        _C.amberFg,
+        'Refund requested',
+        'UniSwap is reviewing your request. We will update this order.',
+      ),
+      OrderStatus.partiallyRefunded => (
+        Icons.undo_outlined,
+        _C.blueFg,
+        'Partially refunded',
+        'Part of your payment was returned by UniSwap.',
+      ),
+      _ => (
+        Icons.undo_outlined,
+        _C.blueFg,
+        'Refunded',
+        'Your payment was returned by UniSwap.',
+      ),
+    };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

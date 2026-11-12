@@ -74,7 +74,7 @@ class _ReportProductPageState extends State<ReportProductPage> {
       backgroundColor: _C.bg,
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           children: [
             _buildHeader(),
@@ -189,8 +189,10 @@ class _ReportProductPageState extends State<ReportProductPage> {
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => Container(
                         color: _C.surface,
-                        child:
-                            const Icon(Icons.image_outlined, color: _C.faint),
+                        child: const Icon(
+                          Icons.image_outlined,
+                          color: _C.faint,
+                        ),
                       ),
                     ),
             ),
@@ -241,8 +243,10 @@ class _ReportProductPageState extends State<ReportProductPage> {
                 _error = null;
               }),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 17,
+                ),
                 child: Row(
                   children: [
                     Expanded(
@@ -268,9 +272,9 @@ class _ReportProductPageState extends State<ReportProductPage> {
 
   Widget _buildDetails() {
     OutlineInputBorder border(Color c, [double w = 1]) => OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: c, width: w),
-        );
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: c, width: w),
+    );
 
     return TextField(
       controller: _detailsCtrl,
@@ -306,26 +310,26 @@ class _RadioDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        width: 22,
-        height: 22,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: selected ? _C.ink : _C.border,
-            width: selected ? 2 : 1.5,
-          ),
-        ),
-        child: selected
-            ? Container(
-                width: 10,
-                height: 10,
-                decoration: const BoxDecoration(
-                  color: _C.ink,
-                  shape: BoxShape.circle,
-                ),
-              )
-            : null,
-      );
+    duration: const Duration(milliseconds: 150),
+    width: 22,
+    height: 22,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      border: Border.all(
+        color: selected ? _C.ink : _C.border,
+        width: selected ? 2 : 1.5,
+      ),
+    ),
+    child: selected
+        ? Container(
+            width: 10,
+            height: 10,
+            decoration: const BoxDecoration(
+              color: _C.ink,
+              shape: BoxShape.circle,
+            ),
+          )
+        : null,
+  );
 }

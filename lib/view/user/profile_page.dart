@@ -30,14 +30,7 @@ class _ProfilePageState extends State<ProfilePage> {
   static const _username = 'mayakim';
   // static const _displayName = 'Maya';
 
-  // 2 โซนตาม DB (enum zone: on_campus / off_campus) รายการหอมาจาก campus_locations.dart
-  static final _zones = <String, List<String>>{
-    for (final z in CampusZone.values)
-      z.label: [for (final l in locationsIn(z)) l.name],
-  };
-
-  // TODO: โหลดที่พักปัจจุบันของผู้ใช้จาก API (users.residence_location_id)
-  String _location = locationsIn(CampusZone.onCampus).first.name;
+  CampusLocation _selectedLocation = locationsIn(CampusZone.onCampus).first;
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +43,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _buildList() {
     return ListView(
       // ท้ายหน้าเว้น 120 ให้พ้นแถบเมนูล่าง
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
       children: [
         Row(
           children: [
@@ -98,7 +91,6 @@ class _ProfilePageState extends State<ProfilePage> {
         const SizedBox(height: 22),
 
         _AppCard(
-          padding: const EdgeInsets.symmetric(vertical: 16),
           child: IntrinsicHeight(
             child: Row(
               children: [
@@ -126,7 +118,7 @@ class _ProfilePageState extends State<ProfilePage> {
         _menuTile(
           Icons.location_on_outlined,
           'My location',
-          _location,
+          _selectedLocation.place,
           _pickLocation,
         ),
 
@@ -289,99 +281,29 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  void _pickLocation() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: _cBg,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.65, // ปรับให้สูงขึ้นนิดนึงเพื่อรองรับเมนูที่เพิ่มมา
-        maxChildSize: 0.9,
-        builder: (_, scroll) => ListView(
-          controller: scroll,
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-          children: [
-            const Text(
-              'Select your location',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-            ),
-            for (final zone in _zones.entries) ...[
-              const SizedBox(height: 18),
-              Text(
-                zone.key,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: _cMuted,
-                ),
-              ),
-              for (final loc in zone.value)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(loc),
-                  trailing: loc == _location
-                      ? const Icon(Icons.check, color: _cSageDark)
-                      : null,
-                  onTap: () {
-                    setState(() => _location = loc);
-                    Navigator.pop(ctx);
-                  },
-                ),
-            ],
-
-            // --- ส่วนที่เพิ่มเข้ามาใหม่: ปุ่ม Request a location ---
-            const SizedBox(height: 8),
-            const Divider(color: _cBorder),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: _cChip,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.add_location_alt_outlined,
-                  color: _cInk,
-                  size: 20,
-                ),
-              ),
-              title: const Text(
-                'Request a location',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: _cInk,
-                ),
-              ),
-              subtitle: const Text(
-                "Can't find where you live?",
-                style: TextStyle(fontSize: 12, color: _cMuted),
-              ),
-              trailing: const Icon(
-                Icons.chevron_right,
-                size: 20,
-                color: _cMuted,
-              ),
-              onTap: () {
-                Navigator.pop(ctx); // ปิด BottomSheet ก่อน
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        const RequestLocationPage(), // ลิงก์ไปยังหน้าที่สร้างไว้
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
+  Future<void> _pickLocation() async {
+    final result = await showCampusLocationPicker(
+      context,
+      zone: _selectedLocation.zone,
+      selected: _selectedLocation,
+      otherLabel: 'Request a location',
     );
+
+    if (!mounted || result == null) return;
+
+    // เลือก Request a location
+    if (result.location == null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const RequestLocationPage()),
+      );
+      return;
+    }
+
+    // เลือกหอพักจากรายการ
+    setState(() {
+      _selectedLocation = result.location!;
+    });
   }
 
   void _confirmLogout() {

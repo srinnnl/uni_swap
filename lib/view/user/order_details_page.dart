@@ -125,7 +125,6 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
           price: widget.price,
           sellerName: widget.person,
           sellerLocation: widget.productLocation,
-          initialSpot: _meetupPlace,
           initialWhen: _meetupAt,
         ),
       ),
@@ -133,7 +132,6 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
     if (r == null || !mounted) return;
     // TODO: API แก้ orders.meetup_location / meetup_datetime (ถามเพื่อนว่ามี endpoint ไหม)
     setState(() {
-      _meetupPlace = r.spot;
       _meetupAt = r.when;
     });
     _toast('Meet-up updated');
@@ -296,7 +294,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
         backgroundColor: _C.bg,
         body: SafeArea(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
             children: [
               _buildHeader(),
               const SizedBox(height: 20),

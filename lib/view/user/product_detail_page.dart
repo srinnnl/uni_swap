@@ -259,7 +259,32 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             color: _C.ink,
           ),
         ),
-        const SizedBox(height: 14),
+
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: _C.surface,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Row(
+            // ใช้ const ไปเลยเพราะเราพิมพ์ค่าตายตัว
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.info_outline, size: 16, color: _C.muted),
+              SizedBox(width: 6),
+              Text(
+                'Condition: Like new', // 👈 ใส่เป็นค่า Mock เอาไว้ดู UI ก่อน
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: _C.muted,
+                ),
+              ),
+            ],
+          ),
+        ),
+
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 20),
           child: Divider(height: 1, color: _C.border),
@@ -340,7 +365,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     const Icon(Icons.star_border, size: 16, color: _C.muted),
                     const SizedBox(width: 4),
                     Text(
-                      '${s.rating} · ${s.sales} sales',
+                      '${s.rating} ·${s.sales} sales',
                       style: const TextStyle(fontSize: 12, color: _C.muted),
                     ),
                   ],

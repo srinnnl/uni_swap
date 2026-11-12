@@ -134,16 +134,17 @@ class _SellPageState extends State<SellPage> {
     //   item_condition: _conditionIndex == null ? null : _conditions[_conditionIndex!].$1,
     //   zone: _pickup.zone.code, location_id: _pickup.id,
     //   clearance_deadline: _deadline, photos (product_images.display_order = ลำดับ)
-    if (!_isEdit) setState(() {
-      _titleCtrl.clear();
-      _priceCtrl.clear();
-      _descCtrl.clear();
-      _photos.clear();
-      _isFree = false;
-      _deadline = null;
-      _categoryIndex = 0;
-      _conditionIndex = null;
-    });
+    if (!_isEdit)
+      setState(() {
+        _titleCtrl.clear();
+        _priceCtrl.clear();
+        _descCtrl.clear();
+        _photos.clear();
+        _isFree = false;
+        _deadline = null;
+        _categoryIndex = 0;
+        _conditionIndex = null;
+      });
     if (!_isEdit) _formKey.currentState?.reset();
     // ลงขายแล้วต้องรอแอดมินตรวจสอบก่อนขึ้นหน้าร้าน (ดู Admin > Items review)
     // TODO: ส่งไป API ให้สถานะสินค้าเป็น pending_review
@@ -204,7 +205,7 @@ class _SellPageState extends State<SellPage> {
       key: _formKey,
       child: ListView(
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
         children: [
           _buildHeader(),
           const SizedBox(height: 20),
@@ -216,10 +217,11 @@ class _SellPageState extends State<SellPage> {
           const _FieldLabel('Item title'),
           TextFormField(
             controller: _titleCtrl,
-            validator: (v) =>
-                (v == null || v.trim().isEmpty)
+            validator: (v) => (v == null || v.trim().isEmpty)
                 ? 'Please enter a title'
-                : (v.trim().length > 100 ? 'Too long (max 100 characters)' : null),
+                : (v.trim().length > 100
+                      ? 'Too long (max 100 characters)'
+                      : null),
             textCapitalization: TextCapitalization.sentences,
             decoration: _dec('e.g. Oak study desk'),
           ),

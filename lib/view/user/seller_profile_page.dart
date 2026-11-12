@@ -100,7 +100,7 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
       backgroundColor: _C.bg,
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
           children: [
             _buildHeader(),
             const SizedBox(height: 12),

@@ -343,7 +343,7 @@ class _SearchPageState extends State<SearchPage> {
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -417,7 +417,7 @@ class _SearchPageState extends State<SearchPage> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 120),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
                 sliver: SliverGrid(
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
@@ -585,10 +585,14 @@ class _SearchPageState extends State<SearchPage> {
             Icon(icon, size: 20, color: _C.muted),
             const SizedBox(width: 12),
             Text(title, style: const TextStyle(fontSize: 14, color: _C.ink)),
-            const Spacer(),
-            Flexible(
+            const SizedBox(
+              width: 16,
+            ), // เว้นระยะเผื่อกรณีที่ชื่อยาวจะได้ไม่ชนกัน
+            // ✨ เปลี่ยนจาก Spacer() + Flexible มาใช้ Expanded แล้วดัน Text ชิดขวา
+            Expanded(
               child: Text(
                 value,
+                textAlign: TextAlign.right,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 14, color: _C.muted),
@@ -604,8 +608,7 @@ class _SearchPageState extends State<SearchPage> {
 
   Widget _buildEmptyState() {
     return Padding(
-      // ✨ เปลี่ยน padding ด้านล่างเป็น 120 เพื่อดันเนื้อหาให้พ้นแถบ Bottom Bar
-      padding: const EdgeInsets.fromLTRB(24, 48, 24, 120),
+      padding: const EdgeInsets.fromLTRB(20, 48, 20, 120),
       child: Column(
         mainAxisAlignment: MainAxisAlignment
             .center, // ✨ จัดให้อยู่กึ่งกลางพื้นที่ที่มองเห็นได้

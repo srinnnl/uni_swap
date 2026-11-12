@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/controller/app_controllers.dart';
 import 'package:uni_swap/model/format.dart';
 import 'package:uni_swap/model/product.dart';
 import 'package:uni_swap/view/user/campus_locations.dart';
@@ -13,65 +14,6 @@ class _C {
   static const surface = Color(0xFFF3F2EE);
 }
 
-class _Product {
-  const _Product({
-    required this.id,
-    required this.title,
-    required this.price,
-    required this.location,
-    required this.imageUrl,
-    this.urgent = false,
-  });
-
-  final int id; // products.product_id
-  final String title;
-  final double price; // products.price DECIMAL(10,2)
-  final CampusLocation location;
-  final String imageUrl; // ถ้าเป็น null จะแสดงรูปแทนที่ชั่วคราว
-  final bool urgent;
-
-  CampusZone get zone => location.zone;
-  String get place => location.place;
-  String get building => location.name;
-}
-
-// ===== ข้อมูลตัวอย่าง: TODO แทนด้วยข้อมูลจาก API =====
-final _products = [
-  _Product(
-    id: 1,
-    title: 'Oak study desk',
-    price: 45,
-    location: locationById(12),
-    urgent: true,
-    imageUrl:
-        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
-  ),
-  _Product(
-    id: 2,
-    title: 'Acoustic guitar',
-    price: 80,
-    location: locationById(12),
-    imageUrl:
-        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
-  ),
-  _Product(
-    id: 3,
-    title: 'Desk lamp',
-    price: 12,
-    location: locationById(13),
-    imageUrl:
-        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
-  ),
-  _Product(
-    id: 4,
-    title: 'City bike',
-    price: 120,
-    location: locationById(7),
-    imageUrl:
-        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
-  ),
-];
-
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -82,21 +24,94 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   static const _tabs = ['Same place', 'Same zone', 'Explore all'];
 
-  // TODO: ดึงจากข้อมูลผู้ใช้หลัง login
-  final String _userName = 'Maya';
-  final bool _residencePending = false; // true = ที่พักรอ admin ตรวจสอบ
-
   int _tab = 0;
+
   CampusLocation _place = locationsIn(CampusZone.onCampus).first;
+
+  List<Product> _products = [];
+
+  bool _isLoading = true;
+  String? _errorMessage;
 
   CampusZone get _zone => _place.zone;
   String get _building => _place.name;
 
-  List<_Product> get _visible => switch (_tab) {
-    0 => _products.where((p) => p.location.id == _place.id).toList(),
-    1 => _products.where((p) => p.zone == _zone).toList(),
-    _ => _products,
-  };
+  @override
+  void initState() {
+    super.initState();
+    _loadProducts();
+  }
+
+  // ===== Load products from API =====
+
+  Future<void> _loadProducts() async {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final response = await productController.browse(page: 1, limit: 100);
+
+      if (response['success'] != true) {
+        throw Exception(
+          response['message']?.toString() ?? 'Could not load products.',
+        );
+      }
+
+      final rows = (response['data'] as List? ?? const [])
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+
+      final products = rows.map((json) {
+        // GET /api/products returns available products only,
+        // but the current SQL query does not include the status field.
+        // Set it explicitly so Product.fromJson does not use pendingReview.
+        json.putIfAbsent('status', () => 'available');
+
+        return Product.fromJson(json);
+      }).toList();
+
+      if (!mounted) return;
+
+      setState(() {
+        _products = products;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  // ===== Filter products =====
+
+  List<Product> get _visible {
+    switch (_tab) {
+      case 0:
+        return _products.where((p) {
+          if (p.locationId != null) {
+            return p.locationId == _place.id;
+          }
+
+          return p.locationName.trim().toLowerCase() ==
+              _place.name.trim().toLowerCase();
+        }).toList();
+
+      case 1:
+        return _products.where((p) => p.zone.name == _zone.name).toList();
+
+      default:
+        return _products;
+    }
+  }
 
   String get _subtitle => switch (_tab) {
     0 => 'Items in $_building',
@@ -107,8 +122,10 @@ class _HomePageState extends State<HomePage> {
   String get _greeting {
     final h = DateTime.now().hour;
     final part = h < 12 ? 'morning' : (h < 17 ? 'afternoon' : 'evening');
-    return 'Good $part, $_userName';
+    return 'Good $part';
   }
+
+  // ===== Location picker =====
 
   Future<void> _pickPlace() async {
     final picked = await showCampusLocationPicker(
@@ -116,6 +133,7 @@ class _HomePageState extends State<HomePage> {
       zone: _place.zone,
       selected: _place,
     );
+
     if (picked?.location != null) {
       setState(() {
         _place = picked!.location!;
@@ -167,11 +185,33 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
             ),
-            if (items.isEmpty)
+
+            // ===== Loading =====
+            if (_isLoading)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: _C.ink,
+                    strokeWidth: 2,
+                  ),
+                ),
+              )
+            // ===== Error =====
+            else if (_errorMessage != null)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _ErrorState(
+                  message: _errorMessage!,
+                  onRetry: _loadProducts,
+                ),
+              )
+            // ===== Empty =====
+            else if (items.isEmpty)
               const SliverToBoxAdapter(child: _EmptyState())
+            // ===== Products =====
             else
               SliverPadding(
-                // เว้นล่างให้พ้นแถบเมนู/ปุ่ม Sell
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 120),
                 sliver: SliverGrid(
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -191,6 +231,8 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
+  // ===== Top bar =====
 
   Widget _buildTopBar() {
     return Row(
@@ -231,6 +273,8 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // ===== Location bar =====
+
   Widget _buildLocationBar() {
     return InkWell(
       onTap: _pickPlace,
@@ -258,24 +302,6 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
             ),
-            if (_residencePending) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF3D6),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  'Pending review',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF8A6100),
-                  ),
-                ),
-              ),
-            ],
             const Icon(Icons.chevron_right, color: _C.muted),
           ],
         ),
@@ -283,18 +309,17 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // ===== Tabs =====
+
   Widget _buildTabs() {
     return Container(
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: _C.border)),
       ),
       child: Row(
-        // ✨ ใช้ mainAxisAlignment ช่วยกระจายพื้นที่ (เผื่อไว้)
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          for (var i = 0; i < _tabs.length; i++)
-            // ✨ ใช้ Expanded หุ้ม Tab ไว้ เพื่อให้แบ่งพื้นที่เท่าๆ กันจนเต็มจอ
-            Expanded(child: _buildTab(i)),
+          for (var i = 0; i < _tabs.length; i++) Expanded(child: _buildTab(i)),
         ],
       ),
     );
@@ -302,6 +327,7 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildTab(int index) {
     final active = index == _tab;
+
     return InkWell(
       onTap: () => setState(() => _tab = index),
       child: IntrinsicWidth(
@@ -310,7 +336,7 @@ class _HomePageState extends State<HomePage> {
           children: [
             Text(
               _tabs[index],
-              textAlign: TextAlign.center, // ✨ จัดตัวหนังสือให้อยู่กึ่งกลาง Tab
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: active ? FontWeight.w600 : FontWeight.w400,
@@ -324,6 +350,8 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
+  // ===== Section header =====
 
   Widget _buildSectionHeader() {
     return Column(
@@ -345,22 +373,19 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildProductCard(_Product p) {
+  // ===== Product card =====
+
+  Widget _buildProductCard(Product p) {
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ProductDetailPage(
-            product: ProductDetail.mock(
-              id: p.id,
-              title: p.title,
-              price: p.price,
-              place: p.place,
-              urgent: p.urgent,
-            ),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                ProductDetailPage(product: ProductDetail.fromProduct(p)),
           ),
-        ),
-      ),
+        );
+      },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -368,7 +393,6 @@ class _HomePageState extends State<HomePage> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // ✨ 1. คงเงาบางๆ ไว้ให้รูปดูลอยขึ้นมา
                 Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(14),
@@ -382,12 +406,11 @@ class _HomePageState extends State<HomePage> {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(14),
-                    child: _buildImage(p.imageUrl),
+                    child: _buildImage(p.primaryImageUrl),
                   ),
                 ),
 
-                // ป้าย Urgent เหมือนเดิม
-                if (p.urgent)
+                if (p.isUrgent)
                   Positioned(
                     bottom: 8,
                     left: 8,
@@ -434,14 +457,13 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 4),
-          // ✨ 2. คงไอคอน Location เล็กๆ ไว้ ช่วยนำสายตาและดูน่ารักขึ้น
           Row(
             children: [
               const Icon(Icons.location_on, size: 12, color: _C.muted),
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
-                  p.building,
+                  p.locationName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 12, color: _C.muted),
@@ -454,22 +476,30 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // ===== Product image =====
+
   Widget _buildImage(String? url) {
     final placeholder = Container(
       color: _C.surface,
       alignment: Alignment.center,
       child: const Icon(Icons.image_outlined, size: 32, color: _C.faint),
     );
-    if (url == null) return placeholder;
+
+    if (url == null || url.isEmpty) {
+      return placeholder;
+    }
+
     return Image.network(
       url,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => placeholder,
+      errorBuilder: (_, _, _) => placeholder,
       loadingBuilder: (_, child, progress) =>
           progress == null ? child : placeholder,
     );
   }
 }
+
+// ===== Empty state =====
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
@@ -495,6 +525,53 @@ class _EmptyState extends StatelessWidget {
             'Try "Same zone" or "All campus" to see more.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 13, color: _C.muted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ===== Error state =====
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.cloud_off_outlined, size: 40, color: _C.faint),
+          const SizedBox(height: 12),
+          const Text(
+            'Could not load products',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: _C.ink,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13, color: _C.muted),
+          ),
+          const SizedBox(height: 18),
+          OutlinedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Try again'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _C.ink,
+              side: const BorderSide(color: _C.border),
+            ),
           ),
         ],
       ),

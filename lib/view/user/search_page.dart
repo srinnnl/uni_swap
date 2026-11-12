@@ -585,10 +585,14 @@ class _SearchPageState extends State<SearchPage> {
             Icon(icon, size: 20, color: _C.muted),
             const SizedBox(width: 12),
             Text(title, style: const TextStyle(fontSize: 14, color: _C.ink)),
-            const Spacer(),
-            Flexible(
+            const SizedBox(
+              width: 16,
+            ), // เว้นระยะเผื่อกรณีที่ชื่อยาวจะได้ไม่ชนกัน
+            // ✨ เปลี่ยนจาก Spacer() + Flexible มาใช้ Expanded แล้วดัน Text ชิดขวา
+            Expanded(
               child: Text(
                 value,
+                textAlign: TextAlign.right,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 14, color: _C.muted),
@@ -604,7 +608,6 @@ class _SearchPageState extends State<SearchPage> {
 
   Widget _buildEmptyState() {
     return Padding(
-      // ✨ เปลี่ยน padding ด้านล่างเป็น 120 เพื่อดันเนื้อหาให้พ้นแถบ Bottom Bar
       padding: const EdgeInsets.fromLTRB(24, 48, 24, 120),
       child: Column(
         mainAxisAlignment: MainAxisAlignment

@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:uni_swap/model/format.dart';
 import 'package:uni_swap/model/order_status.dart';
@@ -250,6 +252,26 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             fontFamily: 'serif',
           ),
         ),
+        if (_p.product?.itemCondition != null) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8EDE4), // สีเขียวตุ่นๆ ดูพรีเมียม
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              // .name จะดึงค่าข้อความออกมาจาก Enum (เช่น 'like_new') แล้วแปลงให้สวยงาม
+              'Condition: ${_p.product!.itemCondition!.name.replaceAll('_', ' ').toUpperCase()}',
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF3F6B52),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+
         const SizedBox(height: 14),
         Text(
           formatPriceTHB(_p.price),

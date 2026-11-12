@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:uni_swap/model/format.dart';
+import 'package:uni_swap/model/product.dart';
 import 'package:uni_swap/view/user/campus_locations.dart';
 import 'package:uni_swap/view/user/product_categories.dart';
 import 'package:uni_swap/view/user/product_detail_page.dart';

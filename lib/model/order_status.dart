@@ -21,10 +21,15 @@ enum OrderStatus {
   /// ค่าที่ส่ง/รับกับ API (ตรงกับ enum ใน DB)
   final String apiValue;
 
-  static OrderStatus fromApi(String value) => OrderStatus.values.firstWhere(
-    (s) => s.apiValue == value,
-    orElse: () => OrderStatus.pendingPayment,
-  );
+  static OrderStatus? tryParse(Object? value) {
+    for (final status in OrderStatus.values) {
+      if (status.apiValue == value) return status;
+    }
+    return null;
+  }
+
+  static OrderStatus fromApi(String value) =>
+      tryParse(value) ?? OrderStatus.pendingPayment;
 
   /// ออเดอร์ที่ยังดำเนินอยู่ (แสดงในส่วนบนของหน้า Orders)
   bool get isActive =>
@@ -80,10 +85,15 @@ enum ProductStatus {
 
   final String apiValue;
 
-  static ProductStatus fromApi(String value) => ProductStatus.values.firstWhere(
-    (s) => s.apiValue == value,
-    orElse: () => ProductStatus.available,
-  );
+  static ProductStatus? tryParse(Object? value) {
+    for (final status in ProductStatus.values) {
+      if (status.apiValue == value) return status;
+    }
+    return null;
+  }
+
+  static ProductStatus fromApi(String value) =>
+      tryParse(value) ?? ProductStatus.available;
 }
 
 /// อายุของออเดอร์ก่อนต้องจ่ายเงิน (orders.payment_deadline = created_at + 30 นาที)

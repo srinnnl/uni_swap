@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/controller/app_controllers.dart';
+import 'package:uni_swap/controller/api_client.dart';
 import 'package:uni_swap/view/user/campus_locations.dart';
 
 class _C {
@@ -37,6 +39,7 @@ class _RegisterPageState extends State<RegisterPage> {
   String? get _residenceLabel =>
       _zone == null ? null : (_location?.name ?? _otherOption);
   bool _residenceError = false;
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -49,8 +52,9 @@ class _RegisterPageState extends State<RegisterPage> {
     super.dispose();
   }
 
-  // ===== จุดเชื่อมต่อ API: ให้เพื่อนแก้ฟังก์ชันนี้ =====
-  void _submit() {
+  // Submit through AuthController. The API returns a pending-review account;
+  // the user must wait for an administrator before signing in.
+  Future<void> _submit() async {
     final formOk = _formKey.currentState!.validate();
     setState(() => _residenceError = _zone == null);
     if (!formOk || _zone == null) return;
@@ -71,22 +75,37 @@ class _RegisterPageState extends State<RegisterPage> {
       'residenceLocationId': _location?.id,
       'customResidence': isOther ? _customResidenceCtrl.text.trim() : null,
     };
-    debugPrint('register: ${data['username']} (pending: $isOther)');
-
-    // TODO: ส่ง data ไปที่ API สมัครสมาชิก แล้วค่อยกลับหน้า Login เมื่อสำเร็จ
-    //   ผู้สมัครใหม่ได้ users.status='pending' (ไม่มี OTP) ต้องรอ admin อนุมัติก่อนเข้าใช้ได้
-    //   studentId ส่งเป็นข้อความ (DB ควรเป็น CHAR(10)) ถ้า email/username/studentId ซ้ำ
-    //   API จะตอบ error ให้แสดงใต้ช่องที่ซ้ำ
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          isOther
-              ? 'Account created! An admin will review your account and residence before you can sign in.'
-              : 'Account created! You can sign in once an admin approves it.',
+    setState(() => _isSubmitting = true);
+    try {
+      await authController.register(data);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isOther
+                ? 'Registration submitted. An admin will review your account and residence.'
+                : 'Registration submitted. You can sign in after admin approval.',
+          ),
         ),
-      ),
-    );
-    Navigator.pop(context);
+      );
+      Navigator.pop(context);
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not submit registration. Please try again.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 
   Future<void> _pickResidence() async {
@@ -316,7 +335,7 @@ class _RegisterPageState extends State<RegisterPage> {
               width: double.infinity,
               height: 52,
               child: FilledButton(
-                onPressed: _submit,
+                onPressed: _isSubmitting ? null : _submit,
                 style: FilledButton.styleFrom(
                   backgroundColor: _C.ink,
                   foregroundColor: Colors.white,
@@ -324,9 +343,12 @@ class _RegisterPageState extends State<RegisterPage> {
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                child: const Text(
-                  'Create account',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                child: Text(
+                  _isSubmitting ? 'Submitting…' : 'Create account',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),

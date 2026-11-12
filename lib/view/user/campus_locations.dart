@@ -86,22 +86,30 @@ Future<LocationPick?> showCampusLocationPicker(
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Wrap(
-                spacing: 8,
+              child: Row(
                 children: [
                   for (final z in CampusZone.values)
-                    ChoiceChip(
-                      label: Text(z.label),
-                      selected: current == z,
-                      onSelected: (_) => setSheet(() => current = z),
-                      showCheckmark: false,
-                      backgroundColor: Colors.white,
-                      selectedColor: _ink,
-                      side: const BorderSide(color: _border),
-                      labelStyle: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: current == z ? Colors.white : _ink,
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: ChoiceChip(
+                          label: Container(
+                            width: double.infinity,
+                            alignment: Alignment.center,
+                            child: Text(z.label),
+                          ),
+                          selected: current == z,
+                          onSelected: (_) => setSheet(() => current = z),
+                          showCheckmark: false,
+                          backgroundColor: Colors.white,
+                          selectedColor: _ink,
+                          side: const BorderSide(color: _border),
+                          labelStyle: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: current == z ? Colors.white : _ink,
+                          ),
+                        ),
                       ),
                     ),
                 ],

@@ -79,7 +79,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  static const _tabs = ['Same place', 'Same zone', 'All campus'];
+  static const _tabs = ['Same place', 'Same zone', 'Explore all'];
 
   // TODO: ดึงจากข้อมูลผู้ใช้หลัง login
   final String _userName = 'Maya';
@@ -115,7 +115,12 @@ class _HomePageState extends State<HomePage> {
       zone: _place.zone,
       selected: _place,
     );
-    if (picked?.location != null) setState(() => _place = picked!.location!);
+    if (picked?.location != null) {
+      setState(() {
+        _place = picked!.location!;
+        _tab = 0;
+      });
+    }
   }
 
   @override
@@ -283,11 +288,12 @@ class _HomePageState extends State<HomePage> {
         border: Border(bottom: BorderSide(color: _C.border)),
       ),
       child: Row(
+        // ✨ ใช้ mainAxisAlignment ช่วยกระจายพื้นที่ (เผื่อไว้)
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          for (var i = 0; i < _tabs.length; i++) ...[
-            _buildTab(i),
-            const SizedBox(width: 24),
-          ],
+          for (var i = 0; i < _tabs.length; i++)
+            // ✨ ใช้ Expanded หุ้ม Tab ไว้ เพื่อให้แบ่งพื้นที่เท่าๆ กันจนเต็มจอ
+            Expanded(child: _buildTab(i)),
         ],
       ),
     );
@@ -303,6 +309,7 @@ class _HomePageState extends State<HomePage> {
           children: [
             Text(
               _tabs[index],
+              textAlign: TextAlign.center, // ✨ จัดตัวหนังสือให้อยู่กึ่งกลาง Tab
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: active ? FontWeight.w600 : FontWeight.w400,
@@ -318,37 +325,21 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildSectionHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.end,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Near you',
-              style: TextStyle(fontSize: 20, color: _C.ink),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              _subtitle,
-              style: const TextStyle(fontSize: 13, color: _C.muted),
-            ),
-          ],
-        ),
-        GestureDetector(
-          onTap: () {
-            // TODO: เปิดหน้ารายการสินค้าทั้งหมด
-          },
-          child: const Text(
-            'See all',
-            style: TextStyle(
-              fontSize: 13,
-              color: _C.muted,
-              decoration: TextDecoration.underline,
-            ),
+        Text(
+          _tab == 0
+              ? 'Around your place'
+              : (_tab == 1 ? 'In your zone' : 'Everywhere'),
+          style: const TextStyle(
+            fontSize: 20,
+            color: _C.ink,
+            fontWeight: FontWeight.w600,
           ),
         ),
+        const SizedBox(height: 4),
+        Text(_subtitle, style: const TextStyle(fontSize: 13, color: _C.muted)),
       ],
     );
   }
@@ -373,38 +364,52 @@ class _HomePageState extends State<HomePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _buildImage(p.imageUrl),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // ✨ 1. คงเงาบางๆ ไว้ให้รูปดูลอยขึ้นมา
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _C.ink.withValues(alpha: 0.06),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: _buildImage(p.imageUrl),
+                  ),
+                ),
 
-                  if (p.urgent)
-                    Positioned(
-                      bottom: 8,
-                      left: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFE5E5),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Text(
-                          'Urgent',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFFC62828),
-                          ),
+                // ป้าย Urgent เหมือนเดิม
+                if (p.urgent)
+                  Positioned(
+                    bottom: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFE5E5),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text(
+                        'Urgent',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFC62828),
                         ),
                       ),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
           const SizedBox(height: 10),
@@ -428,10 +433,20 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 4),
-          // โชว์แค่ชื่อสถานที่ ไม่เอา min แล้ว
-          Text(
-            p.building,
-            style: const TextStyle(fontSize: 12, color: _C.muted),
+          // ✨ 2. คงไอคอน Location เล็กๆ ไว้ ช่วยนำสายตาและดูน่ารักขึ้น
+          Row(
+            children: [
+              const Icon(Icons.location_on, size: 12, color: _C.muted),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  p.building,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, color: _C.muted),
+                ),
+              ),
+            ],
           ),
         ],
       ),

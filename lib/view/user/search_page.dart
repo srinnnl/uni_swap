@@ -221,22 +221,31 @@ class _SearchPageState extends State<SearchPage> {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
+                // ✨ เปลี่ยนจาก Wrap เป็น Row แล้วใช้ Expanded ช่วยดันให้เต็มจอ
+                Row(
                   children: [
                     for (final z in CampusZone.values)
-                      ChoiceChip(
-                        label: Text(z.label),
-                        selected: zone == z,
-                        onSelected: (_) => setSheet(() => zone = z),
-                        showCheckmark: false,
-                        backgroundColor: Colors.white,
-                        selectedColor: _C.ink,
-                        side: const BorderSide(color: _C.border),
-                        labelStyle: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: zone == z ? Colors.white : _C.ink,
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: ChoiceChip(
+                            label: Container(
+                              width: double.infinity,
+                              alignment: Alignment.center,
+                              child: Text(z.label),
+                            ),
+                            selected: zone == z,
+                            onSelected: (_) => setSheet(() => zone = z),
+                            showCheckmark: false,
+                            backgroundColor: Colors.white,
+                            selectedColor: _C.ink,
+                            side: const BorderSide(color: _C.border),
+                            labelStyle: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: zone == z ? Colors.white : _C.ink,
+                            ),
+                          ),
                         ),
                       ),
                   ],
@@ -329,6 +338,7 @@ class _SearchPageState extends State<SearchPage> {
         bottom: false,
         child: CustomScrollView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
@@ -355,26 +365,40 @@ class _SearchPageState extends State<SearchPage> {
                     const SizedBox(height: 24),
                     _buildFilterBox(),
                     const SizedBox(height: 28),
-                    Text(
-                      '${items.length} ${items.length == 1 ? 'item' : 'items'}',
-                      style: const TextStyle(fontSize: 20, color: _C.ink),
-                    ),
-                    const SizedBox(height: 4),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Text(
-                          _sort.label,
-                          style: const TextStyle(fontSize: 13, color: _C.muted),
+                          '${items.length} ${items.length == 1 ? 'item' : 'items'}',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                            color: _C.ink,
+                          ),
                         ),
-                        GestureDetector(
+                        InkWell(
                           onTap: _pickSort,
-                          child: const Text(
-                            'Sort by',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: _C.muted,
-                              decoration: TextDecoration.underline,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 4,
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.sort, size: 18, color: _C.ink),
+                                const SizedBox(width: 6),
+                                Text(
+                                  _sort
+                                      .label, // โชว์คำว่า Price: low to high ตรงนี้เลย
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: _C.ink,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -386,7 +410,10 @@ class _SearchPageState extends State<SearchPage> {
               ),
             ),
             if (items.isEmpty)
-              SliverToBoxAdapter(child: _buildEmptyState())
+              SliverFillRemaining(
+                hasScrollBody: false, // บอกว่าข้างในไม่ต้องซ้อน Scroll อีกชั้น
+                child: _buildEmptyState(),
+              )
             else
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 120),
@@ -576,8 +603,11 @@ class _SearchPageState extends State<SearchPage> {
 
   Widget _buildEmptyState() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+      // ✨ เปลี่ยน padding ด้านล่างเป็น 120 เพื่อดันเนื้อหาให้พ้นแถบ Bottom Bar
+      padding: const EdgeInsets.fromLTRB(24, 48, 24, 120),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment
+            .center, // ✨ จัดให้อยู่กึ่งกลางพื้นที่ที่มองเห็นได้
         children: [
           const Icon(Icons.search_off, size: 40, color: _C.faint),
           const SizedBox(height: 12),
@@ -787,7 +817,7 @@ class _PriceSheetState extends State<_PriceSheet> {
           24,
           0,
           24,
-          24 + MediaQuery.of(context).viewInsets.bottom,
+          24 + MediaQuery.of(context).viewInsets.bottom + 40,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,

@@ -15,9 +15,6 @@ const _cRedFg = Color(0xFFB3402F);
 const _cSageBg = Color(0xFFD8E4DC);
 const _cSageFg = Color(0xFF3F6B52);
 
-// เปลี่ยนชื่อ Enum จาก ListingStatus เป็น ItemStatus
-// products.status: available=active/urgent (urgent คำนวณจาก clearance_deadline), pending_review=pending,
-// changes_requested=actionRequired, rejected, reserved (มีออเดอร์ค้างอยู่)
 enum ItemStatus {
   active,
   urgent,
@@ -29,7 +26,6 @@ enum ItemStatus {
   hidden,
 }
 
-// เปลี่ยนชื่อคลาส _Listing เป็น _Item
 class _Item {
   const _Item({
     required this.status,
@@ -48,7 +44,6 @@ class _Item {
   final SellDraft? draft; // ข้อมูลเดิมสำหรับหน้าแก้ไข (TODO: มาจาก API)
 }
 
-// เปลี่ยนตัวแปร _listings เป็น _items
 final _items = <_Item>[
   _Item(
     status: ItemStatus.actionRequired,
@@ -140,9 +135,9 @@ class MyItemsPage extends StatelessWidget {
       body: SafeArea(
         bottom: false,
         child: ListView(
-          // ท้ายหน้าเว้น 120 ให้พ้นแถบเมนูล่าง (เหมือนหน้า Orders)
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
           children: [
+            // Header (อยู่ตรงกลางเรียบร้อย)
             Center(
               child: Column(
                 children: [
@@ -163,25 +158,39 @@ class MyItemsPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-            // กล่อง Stats ให้เป็นสีเข้ม ตัดกับแอปสีสว่าง
+
+            // Stats
             Container(
               padding: const EdgeInsets.symmetric(vertical: 20),
               decoration: BoxDecoration(
-                color: _cInk,
-                borderRadius: BorderRadius.circular(14),
+                color: Colors.white.withValues(alpha: 0.65),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.8),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: _cInk.withValues(alpha: 0.03),
+                    blurRadius: 15,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   _buildStat('$_activeCount', 'Active'),
-                  Container(width: 1, height: 40, color: Colors.white24),
+                  Container(width: 1, height: 40, color: _cBorder),
                   _buildStat('$_soldCount', 'Sold'),
-                  Container(width: 1, height: 40, color: Colors.white24),
+                  Container(width: 1, height: 40, color: _cBorder),
                   _buildStat('$_totalViews', 'Views'),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
+
+            // ✨ 2. ปุ่ม Sell สีไข่มุก ทรงสี่เหลี่ยมขอบมน (ไม่เป็นแคปซูลแล้ว)
             SizedBox(
               height: 54,
               child: FilledButton.icon(
@@ -191,31 +200,39 @@ class MyItemsPage extends StatelessWidget {
                 ),
                 icon: const Icon(Icons.add),
                 label: const Text(
-                  'Sell an item',
+                  'Sell a new item',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                 ),
                 style: FilledButton.styleFrom(
-                  backgroundColor: _cInk,
-                  foregroundColor: Colors.white,
+                  backgroundColor: Colors.white,
+                  foregroundColor: _cInk,
+                  elevation: 2,
+                  shadowColor: _cInk.withValues(alpha: 0.1),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(
+                      14,
+                    ), // ✨ เปลี่ยนจาก 30 กลับมาเป็น 14 ให้เป็นทรงสี่เหลี่ยม
+                    side: const BorderSide(
+                      color: _cBorder,
+                      width: 1,
+                    ), // ขอบสีเงินบางๆ รักษาความเป็นไข่มุก
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 32),
 
+            // Recent items
             const Text(
               'Recent items',
               style: TextStyle(
-                fontSize: 16,
+                fontSize: 18,
                 fontWeight: FontWeight.w700,
                 color: _cInk,
               ),
             ),
             const SizedBox(height: 12),
 
-            // แถวเรียบมีเส้นคั่น เหมือนรายการในหน้า Orders
             for (final item in _items)
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -228,7 +245,6 @@ class MyItemsPage extends StatelessWidget {
                   subtitle: item.subtitle,
                   views: item.views,
                   adminNote: item.adminNote,
-                  // Edit item / Fix item -> เปิดหน้า Sell ในโหมดแก้ไข (บันทึกแล้วกลับไปรอตรวจ)
                   onEdit: item.draft == null
                       ? null
                       : () => Navigator.push(
@@ -245,6 +261,7 @@ class MyItemsPage extends StatelessWidget {
     );
   }
 
+  // ✨ 4. แก้ฟังก์ชัน _buildStat นิดหน่อย ให้ตัวหนังสือเป็นสีดำเพื่อให้กลืนกับพื้นหลังสีสว่าง
   Widget _buildStat(String val, String label) {
     return Column(
       children: [
@@ -252,15 +269,12 @@ class MyItemsPage extends StatelessWidget {
           val,
           style: const TextStyle(
             fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            color: _cInk, // เปลี่ยนจากสีขาวเป็นสี _cInk
           ),
         ),
         const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 12, color: Color(0xFFC9C7BF)),
-        ),
+        Text(label, style: const TextStyle(fontSize: 12, color: _cMuted)),
       ],
     );
   }
@@ -460,28 +474,28 @@ class _ItemCard extends StatelessWidget {
                 InkWell(
                   onTap: onEdit,
                   child: Row(
-                  children: [
-                    Text(
-                      // แก้คำว่า listing เป็น item
-                      status == ItemStatus.actionRequired
-                          ? 'Fix item'
-                          : 'Edit item',
-                      style: TextStyle(
-                        fontSize: 12,
+                    children: [
+                      Text(
+                        // แก้คำว่า listing เป็น item
+                        status == ItemStatus.actionRequired
+                            ? 'Fix item'
+                            : 'Edit item',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: status == ItemStatus.actionRequired
+                              ? _cRedFg
+                              : _cLink,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        size: 16,
                         color: status == ItemStatus.actionRequired
                             ? _cRedFg
                             : _cLink,
-                        fontWeight: FontWeight.w600,
                       ),
-                    ),
-                    Icon(
-                      Icons.chevron_right,
-                      size: 16,
-                      color: status == ItemStatus.actionRequired
-                          ? _cRedFg
-                          : _cLink,
-                    ),
-                  ],
+                    ],
                   ),
                 ),
               ],

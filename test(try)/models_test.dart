@@ -1,3 +1,6 @@
+//ทดสอบคลาส Model หลักทั้งหมด (User, Product, ProductDetail, Order, Payment, 
+//Refund, Report, Review, BankAccount, ApiPage, DashboardSummary, AdminDashboard)
+
 // นำเข้าแพ็กเกจหลักสำหรับการเขียน Unit Test ใน Flutter
 import 'package:flutter_test/flutter_test.dart';
 // นำเข้าไฟล์รวมคลาส Model ทั้งหมดของแอปพลิเคชันที่ต้องการนำมาทดสอบ

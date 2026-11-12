@@ -80,68 +80,69 @@ Future<LocationPick?> showCampusLocationPicker(
     backgroundColor: Colors.white,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setSheet) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Row(
-                children: [
-                  for (final z in CampusZone.values)
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: ChoiceChip(
-                          label: Container(
-                            width: double.infinity,
-                            alignment: Alignment.center,
-                            child: Text(z.label),
-                          ),
-                          selected: current == z,
-                          onSelected: (_) => setSheet(() => current = z),
-                          showCheckmark: false,
-                          backgroundColor: Colors.white,
-                          selectedColor: _ink,
-                          side: const BorderSide(color: _border),
-                          labelStyle: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: current == z ? Colors.white : _ink,
+        child: SizedBox(
+          height: MediaQuery.of(ctx).size.height * 0.65,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                child: Row(
+                  children: [
+                    for (final z in CampusZone.values)
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: ChoiceChip(
+                            label: Container(
+                              width: double.infinity,
+                              alignment: Alignment.center,
+                              child: Text(z.label),
+                            ),
+                            selected: current == z,
+                            onSelected: (_) => setSheet(() => current = z),
+                            showCheckmark: false,
+                            backgroundColor: Colors.white,
+                            selectedColor: _ink,
+                            side: const BorderSide(color: _border),
+                            labelStyle: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: current == z ? Colors.white : _ink,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            Flexible(
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  for (final l in locationsIn(current))
-                    ListTile(
-                      title: Text(l.name),
-                      trailing: l.id == selected?.id
-                          ? const Icon(Icons.check, color: _ink)
-                          : null,
-                      onTap: () =>
-                          Navigator.pop(ctx, (zone: current, location: l)),
-                    ),
-                  if (otherLabel != null)
-                    ListTile(
-                      leading: const Icon(
-                        Icons.add_location_alt_outlined,
-                        color: _ink,
+              Expanded(
+                child: ListView(
+                  children: [
+                    for (final l in locationsIn(current))
+                      ListTile(
+                        title: Text(l.name),
+                        trailing: l.id == selected?.id
+                            ? const Icon(Icons.check, color: _ink)
+                            : null,
+                        onTap: () =>
+                            Navigator.pop(ctx, (zone: current, location: l)),
                       ),
-                      title: Text(otherLabel),
-                      onTap: () =>
-                          Navigator.pop(ctx, (zone: current, location: null)),
-                    ),
-                ],
+                    if (otherLabel != null)
+                      ListTile(
+                        leading: const Icon(
+                          Icons.add_location_alt_outlined,
+                          color: _ink,
+                        ),
+                        title: Text(otherLabel),
+                        onTap: () =>
+                            Navigator.pop(ctx, (zone: current, location: null)),
+                      ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     ),

@@ -343,7 +343,7 @@ class _SearchPageState extends State<SearchPage> {
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -417,7 +417,7 @@ class _SearchPageState extends State<SearchPage> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 120),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
                 sliver: SliverGrid(
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
@@ -608,6 +608,7 @@ class _SearchPageState extends State<SearchPage> {
 
   Widget _buildEmptyState() {
     return Padding(
+      // ✨ เปลี่ยน padding ด้านล่างเป็น 120 เพื่อดันเนื้อหาให้พ้นแถบ Bottom Bar
       padding: const EdgeInsets.fromLTRB(24, 48, 24, 120),
       child: Column(
         mainAxisAlignment: MainAxisAlignment

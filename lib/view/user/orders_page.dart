@@ -27,7 +27,8 @@ class _Order {
   final double price; // orders.seller_price
   final String person; // seller (Buying tab) / buyer (Selling tab)
   final bool isBuying;
-  final DateTime createdAt; // orders.created_at (API ส่ง UTC ให้แปลงด้วย toLocal())
+  final DateTime
+  createdAt; // orders.created_at (API ส่ง UTC ให้แปลงด้วย toLocal())
   final Color thumbColor;
   final IconData thumbIcon;
   final String productLocation; // products.location_name
@@ -239,7 +240,6 @@ class _OrdersPageState extends State<OrdersPage> {
 
   Widget _buildList() {
     return ListView(
-      // ท้ายหน้าเว้น 120 ให้พ้นแถบเมนูล่าง
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
       children: [
         const _PageHeader(title: 'My orders'),
@@ -260,7 +260,7 @@ class _OrdersPageState extends State<OrdersPage> {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 24),
         if (_active.isEmpty && _past.isEmpty)
           const Padding(
             padding: EdgeInsets.only(top: 60),
@@ -351,8 +351,18 @@ class _OrdersPageState extends State<OrdersPage> {
     }
     if (diff == 1) return 'Yesterday';
     const m = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${m[t.month - 1]} ${t.day}';
   }
@@ -365,9 +375,13 @@ class _OrdersPageState extends State<OrdersPage> {
       behavior: HitTestBehavior.opaque,
       onTap: () => _openDetails(o),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: _cBorder)),
+        // ✨ 1. เปลี่ยน padding จากบน/ล่าง เป็นรอบๆ การ์ด
+        margin: const EdgeInsets.only(bottom: 16), // ระยะห่างระหว่างการ์ด
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white, // ✨ 2. สีพื้นหลังของการ์ด
+          borderRadius: BorderRadius.circular(16),
+
         ),
         child: Opacity(
           opacity: dimmed ? 0.75 : 1,

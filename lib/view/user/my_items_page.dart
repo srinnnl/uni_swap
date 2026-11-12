@@ -163,25 +163,15 @@ class MyItemsPage extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(vertical: 20),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.65),
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.8),
-                  width: 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: _cInk.withValues(alpha: 0.03),
-                    blurRadius: 15,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+                border: Border.all(color: _cBorder, width: 1),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   _buildStat('$_activeCount', 'Active'),
-                  Container(width: 1, height: 40, color: _cBorder),
+                  Container(width: 1, height: 40, color: _cBorder), // เส้นคั่น
                   _buildStat('$_soldCount', 'Sold'),
                   Container(width: 1, height: 40, color: _cBorder),
                   _buildStat('$_totalViews', 'Views'),
@@ -190,7 +180,7 @@ class MyItemsPage extends StatelessWidget {
             ),
             const SizedBox(height: 20),
 
-            // ✨ 2. ปุ่ม Sell สีไข่มุก ทรงสี่เหลี่ยมขอบมน (ไม่เป็นแคปซูลแล้ว)
+            // ✨ ปุ่ม Sell เปลี่ยนให้ทึบและเด่นขึ้น ไม่แย่งซีนกับกล่องสถิติ
             SizedBox(
               height: 54,
               child: FilledButton.icon(
@@ -204,18 +194,14 @@ class MyItemsPage extends StatelessWidget {
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                 ),
                 style: FilledButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: _cInk,
-                  elevation: 2,
-                  shadowColor: _cInk.withValues(alpha: 0.1),
+                  backgroundColor:
+                      _cInk, // ✨ 1. เปลี่ยนพื้นหลังเป็นสีดำ (_cInk)
+                  foregroundColor:
+                      Colors.white, // ✨ 2. เปลี่ยนตัวอักษร/ไอคอนเป็นสีขาว
+                  elevation: 0, // ✨ 3. เอาเงาออกให้ดูคลีนแบนราบไปเลย
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      14,
-                    ), // ✨ เปลี่ยนจาก 30 กลับมาเป็น 14 ให้เป็นทรงสี่เหลี่ยม
-                    side: const BorderSide(
-                      color: _cBorder,
-                      width: 1,
-                    ), // ขอบสีเงินบางๆ รักษาความเป็นไข่มุก
+                    borderRadius: BorderRadius.circular(14),
+                    // ✨ 4. เอาเส้นขอบ (side: BorderSide...) ออกไปเลยครับ
                   ),
                 ),
               ),
@@ -235,9 +221,13 @@ class MyItemsPage extends StatelessWidget {
 
             for (final item in _items)
               Container(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: _cBorder)),
+                // ✨ 1. เปลี่ยน padding/margin ให้ห่างกันเหมือนหน้า Orders
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(16),
+                // ✨ 2. ทำกล่องสีขาว โค้งมน ไม่มีเส้นขอบ/เงา (สไตล์มินิมอล)
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: _ItemCard(
                   status: item.status,

@@ -1,12 +1,7 @@
 import 'package:flutter/material.dart';
-
-// หน้านัดรับสินค้า: เปิดหลังกด Buy now (ก่อนสร้างออเดอร์) และตอนผู้ซื้อกด Edit meet-up
-// กด Confirm แล้วจะ pop กลับพร้อมจุดนัดพบและเวลา (MeetupChoice)
-// ตรงกับ orders.meetup_location (บังคับ) และ orders.meetup_datetime
-
 import 'package:uni_swap/model/format.dart';
 
-typedef MeetupChoice = ({String spot, DateTime when});
+typedef MeetupChoice = ({DateTime when});
 
 class _C {
   static const bg = Color(0xFFFAF9F6);
@@ -25,16 +20,13 @@ class ArrangeMeetupPage extends StatefulWidget {
     required this.price,
     required this.sellerName,
     required this.sellerLocation,
-    // ใช้ตอนแก้จุดนัดของออเดอร์ที่มีอยู่ เพื่อให้ฟอร์มขึ้นค่าเดิม
-    this.initialSpot,
     this.initialWhen,
   });
 
   final String productTitle;
   final double price;
   final String sellerName;
-  final String sellerLocation; // เช่น 'On-campus dorms · Lamduan 1 Dormitory'
-  final String? initialSpot;
+  final String sellerLocation;
   final DateTime? initialWhen;
 
   @override
@@ -42,28 +34,12 @@ class ArrangeMeetupPage extends StatefulWidget {
 }
 
 class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
-  // DB เก็บจุดนัดเป็นข้อความ (orders.meetup_location) ไม่มีตารางจุดนัด
-  // TODO: ถ้าเพื่อนเพิ่มตารางจุดนัดพบ ให้ดึงจาก API แทน
-  List<String> get _spots {
-    final spots = [
-      '$_building lobby',
-      'Main library',
-      'Student union entrance',
-    ];
-    final initial = widget.initialSpot;
-    if (initial != null && !spots.contains(initial)) spots.insert(0, initial);
-    return spots;
-  }
-
-  late int _spot;
   late DateTime _date;
   late TimeOfDay _time;
 
   @override
   void initState() {
     super.initState();
-    final initial = widget.initialSpot;
-    _spot = initial == null ? 0 : _spots.indexOf(initial);
     final when = widget.initialWhen;
     _date = when ?? DateTime.now().add(const Duration(days: 1));
     _time = when == null
@@ -71,10 +47,12 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
         : TimeOfDay.fromDateTime(when);
   }
 
-  String get _building => widget.sellerLocation.split(' · ').last;
-
   String get _initials {
-    final parts = widget.sellerName.trim().split(RegExp(r'\s+'));
+    final name = widget.sellerName.trim();
+
+    if (name.isEmpty) return '?';
+
+    final parts = name.split(RegExp(r'\s+'));
     return parts.take(2).map((p) => p[0].toUpperCase()).join();
   }
 
@@ -96,7 +74,6 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
     if (t != null) setState(() => _time = t);
   }
 
-  // ===== จุดเชื่อมต่อ API: ให้เพื่อนแก้ฟังก์ชันนี้ =====
   void _confirm() {
     final when = DateTime(
       _date.year,
@@ -113,12 +90,7 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
         );
       return;
     }
-
-    // หน้านี้ยังไม่เรียก API เอง แค่ส่งค่ากลับให้หน้าที่เปิด
-    //   สร้างออเดอร์ใหม่: POST orders { product_id, meetup_location, meetup_datetime }
-    //   แก้จุดนัดของออเดอร์เดิม: TODO ถามเพื่อนว่ามี endpoint แก้ meetup_* ไหม
-    // meetup_datetime ควรส่งเป็น UTC: when.toUtc().toIso8601String()
-    Navigator.pop<MeetupChoice>(context, (spot: _spots[_spot], when: when));
+    Navigator.pop<MeetupChoice>(context, (when: when));
   }
 
   @override
@@ -127,18 +99,19 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
       backgroundColor: _C.bg,
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          // ✨ แก้ Top Padding จาก 8 เป็น 20 ให้หัวข้อไม่ชิดขอบบนเกินไป
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
           children: [
             _buildHeader(),
             const SizedBox(height: 20),
             _buildSellerLocation(),
-            const SizedBox(height: 22),
-            _buildSellerRow(),
-            const SizedBox(height: 26),
-            const _SectionLabel('Choose a meet-up spot'),
-            _buildSpots(),
-            const SizedBox(height: 26),
-            const _SectionLabel('Date & time'),
+            const SizedBox(height: 16),
+
+            // ✨ รวมร่างกล่องผู้ขายกับคำแนะนำการนัดรับให้อยู่ในการ์ดเดียวกัน (ไม่โย้เย้แล้ว)
+            _buildSellerCardGroup(),
+
+            const SizedBox(height: 24),
+            const _SectionLabel('Choose date & time'),
             Row(
               children: [
                 Expanded(
@@ -158,7 +131,7 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 20),
             _buildSafetyNote(),
             const SizedBox(height: 24),
             SizedBox(
@@ -212,17 +185,17 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
             ],
           ),
         ),
-        const SizedBox(width: 48), // ถ่วงให้หัวข้ออยู่กลางพอดี
+        const SizedBox(width: 48),
       ],
     );
   }
 
   Widget _buildSellerLocation() {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: _C.border),
       ),
       child: Row(
@@ -262,88 +235,50 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
     );
   }
 
-  Widget _buildSellerRow() {
-    return Row(
-      children: [
-        CircleAvatar(
-          radius: 25,
-          backgroundColor: const Color(0xFFE9E1D9),
-          child: Text(
-            _initials,
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF5B534B),
-            ),
-          ),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Meet $_firstName',
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: _C.ink,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                _building,
-                style: const TextStyle(fontSize: 12, color: _C.muted),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSpots() {
+  // seller information card
+  Widget _buildSellerCardGroup() {
     return Container(
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: _C.border),
       ),
-      clipBehavior: Clip.antiAlias,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (var i = 0; i < _spots.length; i++) ...[
-            if (i > 0) const Divider(height: 1, color: _C.border),
-            InkWell(
-              onTap: () => setState(() => _spot = i),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 17,
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: const Color(0xFFE9E1D9),
+                child: Text(
+                  _initials,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF5B534B),
+                  ),
                 ),
-                child: Row(
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(
-                      Icons.location_on_outlined,
-                      size: 20,
-                      color: _C.ink,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _spots[i],
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: _C.ink,
-                        ),
+                    Text(
+                      'Meet $_firstName',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: _C.ink,
                       ),
                     ),
-                    _RadioDot(selected: i == _spot),
+                    const SizedBox(height: 2),
                   ],
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ],
       ),
     );
@@ -354,7 +289,7 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: _C.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: const Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -406,37 +341,6 @@ class _SectionLabel extends StatelessWidget {
   );
 }
 
-/// วงกลมเลือก (แทน Radio ของระบบ ซึ่งเปลี่ยน API บ่อยตามเวอร์ชัน Flutter)
-class _RadioDot extends StatelessWidget {
-  const _RadioDot({required this.selected});
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) => AnimatedContainer(
-    duration: const Duration(milliseconds: 150),
-    width: 22,
-    height: 22,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      border: Border.all(
-        color: selected ? _C.ink : _C.border,
-        width: selected ? 2 : 1.5,
-      ),
-    ),
-    child: selected
-        ? Container(
-            width: 10,
-            height: 10,
-            decoration: const BoxDecoration(
-              color: _C.ink,
-              shape: BoxShape.circle,
-            ),
-          )
-        : null,
-  );
-}
-
 class _PickerBox extends StatelessWidget {
   const _PickerBox({
     required this.icon,
@@ -453,7 +357,7 @@ class _PickerBox extends StatelessWidget {
     return Material(
       color: Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         side: const BorderSide(color: _C.border),
       ),
       clipBehavior: Clip.antiAlias,

@@ -7,7 +7,7 @@ const _cMuted = Color(0xFF8A8A82);
 const _cBorder = Color(0xFFE6E4DE);
 const _cRedFg = Color(0xFFB3402F);
 
-// หน้าขอเพิ่มที่พัก (หอ / คอนโด) ที่ยังไม่มีในรายการ
+// หน้าขอเพิ่มที่พัก (หอ) ที่ยังไม่มีในรายการ
 // กด Submit แล้วจะ pop กลับพร้อมค่า true (ตอนนี้ยังเป็นข้อมูลจำลอง)
 //
 // zone = หอใน/หอนอก (ตรงกับ location_requests.zone: on_campus / off_campus)
@@ -60,7 +60,7 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
               child: Text(
                 title,
                 style: const TextStyle(
@@ -116,7 +116,9 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         const SnackBar(
-          content: Text("Request sent. Your place shows as pending until an admin reviews it."),
+          content: Text(
+            "Request sent. Your place shows as pending until an admin reviews it.",
+          ),
         ),
       );
     Navigator.pop(context, true);

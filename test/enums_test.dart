@@ -1,3 +1,6 @@
+//ทดสอบค่าคงที่ Enum ทั้ง 15 ตัว (เช่น UserRole, PaymentMethod, ItemCondition)
+//ว่าตรงกับฝั่ง Backend และมีค่าสำรอง (Fallback) ถูกต้อง
+
 // นำเข้าแพ็กเกจหลักสำหรับการเขียน Unit Test ใน Flutter
 import 'package:flutter_test/flutter_test.dart';
 // นำเข้าไฟล์รวมค่าคงที่แบบ Enum ทั้งหมดของแอปพลิเคชัน

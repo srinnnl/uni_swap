@@ -1,6 +1,14 @@
+// นำเข้าแพ็กเกจหลักสำหรับการเขียน Unit Test ใน Flutter
 import 'package:flutter_test/flutter_test.dart';
+// นำเข้าไฟล์รวมคลาส Model ทั้งหมดของแอปพลิเคชันที่ต้องการนำมาทดสอบ
 import 'package:uni_swap/model/models.dart';
 
+// =========================================================================
+// ฟังก์ชันตัวช่วยสร้างข้อมูล JSON จำลอง (Mock JSON Fixtures) สำหรับใช้ในเทสต์
+// สังเกตว่าตัวเลขและ ID ถูกส่งมาเป็น String เพื่อจำลองพฤติกรรมของฐานข้อมูล MySQL
+// =========================================================================
+
+// ข้อมูล JSON จำลองของผู้ใช้งาน (User)
 Map<String, dynamic> userJson() {
   return {
     'user_id': '2',
@@ -20,6 +28,7 @@ Map<String, dynamic> userJson() {
   };
 }
 
+// ข้อมูล JSON จำลองของสินค้า (Product) พร้อมข้อมูลรูปภาพย่อยและข้อมูลที่ Join มาจากตารางอื่น
 Map<String, dynamic> productJson() {
   return {
     'product_id': '10',
@@ -38,7 +47,8 @@ Map<String, dynamic> productJson() {
     'location_name': 'Lamduan 1 Dormitory',
     'location_id': '2',
     'location_detail': 'Building A',
-    'clearance_deadline': '2099-01-01',
+    'clearance_deadline':
+        '2099-01-01', // ตั้งวันหมดอายุไว้ไกลมากเพื่อให้เหลือวันคงเหลือ > 0 เสมอ
     'status': 'available',
     'created_at': '2026-11-05T10:00:00.000Z',
     'updated_at': '2026-11-05T11:00:00.000Z',
@@ -66,6 +76,7 @@ Map<String, dynamic> productJson() {
   };
 }
 
+// ข้อมูล JSON จำลองของคำสั่งซื้อ (Order) พร้อมรายละเอียดการเงินและกำหนดเวลาชำระเงิน
 Map<String, dynamic> orderJson() {
   return {
     'order_id': '5',
@@ -86,7 +97,8 @@ Map<String, dynamic> orderJson() {
     'meetup_location': 'Lamduan 1 lobby',
     'meetup_datetime': '2026-11-10T10:00:00.000Z',
     'received_at': null,
-    'payment_deadline': '2020-01-01T00:00:00.000Z',
+    'payment_deadline':
+        '2020-01-01T00:00:00.000Z', // ตั้งเวลาในอดีตเพื่อทดสอบการตรวจจับออเดอร์หมดอายุ
     'created_at': '2026-11-05T10:00:00.000Z',
     'updated_at': '2026-11-05T10:01:00.000Z',
     'perspective': 'buying',
@@ -94,8 +106,12 @@ Map<String, dynamic> orderJson() {
 }
 
 void main() {
+  // =========================================================================
+  // กลุ่มทดสอบที่ 1: ตัวช่วยแปลงชนิดข้อมูลพื้นฐานจาก JSON (JSON Helpers)
+  // =========================================================================
   group('JSON helpers', () {
     test('อ่านตัวเลขที่ MySQL ส่งมาเป็น string', () {
+      // ตรวจสอบการแปลง String ตัวเลขและ TINYINT (0/1) ให้เป็นชนิดข้อมูล Dart ที่ถูกต้อง
       expect(jsonInt('42'), 42);
       expect(jsonDouble('12.50'), 12.50);
       expect(jsonBool(1), isTrue);
@@ -103,6 +119,7 @@ void main() {
     });
 
     test('อ่านวันที่ ISO-8601 เป็นเวลาท้องถิ่น', () {
+      // ตรวจสอบการแปลงสตริงเวลา UTC ให้เป็นออบเจกต์ DateTime แบบ Local Time
       final date = jsonDateTime('2026-11-09T10:00:00.000Z');
 
       expect(date, isNotNull);
@@ -111,8 +128,12 @@ void main() {
     });
   });
 
+  // =========================================================================
+  // กลุ่มทดสอบที่ 2: โมเดลผู้ใช้งาน (User)
+  // =========================================================================
   group('User', () {
     test('parse จาก /api/profile และคำนวณ initials', () {
+      // ตรวจสอบการแปลง JSON เป็น User และการสร้างอักษรย่อชื่อ (Maya Demo -> MD)
       final user = User.fromJson(userJson());
 
       expect(user.id, 2);
@@ -129,6 +150,7 @@ void main() {
     });
 
     test('toJson ใช้ชื่อ field แบบเดียวกับ API', () {
+      // ตรวจสอบการแปลงออบเจกต์ User กลับเป็น Map ว่าใช้คีย์ตรงกับ API (snake_case)
       final json = User.fromJson(userJson()).toJson();
 
       expect(json['user_id'], 2);
@@ -139,6 +161,9 @@ void main() {
     });
   });
 
+  // =========================================================================
+  // กลุ่มทดสอบที่ 3: โมเดลหมวดหมู่สินค้า (Category) และสถานที่นัดรับ (Location)
+  // =========================================================================
   group('Category, Location และ LocationRequest', () {
     test('parse Category พร้อม product_count', () {
       final category = Category.fromJson({
@@ -171,6 +196,7 @@ void main() {
     });
 
     test('parse LocationRequest พร้อมข้อมูลผู้ขอ', () {
+      // ตรวจสอบโมเดลคำขอเพิ่มสถานที่ใหม่ รวมถึง getter isOpen ที่เช็กว่าคำขอยังเปิดอยู่หรือไม่
       final request = LocationRequest.fromJson({
         'request_id': '4',
         'user_id': '2',
@@ -196,8 +222,12 @@ void main() {
     });
   });
 
+  // =========================================================================
+  // กลุ่มทดสอบที่ 4: โมเดลสินค้า (Product) และรายละเอียดสินค้า (ProductDetail)
+  // =========================================================================
   group('Product', () {
     test('parse listing/detail ที่มี DECIMAL และ join fields', () {
+      // ตรวจสอบการแปลงราคาทศนิยม สภาพสินค้า ความเร่งด่วน รูปภาพหลายรูป และวันหมดอายุคงเหลือ
       final product = Product.fromJson(productJson());
 
       expect(product.id, 10);
@@ -222,6 +252,7 @@ void main() {
     });
 
     test('ProductDetail.fromJson แปลงเป็น field ที่ UI ใช้', () {
+      // ตรวจสอบโมเดลสำหรับหน้าแสดงรายละเอียดสินค้า (รวมลิสต์ URL รูปภาพและข้อมูลผู้ขาย)
       final detail = ProductDetail.fromJson(productJson());
 
       expect(detail.id, 10);
@@ -242,6 +273,7 @@ void main() {
     });
 
     test('ProductDetail.mock ยังใช้กับหน้า UI เดิมได้', () {
+      // ตรวจสอบคอนสตรักเตอร์จำลองสำหรับใช้แสดงผลตัวอย่างใน UI
       final detail = ProductDetail.mock(
         id: 1,
         title: 'City bike',
@@ -259,6 +291,9 @@ void main() {
     });
   });
 
+  // =========================================================================
+  // กลุ่มทดสอบที่ 5: โมเดลคำสั่งซื้อ (Order) และการคำนวณสถานะหมดอายุ
+  // =========================================================================
   group('Order', () {
     test('parse order พร้อม join และตรวจ deadline ที่เลยแล้ว', () {
       final order = Order.fromJson(orderJson());
@@ -275,12 +310,15 @@ void main() {
       expect(order.perspective, OrderPerspective.buying);
       expect(order.isBuying, isTrue);
       expect(order.isSelling, isFalse);
+      // ตรวจสอบว่าแม้สถานะใน DB จะเป็น pending_payment แต่ถ้าเลยกำหนดเวลาจ่าย (payment_deadline)
+      // ค่า shownStatus ที่แสดงบนหน้าจอต้องเปลี่ยนเป็น expired ทันที
       expect(order.shownStatus, OrderStatus.expired);
       expect(order.isActive, isFalse);
       expect(order.needsPayment, isTrue);
     });
 
     test('copyWith เปลี่ยนสถานะได้โดยไม่กระทบ field อื่น', () {
+      // ตรวจสอบการทำงานของ copyWith เพื่ออัปเดตสถานะใน State โดยรักษาข้อมูลเดิมไว้ครบถ้วน
       final paid = Order.fromJson(
         orderJson(),
       ).copyWith(status: OrderStatus.paid);
@@ -291,8 +329,12 @@ void main() {
     });
   });
 
+  // =========================================================================
+  // กลุ่มทดสอบที่ 6: โมเดลธุรกรรมและการจัดการบัญชี (Payment, Refund, Report, Review, Bank)
+  // =========================================================================
   group('Payment, Refund, Report, Review และ BankAccount', () {
     test('parse Payment', () {
+      // ตรวจสอบการแปลงข้อมูลการชำระเงินและสถานะการพักเงินไว้รอโอนให้ผู้ขาย (held)
       final payment = Payment.fromJson({
         'payment_id': '8',
         'order_id': '5',
@@ -316,6 +358,7 @@ void main() {
     });
 
     test('parse Refund', () {
+      // ตรวจสอบการแปลงข้อมูลคำขอคืนเงิน
       final refund = Refund.fromJson({
         'refund_id': '3',
         'order_id': '5',
@@ -336,6 +379,7 @@ void main() {
     });
 
     test('parse Report พร้อม join จาก admin', () {
+      // ตรวจสอบการแปลงข้อมูลรายงานปัญหาพร้อมชื่อสินค้าที่ถูก Join มาให้แอดมินตรวจสอบ
       final report = Report.fromJson({
         'report_id': '9',
         'reporter_id': '2',
@@ -360,6 +404,7 @@ void main() {
     });
 
     test('parse Review', () {
+      // ตรวจสอบการแปลงข้อมูลคะแนนรีวิวและคำวิจารณ์ผู้ขาย
       final review = Review.fromJson({
         'review_id': '1',
         'order_id': '5',
@@ -375,6 +420,7 @@ void main() {
     });
 
     test('parse BankAccount และปิดเลขบัญชี', () {
+      // ตรวจสอบการแปลงข้อมูลบัญชีธนาคารและการสร้างเลขบัญชีแบบซ่อนหลักหน้า (•••• 1234)
       final account = BankAccount.fromJson({
         'bank_account_id': '1',
         'user_id': '3',
@@ -391,8 +437,12 @@ void main() {
     });
   });
 
+  // =========================================================================
+  // กลุ่มทดสอบที่ 7: โมเดลห่อหุ้มข้อมูลตอบกลับจาก API (Response Wrappers)
+  // =========================================================================
   group('Response wrappers', () {
     test('ApiPage parse pagination และ data', () {
+      // ตรวจสอบการแปลงข้อมูลแบบแบ่งหน้า (Pagination) ที่มีรายการสินค้าอยู่ภายใน
       final page = ApiPage.fromJson({
         'data': [productJson()],
         'page': '1',
@@ -408,6 +458,7 @@ void main() {
     });
 
     test('AuthSession parse token และ user', () {
+      // ตรวจสอบการแปลงข้อมูล Session หลังล็อกอินและการเช็กความสมบูรณ์ของ Session
       final session = AuthSession.fromJson({
         'token': 'jwt-token',
         'user': userJson(),
@@ -418,6 +469,7 @@ void main() {
     });
 
     test('DashboardSummary parse counts และ pending location request', () {
+      // ตรวจสอบการแปลงข้อมูลหน้าสรุปผลของผู้ใช้ทั่วไป (ตัวเลขสถิติ รายการล่าสุด และคำขอสถานที่)
       final dashboard = DashboardSummary.fromJson({
         'user': userJson(),
         'counts': {
@@ -450,6 +502,7 @@ void main() {
     });
 
     test('AdminDashboard parse overview และ queue ต่าง ๆ', () {
+      // ตรวจสอบการแปลงข้อมูลหน้าภาพรวมสำหรับผู้ดูแลระบบ (สถิติรวมและคิวงานที่รออนุมัติ)
       final dashboard = AdminDashboard.fromJson({
         'overview': {
           'users_total': '3',

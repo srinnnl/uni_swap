@@ -1,3 +1,6 @@
+//ทดสอบ OrderStatus, ProductStatus รวมถึงเงื่อนไขสถานะ (เช่น isActive,
+//isPaid, โทนสีป้ายสถานะ) และเวลาชำระเงิน kPaymentWindow
+
 // นำเข้าแพ็กเกจหลักสำหรับการเขียน Unit Test ใน Flutter
 import 'package:flutter_test/flutter_test.dart';
 // นำเข้าไฟล์โมเดลที่จัดการสถานะของคำสั่งซื้อ (OrderStatus) และสถานะสินค้า (ProductStatus)

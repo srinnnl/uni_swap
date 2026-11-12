@@ -252,25 +252,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             fontFamily: 'serif',
           ),
         ),
-        if (_p.product?.itemCondition != null) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE8EDE4), // สีเขียวตุ่นๆ ดูพรีเมียม
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              // .name จะดึงค่าข้อความออกมาจาก Enum (เช่น 'like_new') แล้วแปลงให้สวยงาม
-              'Condition: ${_p.product!.itemCondition!.name.replaceAll('_', ' ').toUpperCase()}',
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF3F6B52),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
 
         const SizedBox(height: 14),
         Text(
@@ -282,30 +263,31 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           ),
         ),
 
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: _C.surface,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: const Row(
-            // ใช้ const ไปเลยเพราะเราพิมพ์ค่าตายตัว
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.info_outline, size: 16, color: _C.muted),
-              SizedBox(width: 6),
-              Text(
-                'Condition: Like new', // 👈 ใส่เป็นค่า Mock เอาไว้ดู UI ก่อน
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: _C.muted,
+        if (_p.product?.itemCondition != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: _C.surface,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.info_outline, size: 16, color: _C.muted),
+                const SizedBox(width: 6),
+                Text(
+                  'Condition: ${_p.product!.itemCondition!.name.replaceAll('_', ' ').toUpperCase()}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: _C.muted,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+        ],
 
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 20),

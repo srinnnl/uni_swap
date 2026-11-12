@@ -95,14 +95,14 @@ Map<String, dynamic> orderJson() {
 
 void main() {
   group('JSON helpers', () {
-    test('อ่านตัวเลขที่ MySQL ส่งมาเป็น string', () {
+    test('parses numbers that MySQL sends as strings', () {
       expect(jsonInt('42'), 42);
       expect(jsonDouble('12.50'), 12.50);
       expect(jsonBool(1), isTrue);
       expect(jsonBool('0'), isFalse);
     });
 
-    test('อ่านวันที่ ISO-8601 เป็นเวลาท้องถิ่น', () {
+    test('parses ISO-8601 dates into local time', () {
       final date = jsonDateTime('2026-11-09T10:00:00.000Z');
 
       expect(date, isNotNull);
@@ -112,7 +112,7 @@ void main() {
   });
 
   group('User', () {
-    test('parse จาก /api/profile และคำนวณ initials', () {
+    test('parses a /api/profile response and computes initials', () {
       final user = User.fromJson(userJson());
 
       expect(user.id, 2);
@@ -128,7 +128,7 @@ void main() {
       expect(user.createdAt?.toUtc(), DateTime.utc(2026, 11, 1, 8));
     });
 
-    test('toJson ใช้ชื่อ field แบบเดียวกับ API', () {
+    test('toJson uses the same field names as the API', () {
       final json = User.fromJson(userJson()).toJson();
 
       expect(json['user_id'], 2);
@@ -139,8 +139,8 @@ void main() {
     });
   });
 
-  group('Category, Location และ LocationRequest', () {
-    test('parse Category พร้อม product_count', () {
+  group('Category, Location and LocationRequest', () {
+    test('parses Category with product_count', () {
       final category = Category.fromJson({
         'category_id': '1',
         'name': 'Furniture & Decor',
@@ -156,7 +156,7 @@ void main() {
       expect(category.productCount, 12);
     });
 
-    test('parse Location', () {
+    test('parses Location', () {
       final location = Location.fromJson({
         'location_id': '2',
         'zone': 'off_campus',
@@ -170,7 +170,7 @@ void main() {
       expect(location.isActive, isFalse);
     });
 
-    test('parse LocationRequest พร้อมข้อมูลผู้ขอ', () {
+    test('parses LocationRequest with requester info', () {
       final request = LocationRequest.fromJson({
         'request_id': '4',
         'user_id': '2',
@@ -197,7 +197,7 @@ void main() {
   });
 
   group('Product', () {
-    test('parse listing/detail ที่มี DECIMAL และ join fields', () {
+    test('parses a listing/detail with DECIMAL and joined fields', () {
       final product = Product.fromJson(productJson());
 
       expect(product.id, 10);
@@ -221,7 +221,7 @@ void main() {
       expect(product.isOwnItem, isFalse);
     });
 
-    test('ProductDetail.fromJson แปลงเป็น field ที่ UI ใช้', () {
+    test('ProductDetail.fromJson maps to the fields the UI uses', () {
       final detail = ProductDetail.fromJson(productJson());
 
       expect(detail.id, 10);
@@ -241,7 +241,7 @@ void main() {
       expect(detail.product?.id, 10);
     });
 
-    test('ProductDetail.mock ยังใช้กับหน้า UI เดิมได้', () {
+    test('ProductDetail.mock still works with the existing UI screens', () {
       final detail = ProductDetail.mock(
         id: 1,
         title: 'City bike',
@@ -260,7 +260,7 @@ void main() {
   });
 
   group('Order', () {
-    test('parse order พร้อม join และตรวจ deadline ที่เลยแล้ว', () {
+    test('parses an order with joined fields and detects a passed deadline', () {
       final order = Order.fromJson(orderJson());
 
       expect(order.id, 5);
@@ -280,7 +280,7 @@ void main() {
       expect(order.needsPayment, isTrue);
     });
 
-    test('copyWith เปลี่ยนสถานะได้โดยไม่กระทบ field อื่น', () {
+    test('copyWith changes the status without affecting other fields', () {
       final paid = Order.fromJson(
         orderJson(),
       ).copyWith(status: OrderStatus.paid);
@@ -291,8 +291,8 @@ void main() {
     });
   });
 
-  group('Payment, Refund, Report, Review และ BankAccount', () {
-    test('parse Payment', () {
+  group('Payment, Refund, Report, Review and BankAccount', () {
+    test('parses Payment', () {
       final payment = Payment.fromJson({
         'payment_id': '8',
         'order_id': '5',
@@ -315,7 +315,7 @@ void main() {
       expect(payment.amount, 472.50);
     });
 
-    test('parse Refund', () {
+    test('parses Refund', () {
       final refund = Refund.fromJson({
         'refund_id': '3',
         'order_id': '5',
@@ -335,7 +335,7 @@ void main() {
       expect(refund.amount, 472.50);
     });
 
-    test('parse Report พร้อม join จาก admin', () {
+    test('parses Report with admin joined fields', () {
       final report = Report.fromJson({
         'report_id': '9',
         'reporter_id': '2',
@@ -359,7 +359,7 @@ void main() {
       expect(report.isOpen, isTrue);
     });
 
-    test('parse Review', () {
+    test('parses Review', () {
       final review = Review.fromJson({
         'review_id': '1',
         'order_id': '5',
@@ -374,7 +374,7 @@ void main() {
       expect(review.comment, 'Great seller');
     });
 
-    test('parse BankAccount และปิดเลขบัญชี', () {
+    test('parses BankAccount and masks the account number', () {
       final account = BankAccount.fromJson({
         'bank_account_id': '1',
         'user_id': '3',
@@ -392,7 +392,7 @@ void main() {
   });
 
   group('Response wrappers', () {
-    test('ApiPage parse pagination และ data', () {
+    test('ApiPage parses pagination and data', () {
       final page = ApiPage.fromJson({
         'data': [productJson()],
         'page': '1',
@@ -407,7 +407,7 @@ void main() {
       expect(page.hasMore, isFalse);
     });
 
-    test('AuthSession parse token และ user', () {
+    test('AuthSession parses token and user', () {
       final session = AuthSession.fromJson({
         'token': 'jwt-token',
         'user': userJson(),
@@ -417,7 +417,7 @@ void main() {
       expect(session.user.email, 'maya@unisw.ap');
     });
 
-    test('DashboardSummary parse counts และ pending location request', () {
+    test('DashboardSummary parses counts and pending location request', () {
       final dashboard = DashboardSummary.fromJson({
         'user': userJson(),
         'counts': {
@@ -449,7 +449,7 @@ void main() {
       );
     });
 
-    test('AdminDashboard parse overview และ queue ต่าง ๆ', () {
+    test('AdminDashboard parses overview and queues', () {
       final dashboard = AdminDashboard.fromJson({
         'overview': {
           'users_total': '3',

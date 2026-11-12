@@ -1,3 +1,5 @@
+//(ล็อกอิน, สมัครสมาชิก, โหลด/อัปเดตโปรไฟล์, ออกจากระบบ)
+
 // นำเข้าแพ็กเกจหลักสำหรับการเขียน Unit Test ใน Flutter
 import 'package:flutter_test/flutter_test.dart';
 // นำเข้าคลาสจัดการ Error และ AuthController ที่ต้องการนำมาทดสอบ

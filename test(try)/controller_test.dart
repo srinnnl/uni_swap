@@ -1,3 +1,6 @@
+//ทดสอบการทำงานร่วมกันแบบภาพรวมของ ApiClient, AuthController,
+//OrderController และ ProductController ในไฟล์เดียว
+
 // นำเข้าไลบรารีสำหรับแปลงข้อมูล JSON (jsonEncode / jsonDecode)
 import 'dart:convert';
 

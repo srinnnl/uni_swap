@@ -1,3 +1,6 @@
+//ทดสอบฟังก์ชันจัดรูปแบบราคา (formatPrice, formatPriceTHB), รหัสออเดอร์ (orderLabel)
+//และตัวช่วยแปลงชนิดข้อมูล JSON อย่างปลอดภัย (jsonInt, jsonDouble, jsonBool, jsonDateTime ฯลฯ)
+
 // นำเข้าแพ็กเกจหลักสำหรับการเขียน Unit Test ใน Flutter
 import 'package:flutter_test/flutter_test.dart';
 // นำเข้าไฟล์ฟังก์ชันจัดรูปแบบการแสดงผล (Format) และตัวช่วยแปลงข้อมูล JSON (JSON Utils)

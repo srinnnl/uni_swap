@@ -1,4 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:uni_swap/controller/api_client.dart';
 import 'package:uni_swap/controller/product_controller.dart';
 
 import 'test_helpers.dart';
@@ -17,7 +22,11 @@ void main() {
       await products.browse();
 
       expect(calls.single.label, 'GET /api/products');
-      expect(calls.single.query, {'sort': 'newest', 'page': '1', 'limit': '20'});
+      expect(calls.single.query, {
+        'sort': 'newest',
+        'page': '1',
+        'limit': '20',
+      });
     });
 
     test('ส่งตัวกรองทุกชนิดไปพร้อมกัน', () async {
@@ -116,6 +125,19 @@ void main() {
       expect(calls.single.body, {'title': 'Oak desk v2'});
     });
 
+    test('deleteUnreviewed ลบประกาศที่ยังไม่ผ่านการพิจารณา', () async {
+      await products.deleteUnreviewed(10);
+
+      expect(calls.single.label, 'DELETE /api/products/10');
+    });
+
+    test('hideAvailable ซ่อนประกาศที่เปิดขายอยู่', () async {
+      await products.hideAvailable(10);
+
+      expect(calls.single.label, 'PUT /api/products/10/hide');
+      expect(calls.single.body, isEmpty);
+    });
+
     test('addImage ใช้ display_order=1 เป็นค่าตั้งต้น', () async {
       await products.addImage(10, 'https://example.com/a.jpg');
 
@@ -129,6 +151,40 @@ void main() {
     test('addImage กำหนดลำดับรูปได้', () async {
       await products.addImage(10, 'https://example.com/b.jpg', displayOrder: 3);
       expect(calls.single.body!['display_order'], 3);
+    });
+
+    test('uploadImage ส่งไฟล์ไปยัง endpoint พร้อมลำดับภาพ', () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'uni-swap-product-',
+      );
+      final file = File('${directory.path}${Platform.pathSeparator}photo.png');
+      await file.writeAsBytes([65, 66, 67]);
+      http.Request? captured;
+      final api = ApiClient(
+        client: MockClient((request) async {
+          captured = request;
+          return http.Response('{"success":true}', 201);
+        }),
+      );
+      products = ProductController(api);
+
+      try {
+        await products.uploadImage(
+          10,
+          filePath: file.path,
+          fileName: 'photo.png',
+          displayOrder: 3,
+        );
+
+        expect(captured!.method, 'POST');
+        expect(captured!.url.path, '/api/products/10/images');
+        expect(captured!.body, contains('name="display_order"'));
+        expect(captured!.body, contains('3'));
+        expect(captured!.body, contains('filename="photo.png"'));
+      } finally {
+        api.close();
+        await directory.delete(recursive: true);
+      }
     });
   });
 }

@@ -1,4 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/controller/api_client.dart';
+import 'package:uni_swap/controller/app_controllers.dart';
+import 'package:uni_swap/model/format.dart';
+import 'package:uni_swap/model/json_utils.dart';
+import 'package:uni_swap/model/order_status.dart';
+import 'package:uni_swap/model/product.dart';
 
 // ---- colors (local to this file) ----
 const _cBg = Color(0xFFFAF9F6);
@@ -7,46 +13,46 @@ const _cInk = Color(0xFF2B2B26);
 const _cMuted = Color(0xFF8A8A82);
 const _cBorder = Color(0xFFE6E4DE);
 const _cChip = Color(0xFFF0EEE9);
-const _cSage = Color(0xFFD8E4DC);
-const _cSageDark = Color(0xFF3F6B52);
 const _cBlueBg = Color(0xFFE3ECF7);
 const _cBlueFg = Color(0xFF3B5E8C);
 const _cAmberBg = Color(0xFFFBEBC2);
 const _cAmberFg = Color(0xFF8A6410);
-const _cRedBg = Color(0xFFF8DADA);
 const _cRedFg = Color(0xFFB3402F);
 
 enum _LStatus { pending, changes }
 
 class _Item {
+  final int id;
   final String title;
   final String seller;
-  final int price;
+  final double price;
   final String category;
   final String place;
   final String submitted;
   final String description;
   final bool urgent;
-  final String? flag; // ข้อสังเกตให้แอดมินดูเพิ่ม (ไม่มีคอลัมน์ใน DB ให้ API คำนวณ เช่น ราคาสูงกว่าค่าเฉลี่ยในหมวด หรือตัดทิ้ง)
-  // รูปสินค้าทั้งหมดที่ผู้ขายอัปโหลด เรียงตาม product_images.display_order (รูปแรก = ปก)
-  // null = ยังไม่มี URL จริง จะแสดงกรอบเทาแทน
-  // TODO: ใส่ URL รูปจริงจาก API (ตาราง product_images)
   final List<String?> photos;
   _LStatus status;
   String? note; // ข้อความที่ส่งกลับให้ผู้ขายแก้ไข
-  _Item(
-    this.title,
-    this.seller,
-    this.price,
-    this.category,
-    this.place,
-    this.submitted,
-    this.description, {
-    this.urgent = false,
-    this.flag,
-    this.photos = const [null],
-    this.status = _LStatus.pending,
-  });
+
+  _Item.fromProduct(Product product)
+    : id = product.id,
+      title = product.title,
+      seller = product.sellerName ?? 'Seller',
+      price = product.price,
+      category = product.categoryLabel,
+      place =
+          '${product.zone.apiValue == 'on_campus' ? 'On-campus' : 'Off-campus'} · ${product.locationName}',
+      submitted = _submittedLabel(product.createdAt),
+      description = product.description ?? '',
+      urgent = product.isUrgent,
+      photos = product.images.isEmpty
+          ? [product.primaryImageUrl]
+          : product.images.map((image) => image.url).toList(growable: false),
+      note = product.reviewNote,
+      status = product.status == ProductStatus.changesRequested
+          ? _LStatus.changes
+          : _LStatus.pending;
 }
 
 class AdminItemsPage extends StatefulWidget {
@@ -67,51 +73,10 @@ class _AdminItemsPageState extends State<AdminItemsPage> {
     ('other', 'Other'),
   ];
 
-  // Mock data (UI only)
-  // TODO: ดึงจาก API (สินค้าที่รอตรวจสอบ) และอัปเดตสถานะสินค้าเมื่อแอดมินตัดสิน
-  final List<_Item> _items = [
-    _Item(
-      'Mini fridge',
-      'Sam K.',
-      60,
-      'Appliances',
-      'North Campus · Oak Hall',
-      '10 min ago',
-      'Works great, small dent on the side. Pickup only.',
-      photos: const [null, null, null],
-    ),
-    _Item(
-      'Calculus textbook',
-      'Priya N.',
-      20,
-      'Books',
-      'North Campus · Maple Hall',
-      '1 hour ago',
-      'Latest edition, a few highlighted pages.',
-      urgent: true,
-    ),
-    _Item(
-      'iPad Air (2021)',
-      'Lee W.',
-      320,
-      'Tech',
-      'South Campus · Cedar Hall',
-      '3 hours ago',
-      '64GB, includes case. Battery health 91%.',
-      flag: 'Price is higher than most items in this category',
-      photos: const [null, null, null, null],
-    ),
-    _Item(
-      'Bean bag chair',
-      'Mika T.',
-      15,
-      'Furniture',
-      'North Campus · Oak Hall',
-      'Yesterday',
-      'Comfy, lightly used.',
-      status: _LStatus.changes,
-    ),
-  ];
+  final List<_Item> _items = [];
+  bool _loading = true;
+  String? _error;
+  bool _busy = false;
 
   String _query = '';
   String _filter = 'All';
@@ -135,9 +100,94 @@ class _AdminItemsPageState extends State<AdminItemsPage> {
     }).toList();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _loadListings();
+  }
+
+  Future<void> _loadListings() async {
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final responses = await Future.wait([
+        adminController.listings(status: 'pending_review', limit: 100),
+        adminController.listings(status: 'changes_requested', limit: 100),
+      ]);
+      if (responses.any(
+        (response) => response['success'] != true || response['data'] is! List,
+      )) {
+        throw const ApiException('The server could not load review listings.');
+      }
+      final products = [
+        for (final response in responses)
+          ...jsonParseList(response['data'], Product.fromJson),
+      ];
+      if (products.any((product) => product.id <= 0)) {
+        throw const ApiException('The server returned invalid listing data.');
+      }
+      if (mounted) {
+        setState(() {
+          _items
+            ..clear()
+            ..addAll(products.map(_Item.fromProduct));
+        });
+      }
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Could not load listings for review.');
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _submitReview(
+    BuildContext sheetContext,
+    _Item item, {
+    required String action,
+    String? note,
+    String? rejectReason,
+  }) async {
+    if (_busy || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final response = await adminController.reviewListing(
+        item.id,
+        action: action,
+        note: note,
+        rejectReason: rejectReason,
+      );
+      if (response['success'] != true) {
+        throw const ApiException('The server could not save this decision.');
+      }
+      await _loadListings();
+      if (sheetContext.mounted) Navigator.pop(sheetContext);
+      if (mounted) {
+        _snack(
+          context,
+          action == 'approve'
+              ? '${item.title} approved and published.'
+              : action == 'changes_requested'
+              ? 'Changes requested from ${item.seller}.'
+              : '${item.title} rejected.',
+        );
+      }
+    } on ApiException catch (error) {
+      if (mounted) _snack(context, error.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _openFilter() async {
     final r = await _pickFilter(context, _filter, _filters);
-    if (r != null) setState(() => _filter = r);
+    if (r != null && mounted) setState(() => _filter = r);
   }
 
   void _openItem(_Item item) {
@@ -170,7 +220,7 @@ class _AdminItemsPageState extends State<AdminItemsPage> {
           const SizedBox(height: 16),
           _PhotoStrip(photos: item.photos),
           const SizedBox(height: 12),
-          _InfoRow('Price', '${item.price} THB'),
+          _InfoRow('Price', '${formatPrice(item.price)} THB'),
           _InfoRow('Category', item.category),
           _InfoRow('Seller', item.seller),
           _InfoRow('Location', item.place),
@@ -188,62 +238,67 @@ class _AdminItemsPageState extends State<AdminItemsPage> {
             item.description,
             style: const TextStyle(fontSize: 13, height: 1.45),
           ),
-          if (item.flag != null) ...[
-            const SizedBox(height: 14),
-            _Notice(item.flag!, bg: _cAmberBg, fg: _cAmberFg),
-          ],
           if (item.note != null) ...[
             const SizedBox(height: 14),
             _Notice('Sent to seller: ${item.note}', bg: _cBlueBg, fg: _cBlueFg),
           ],
           const SizedBox(height: 20),
-          _ActionButton(
-            label: 'Approve item',
-            onPressed: () {
-              // TODO: API -> products.status='available' (ขึ้นหน้าร้าน), reviewed_by=admin, reviewed_at=now
-              //   (ผู้ขายเห็นสถานะใน My items ไม่มีระบบแจ้งเตือน)
-              setState(() => _items.remove(item));
-              Navigator.pop(ctx);
-              _snack(context, '${item.title} approved and live (mock)');
-            },
-          ),
-          const SizedBox(height: 10),
-          _ActionButton(
-            filled: false,
-            label: 'Request changes',
-            onPressed: () async {
-              final note = await _showSheet<String>(
-                ctx,
-                (c) => _NoteForm(
-                  title: 'Request changes',
-                  hint: 'e.g. Please add clearer photos of the front.',
-                  button: 'Send to seller',
-                ),
-              );
-              if (note == null || !mounted) return;
-              // TODO: API -> products.status='changes_requested', review_note=<ข้อความถึงผู้ขาย>, reviewed_by/at
-              setState(() {
-                item.status = _LStatus.changes;
-                item.note = note;
-              });
-              if (ctx.mounted) Navigator.pop(ctx);
-              _snack(context, 'Sent to ${item.seller} (mock)');
-            },
-          ),
-          const SizedBox(height: 10),
-          _ActionButton(
-            filled: false,
-            danger: true,
-            label: 'Reject item',
-            onPressed: () async {
-              final reason = await _pickReason(ctx, _rejectReasons);
-              if (reason == null || !mounted) return;
-              // TODO: API -> products.status='rejected', reject_reason=reason.$1 (ถ้าเป็น 'other' ให้ใส่ review_note), reviewed_by/at
-              setState(() => _items.remove(item));
-              if (ctx.mounted) Navigator.pop(ctx);
-              _snack(context, '${item.title} rejected: ${reason.$2} (mock)');
-            },
-          ),
+          if (item.status == _LStatus.pending) ...[
+            _ActionButton(
+              label: _busy ? 'Saving…' : 'Approve item',
+              onPressed: _busy
+                  ? null
+                  : () => _submitReview(ctx, item, action: 'approve'),
+            ),
+            const SizedBox(height: 10),
+            _ActionButton(
+              filled: false,
+              label: 'Request changes',
+              onPressed: _busy
+                  ? null
+                  : () async {
+                      final note = await _showSheet<String>(
+                        ctx,
+                        (c) => _NoteForm(
+                          title: 'Request changes',
+                          hint: 'e.g. Please add clearer photos of the front.',
+                          button: 'Send to seller',
+                        ),
+                      );
+                      if (note == null || !ctx.mounted) return;
+                      await _submitReview(
+                        ctx,
+                        item,
+                        action: 'changes_requested',
+                        note: note,
+                      );
+                    },
+            ),
+            const SizedBox(height: 10),
+            _ActionButton(
+              filled: false,
+              danger: true,
+              label: 'Reject item',
+              onPressed: _busy
+                  ? null
+                  : () async {
+                      final reason = await _pickReason(ctx, _rejectReasons);
+                      if (reason == null || !ctx.mounted) return;
+                      await _submitReview(
+                        ctx,
+                        item,
+                        action: 'reject',
+                        note: reason.$2,
+                        rejectReason: reason.$1,
+                      );
+                    },
+            ),
+          ] else
+            const _Notice(
+              'Waiting for the seller to edit and resubmit this listing.',
+              bg: _cBlueBg,
+              fg: _cBlueFg,
+            ),
         ],
       );
     });
@@ -272,7 +327,20 @@ class _AdminItemsPageState extends State<AdminItemsPage> {
             ),
             _SectionRow(label: 'Needs attention', shown: list.length),
             Expanded(
-              child: list.isEmpty
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                  ? Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(_error!, textAlign: TextAlign.center),
+                        TextButton(
+                          onPressed: _loadListings,
+                          child: const Text('Try again'),
+                        ),
+                      ],
+                    )
+                  : list.isEmpty
                   ? const _Empty('No items to review')
                   : ListView(
                       padding: const EdgeInsets.only(bottom: 24),
@@ -506,7 +574,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
+      padding: const EdgeInsets.fromLTRB(8, 24, 8, 0),
       child: Row(
         children: [
           IconButton(
@@ -519,12 +587,12 @@ class _Header extends StatelessWidget {
                 Text(
                   title,
                   style: const TextStyle(
-                    fontSize: 20,
+                    fontSize: 22,
                     fontWeight: FontWeight.w700,
                     color: _cInk,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(
                   subtitle,
                   textAlign: TextAlign.center,
@@ -762,7 +830,7 @@ class _ListRow extends StatelessWidget {
 
 class _ActionButton extends StatelessWidget {
   final String label;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final bool filled;
   final bool danger;
   const _ActionButton({
@@ -992,4 +1060,14 @@ class _Empty extends StatelessWidget {
   Widget build(BuildContext context) => Center(
     child: Text(text, style: const TextStyle(color: _cMuted)),
   );
+}
+
+String _submittedLabel(DateTime? submittedAt) {
+  if (submittedAt == null) return 'Date unavailable';
+  final age = DateTime.now().difference(submittedAt);
+  if (age.inMinutes < 1) return 'Just now';
+  if (age.inHours < 1) return '${age.inMinutes} min ago';
+  if (age.inDays < 1) return '${age.inHours} hours ago';
+  if (age.inDays == 1) return 'Yesterday';
+  return '${age.inDays} days ago';
 }

@@ -71,6 +71,11 @@ void main() {
     expect(calls.single.label, 'POST /api/orders/12/cancel');
   });
 
+  test('received ส่ง POST ไปบันทึกการรับสินค้า', () async {
+    await orders.received(12);
+    expect(calls.single.label, 'POST /api/orders/12/received');
+  });
+
   test('updateMeetup ส่ง PUT พร้อมสถานที่และเวลา', () async {
     await orders.updateMeetup(
       orderId: 12,

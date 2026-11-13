@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart' show MediaType;
 
 /// HTTP client for the Express API in the repository root.
 ///
@@ -40,6 +41,47 @@ class ApiClient {
 
   Future<Map<String, dynamic>> delete(String path) => _send('DELETE', path);
 
+  /// Uploads an image from memory. Uses bytes (not a file path) so it also
+  /// works on Flutter web, where MultipartFile.fromPath is unsupported.
+  Future<Map<String, dynamic>> postMultipart(
+    String path, {
+    required String fileField,
+    required List<int> bytes,
+    required String fileName,
+    String? mimeType,
+    Map<String, String> fields = const {},
+  }) async {
+    final uri = Uri.parse('$baseUrl/${path.replaceFirst(RegExp(r'^/+'), '')}');
+    final request = http.MultipartRequest('POST', uri)
+      ..headers['accept'] = 'application/json'
+      ..fields.addAll(fields)
+      ..files.add(
+        http.MultipartFile.fromBytes(
+          fileField,
+          bytes,
+          filename: fileName,
+          contentType: _imageType(fileName, mimeType),
+        ),
+      );
+    final token = tokenProvider?.call();
+    if (token != null && token.isNotEmpty) {
+      request.headers['authorization'] = 'Bearer $token';
+    }
+
+    late http.Response response;
+    try {
+      final streamed = await _client
+          .send(request)
+          .timeout(const Duration(seconds: 20));
+      response = await http.Response.fromStream(streamed);
+    } on TimeoutException {
+      throw const ApiException('The server took too long to respond.');
+    } on http.ClientException catch (error) {
+      throw ApiException('Could not reach the server: ${error.message}');
+    }
+    return _decodeResponse(response);
+  }
+
   Future<Map<String, dynamic>> _send(
     String method,
     String path, {
@@ -75,6 +117,10 @@ class ApiClient {
       throw ApiException('Could not reach the server: ${error.message}');
     }
 
+    return _decodeResponse(response);
+  }
+
+  Map<String, dynamic> _decodeResponse(http.Response response) {
     Map<String, dynamic> data;
     try {
       final decoded = jsonDecode(response.body);
@@ -94,6 +140,19 @@ class ApiClient {
       );
     }
     return data;
+  }
+
+  // app.js only accepts image/jpeg, image/png and image/webp.
+  MediaType _imageType(String fileName, String? mimeType) {
+    const allowed = {'image/jpeg', 'image/png', 'image/webp'};
+    if (mimeType != null && allowed.contains(mimeType.toLowerCase())) {
+      final parts = mimeType.toLowerCase().split('/');
+      return MediaType(parts[0], parts[1]);
+    }
+    final lower = fileName.toLowerCase();
+    if (lower.endsWith('.png')) return MediaType('image', 'png');
+    if (lower.endsWith('.webp')) return MediaType('image', 'webp');
+    return MediaType('image', 'jpeg');
   }
 
   @visibleForTesting

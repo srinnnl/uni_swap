@@ -46,6 +46,12 @@ class ProductController {
     Map<String, Object?> listing,
   ) => _api.put('products/$productId', body: listing);
 
+  Future<Map<String, dynamic>> deleteUnreviewed(int productId) =>
+      _api.delete('products/$productId');
+
+  Future<Map<String, dynamic>> hideAvailable(int productId) =>
+      _api.put('products/$productId/hide');
+
   Future<Map<String, dynamic>> addImage(
     int productId,
     String imageUrl, {
@@ -53,6 +59,21 @@ class ProductController {
   }) => _api.post(
     'products/$productId/images',
     body: {'image_url': imageUrl, 'display_order': displayOrder},
+  );
+
+  Future<Map<String, dynamic>> uploadImage(
+    int productId, {
+    required List<int> bytes,
+    required String fileName,
+    String? mimeType,
+    required int displayOrder,
+  }) => _api.postMultipart(
+    'products/$productId/images',
+    fileField: 'image',
+    bytes: bytes,
+    fileName: fileName,
+    mimeType: mimeType,
+    fields: {'display_order': '$displayOrder'},
   );
 }
 

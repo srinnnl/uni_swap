@@ -45,45 +45,57 @@ void main() {
       expect(auth.user?['user_id'], 3);
     });
 
-    test('response ไม่มี token → โยน ApiException และไม่ถือว่าล็อกอิน', () async {
-      final auth = AuthController(
-        fakeApi(calls, response: {'success': true, 'user': {'user_id': 3}}),
-      );
-
-      await expectLater(
-        auth.login(email: 'a@b.com', password: 'x'),
-        throwsA(
-          isA<ApiException>().having(
-            (e) => e.message,
-            'message',
-            contains('did not contain a token'),
+    test(
+      'response ไม่มี token → โยน ApiException และไม่ถือว่าล็อกอิน',
+      () async {
+        final auth = AuthController(
+          fakeApi(
+            calls,
+            response: {
+              'success': true,
+              'user': {'user_id': 3},
+            },
           ),
-        ),
-      );
-      expect(auth.isAuthenticated, false);
-      expect(auth.isBusy, false);
-    });
+        );
 
-    test('รหัสผ่านผิด (401) → โยน ApiException และ isBusy กลับเป็น false', () async {
-      final auth = AuthController(
-        fakeApi(
-          calls,
-          status: 401,
-          response: {'success': false, 'message': 'Invalid credentials'},
-        ),
-      );
+        await expectLater(
+          auth.login(email: 'a@b.com', password: 'x'),
+          throwsA(
+            isA<ApiException>().having(
+              (e) => e.message,
+              'message',
+              contains('did not contain a token'),
+            ),
+          ),
+        );
+        expect(auth.isAuthenticated, false);
+        expect(auth.isBusy, false);
+      },
+    );
 
-      await expectLater(
-        auth.login(email: 'a@b.com', password: 'wrong'),
-        throwsA(
-          isA<ApiException>()
-              .having((e) => e.statusCode, 'statusCode', 401)
-              .having((e) => e.message, 'message', 'Invalid credentials'),
-        ),
-      );
-      expect(auth.isAuthenticated, false);
-      expect(auth.isBusy, false);
-    });
+    test(
+      'รหัสผ่านผิด (401) → โยน ApiException และ isBusy กลับเป็น false',
+      () async {
+        final auth = AuthController(
+          fakeApi(
+            calls,
+            status: 401,
+            response: {'success': false, 'message': 'Invalid credentials'},
+          ),
+        );
+
+        await expectLater(
+          auth.login(email: 'a@b.com', password: 'wrong'),
+          throwsA(
+            isA<ApiException>()
+                .having((e) => e.statusCode, 'statusCode', 401)
+                .having((e) => e.message, 'message', 'Invalid credentials'),
+          ),
+        );
+        expect(auth.isAuthenticated, false);
+        expect(auth.isBusy, false);
+      },
+    );
 
     test('แจ้ง listener และ isBusy เป็น true ระหว่างทำงาน', () async {
       final auth = AuthController(fakeApi(calls, response: loginResponse()));
@@ -116,23 +128,29 @@ void main() {
       expect(auth.isBusy, false);
     });
 
-    test('สมัครไม่สำเร็จ (409) → โยน ApiException และ isBusy เป็น false', () async {
-      final auth = AuthController(
-        fakeApi(
-          calls,
-          status: 409,
-          response: {'success': false, 'message': 'This record already exists'},
-        ),
-      );
+    test(
+      'สมัครไม่สำเร็จ (409) → โยน ApiException และ isBusy เป็น false',
+      () async {
+        final auth = AuthController(
+          fakeApi(
+            calls,
+            status: 409,
+            response: {
+              'success': false,
+              'message': 'This record already exists',
+            },
+          ),
+        );
 
-      await expectLater(
-        auth.register({'username': 'maya'}),
-        throwsA(
-          isA<ApiException>().having((e) => e.statusCode, 'statusCode', 409),
-        ),
-      );
-      expect(auth.isBusy, false);
-    });
+        await expectLater(
+          auth.register({'username': 'maya'}),
+          throwsA(
+            isA<ApiException>().having((e) => e.statusCode, 'statusCode', 409),
+          ),
+        );
+        expect(auth.isBusy, false);
+      },
+    );
   });
 
   group('profile', () {
@@ -179,9 +197,40 @@ void main() {
 
       await auth.updateProfile({'display_name': 'New Name'});
 
-      expect(calls.map((c) => c.label), ['PUT /api/profile', 'GET /api/profile']);
+      expect(calls.map((c) => c.label), [
+        'PUT /api/profile',
+        'GET /api/profile',
+      ]);
       expect(calls.first.body, {'display_name': 'New Name'});
       expect(auth.user?['display_name'], 'New Name');
+    });
+
+    test('updateProfile ส่ง residence ที่เลือกไปยัง API', () async {
+      final auth = AuthController(
+        fakeApi(
+          calls,
+          response: {
+            'success': true,
+            'data': {
+              'user_id': 3,
+              'residence_zone': 'on_campus',
+              'residence_location_id': 12,
+            },
+          },
+        ),
+      );
+
+      await auth.updateProfile({
+        'residence_zone': 'on_campus',
+        'residence_location_id': 12,
+      });
+
+      expect(calls.first.label, 'PUT /api/profile');
+      expect(calls.first.body, {
+        'residence_zone': 'on_campus',
+        'residence_location_id': 12,
+      });
+      expect(auth.user?['residence_location_id'], 12);
     });
 
     test('user ที่ดึงออกมาแก้ไขไม่ได้ (unmodifiable)', () async {

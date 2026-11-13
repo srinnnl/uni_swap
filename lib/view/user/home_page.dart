@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/controller/api_client.dart';
 import 'package:uni_swap/controller/app_controllers.dart';
 import 'package:uni_swap/model/format.dart';
 import 'package:uni_swap/model/product.dart';
-import 'package:uni_swap/view/user/campus_locations.dart';
+import 'package:uni_swap/model/enums.dart';
+import 'package:uni_swap/model/location.dart';
+import 'package:uni_swap/view/user/location_picker.dart';
 import 'package:uni_swap/view/user/product_detail_page.dart';
 
 class _C {
@@ -26,20 +29,42 @@ class _HomePageState extends State<HomePage> {
 
   int _tab = 0;
 
-  CampusLocation _place = locationsIn(CampusZone.onCampus).first;
+  Location? _place;
+  List<Location> _locations = [];
 
   List<Product> _products = [];
 
   bool _isLoading = true;
   String? _errorMessage;
 
-  CampusZone get _zone => _place.zone;
-  String get _building => _place.name;
+  ResidenceZone get _zone => _place?.zone ?? ResidenceZone.onCampus;
+  String get _building => _place?.name ?? 'your location';
+  String get _placeLabel => _place == null
+      ? 'Choose your residence'
+      : '${locationZoneLabel(_place!.zone)} · ${_place!.name}';
 
   @override
   void initState() {
     super.initState();
+    authController.addListener(_syncResidence);
     _loadProducts();
+  }
+
+  @override
+  void dispose() {
+    authController.removeListener(_syncResidence);
+    super.dispose();
+  }
+
+  void _syncResidence() {
+    if (!mounted || _locations.isEmpty) return;
+    final residenceId = int.tryParse(
+      authController.user?['residence_location_id']?.toString() ?? '',
+    );
+    final matches = _locations.where((location) => location.id == residenceId);
+    if (matches.isNotEmpty && _place?.id != matches.first.id) {
+      setState(() => _place = matches.first);
+    }
   }
 
   // ===== Load products from API =====
@@ -53,7 +78,14 @@ class _HomePageState extends State<HomePage> {
     });
 
     try {
-      final response = await productController.browse(page: 1, limit: 100);
+      final responses = await Future.wait<Object>([
+        productController.browse(page: 1, limit: 100),
+        productController.locations(),
+      ]);
+      final response = responses[0] as Map<String, dynamic>;
+      final locations = (responses[1] as List<Map<String, dynamic>>)
+          .map(Location.fromJson)
+          .toList(growable: false);
 
       if (response['success'] != true) {
         throw Exception(
@@ -74,11 +106,24 @@ class _HomePageState extends State<HomePage> {
 
         return Product.fromJson(json);
       }).toList();
+      if (locations.isEmpty) {
+        throw const ApiException('No pickup locations are available.');
+      }
+      final savedLocationId = int.tryParse(
+        authController.user?['residence_location_id']?.toString() ?? '',
+      );
+      final savedLocations = locations.where(
+        (location) => location.id == savedLocationId,
+      );
+      final place = savedLocations.isEmpty ? null : savedLocations.first;
 
       if (!mounted) return;
 
       setState(() {
         _products = products;
+        _locations = locations;
+        _place = place;
+        if (place == null) _tab = 2;
         _isLoading = false;
       });
     } catch (e) {
@@ -97,12 +142,14 @@ class _HomePageState extends State<HomePage> {
     switch (_tab) {
       case 0:
         return _products.where((p) {
+          final place = _place;
+          if (place == null) return false;
           if (p.locationId != null) {
-            return p.locationId == _place.id;
+            return p.locationId == place.id;
           }
 
           return p.locationName.trim().toLowerCase() ==
-              _place.name.trim().toLowerCase();
+              place.name.trim().toLowerCase();
         }).toList();
 
       case 1:
@@ -115,7 +162,7 @@ class _HomePageState extends State<HomePage> {
 
   String get _subtitle => switch (_tab) {
     0 => 'Items in $_building',
-    1 => 'Items in ${_zone.label}',
+    1 => 'Items in ${locationZoneLabel(_zone)}',
     _ => 'Items across campus',
   };
 
@@ -128,13 +175,14 @@ class _HomePageState extends State<HomePage> {
   // ===== Location picker =====
 
   Future<void> _pickPlace() async {
-    final picked = await showCampusLocationPicker(
+    final picked = await showLocationPicker(
       context,
-      zone: _place.zone,
-      selected: _place,
+      locations: _locations,
+      zone: _place?.zone,
+      selectedLocationId: _place?.id,
     );
 
-    if (picked?.location != null) {
+    if (picked?.location != null && mounted) {
       setState(() {
         _place = picked!.location!;
         _tab = 0;
@@ -292,7 +340,7 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                _place.place,
+                _placeLabel,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(

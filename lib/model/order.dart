@@ -18,6 +18,7 @@ class Order {
     required this.meetupLocation,
     this.productTitle,
     this.productLocationName,
+    this.pickupDetail,
     this.imageUrl,
     this.buyerName,
     this.sellerName,
@@ -37,6 +38,7 @@ class Order {
       productLocationName: jsonString(
         json['product_location_name'] ?? json['location_name'],
       ),
+      pickupDetail: jsonString(json['pickup_detail']),
       imageUrl: jsonString(json['image_url']),
       buyerId: jsonInt(json['buyer_id']) ?? 0,
       buyerName: jsonString(json['buyer_name']),
@@ -63,6 +65,8 @@ class Order {
   final int productId; // orders.product_id
   final String? productTitle; // products.title (join)
   final String? productLocationName; // products.location_name (join)
+  final String?
+  pickupDetail; // products.location_detail (joined for participants)
   final String? imageUrl; // product_images.image_url (join)
   final int buyerId; // orders.buyer_id
   final String? buyerName; // users.display_name (join)
@@ -107,6 +111,7 @@ class Order {
     int? productId,
     String? productTitle,
     String? productLocationName,
+    String? pickupDetail,
     String? imageUrl,
     int? buyerId,
     String? buyerName,
@@ -131,6 +136,7 @@ class Order {
       productId: productId ?? this.productId,
       productTitle: productTitle ?? this.productTitle,
       productLocationName: productLocationName ?? this.productLocationName,
+      pickupDetail: pickupDetail ?? this.pickupDetail,
       imageUrl: imageUrl ?? this.imageUrl,
       buyerId: buyerId ?? this.buyerId,
       buyerName: buyerName ?? this.buyerName,
@@ -158,6 +164,7 @@ class Order {
       'product_id': productId,
       'product_title': productTitle,
       'product_location_name': productLocationName,
+      'pickup_detail': pickupDetail,
       'image_url': imageUrl,
       'buyer_id': buyerId,
       'buyer_name': buyerName,

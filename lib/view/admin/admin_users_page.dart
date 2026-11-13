@@ -122,7 +122,11 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
   // เปลี่ยนสถานะผู้ใช้ผ่าน API แล้วโหลดรายการใหม่ ปิดชีต และแจ้งผล
   // ถ้า API error: แสดงข้อความและไม่ปิดชีต
   Future<void> _setStatus(
-      BuildContext ctx, User u, UserStatus next, String message) async {
+    BuildContext ctx,
+    User u,
+    UserStatus next,
+    String message,
+  ) async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
@@ -211,7 +215,8 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
             _ActionButton(
               filled: false,
               label: 'Restore user',
-              onPressed: () => _setStatus(ctx, u, UserStatus.active, 'restored'),
+              onPressed: () =>
+                  _setStatus(ctx, u, UserStatus.active, 'restored'),
             ),
         ],
       );
@@ -363,7 +368,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
+      padding: const EdgeInsets.fromLTRB(8, 24, 8, 0),
       child: Row(
         children: [
           IconButton(
@@ -376,12 +381,12 @@ class _Header extends StatelessWidget {
                 Text(
                   title,
                   style: const TextStyle(
-                    fontSize: 20,
+                    fontSize: 22,
                     fontWeight: FontWeight.w700,
                     color: _cInk,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(
                   subtitle,
                   textAlign: TextAlign.center,
@@ -390,10 +395,7 @@ class _Header extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.more_horiz),
-            onPressed: () => _snack(context, 'More options (coming soon)'),
-          ),
+          const SizedBox(width: 48),
         ],
       ),
     );
@@ -675,9 +677,13 @@ class _InfoRow extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: const TextStyle(fontSize: 13, color: _cMuted)),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        const SizedBox(width: 16),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
         ),
       ],
     ),
@@ -701,15 +707,20 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: _cMuted)),
-            const SizedBox(height: 12),
-            TextButton(onPressed: onRetry, child: const Text('Try again')),
-          ]),
-        ),
-      );
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: _cMuted),
+          ),
+          const SizedBox(height: 12),
+          TextButton(onPressed: onRetry, child: const Text('Try again')),
+        ],
+      ),
+    ),
+  );
 }

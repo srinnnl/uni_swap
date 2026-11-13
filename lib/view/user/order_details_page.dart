@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/controller/api_client.dart';
+import 'package:uni_swap/controller/app_controllers.dart';
 import 'package:uni_swap/model/format.dart';
 import 'package:uni_swap/model/order_status.dart';
 import 'package:uni_swap/view/user/arrange_meetup_page.dart';
@@ -58,6 +60,7 @@ class OrderDetailsPage extends StatefulWidget {
     required this.commissionRate,
     required this.commissionAmount,
     required this.sellerPayout,
+    this.pickupDetail,
     this.meetupAt,
     this.paymentDeadline, // orders.payment_deadline (null = ไม่แสดงตัวนับเวลา)
     this.imageUrl,
@@ -74,6 +77,7 @@ class OrderDetailsPage extends StatefulWidget {
   final DateTime? meetupAt; // orders.meetup_datetime
   final DateTime? paymentDeadline;
   final String productLocation; // products.location_name ใช้แนะนำจุดนัด
+  final String? pickupDetail;
   // ตัวเลขคิดโดย backend ตอนสร้างออเดอร์ แอปแสดงอย่างเดียว ไม่คำนวณเอง
   // TODO: ยืนยันกับเพื่อนว่า commission_rate เก็บเป็นเปอร์เซ็นต์ (5.00) และหักจากผู้ขาย
   final double commissionRate; // orders.commission_rate
@@ -87,8 +91,9 @@ class OrderDetailsPage extends StatefulWidget {
 
 class _OrderDetailsPageState extends State<OrderDetailsPage> {
   late OrderStatus _raw = widget.status;
-  late String _meetupPlace = widget.meetupPlace;
+  late final String _meetupPlace = widget.meetupPlace;
   late DateTime? _meetupAt = widget.meetupAt;
+  bool _isSavingAction = false;
 
   // เลย payment_deadline แล้วยังไม่จ่าย ถือว่า expired (backend เป็นคนเปลี่ยนจริง)
   OrderStatus get _status {
@@ -107,13 +112,14 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   bool get _needsPayment => widget.price > 0;
   String get _priceText => formatPriceTHB(widget.price);
   String get _orderLabel => orderLabel(widget.orderId);
+  String? get _pickupDetail {
+    final note = widget.pickupDetail?.trim();
+    return note == null || note.isEmpty ? null : note;
+  }
 
   void _toast(String m) => ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(m)));
-
-  // Payment is persisted by the demo API; meetup, receipt, and cancellation
-  // remain local UI actions until their endpoints are connected.
 
   Future<void> _arrange() async {
     final r = await Navigator.push<MeetupChoice>(
@@ -129,11 +135,24 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
       ),
     );
     if (r == null || !mounted) return;
-    // TODO: API แก้ orders.meetup_location / meetup_datetime (ถามเพื่อนว่ามี endpoint ไหม)
-    setState(() {
-      _meetupAt = r.when;
-    });
-    _toast('Meet-up updated');
+    setState(() => _isSavingAction = true);
+    try {
+      final response = await orderController.updateMeetup(
+        orderId: widget.orderId,
+        location: _meetupPlace,
+        dateTime: r.when,
+      );
+      if (response['success'] != true) {
+        throw const ApiException('The server could not update the meetup.');
+      }
+      if (!mounted) return;
+      setState(() => _meetupAt = r.when);
+      _toast('Meet-up updated');
+    } on ApiException catch (error) {
+      if (mounted) _toast(error.message);
+    } finally {
+      if (mounted) setState(() => _isSavingAction = false);
+    }
   }
 
   Future<void> _pay() async {
@@ -196,8 +215,18 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
       'Yes, I got it',
     );
     if (!ok) return;
-    // TODO: call the receive endpoint and refresh the order from the server.
-    setState(() => _raw = OrderStatus.completed);
+    setState(() => _isSavingAction = true);
+    try {
+      final response = await orderController.received(widget.orderId);
+      if (response['success'] != true || response['status'] != 'completed') {
+        throw const ApiException('The server could not confirm receipt.');
+      }
+      if (mounted) setState(() => _raw = OrderStatus.completed);
+    } on ApiException catch (error) {
+      if (mounted) _toast(error.message);
+    } finally {
+      if (mounted) setState(() => _isSavingAction = false);
+    }
   }
 
   // ยกเลิกก่อนจ่าย: orders.status='cancelled' และสินค้ากลับเป็น available
@@ -209,8 +238,22 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
       danger: true,
     );
     if (!ok) return;
-    // TODO: API ยกเลิกออเดอร์
-    setState(() => _raw = OrderStatus.cancelled);
+    setState(() => _isSavingAction = true);
+    try {
+      final response = await orderController.cancel(widget.orderId);
+      if (response['success'] != true || response['status'] != 'cancelled') {
+        throw const ApiException('The server could not cancel the order.');
+      }
+      if (mounted) setState(() => _raw = OrderStatus.cancelled);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      if (error.details?['status'] == 'expired') {
+        setState(() => _raw = OrderStatus.expired);
+      }
+      _toast(error.message);
+    } finally {
+      if (mounted) setState(() => _isSavingAction = false);
+    }
   }
 
   void _close() => Navigator.pop(
@@ -688,6 +731,13 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
                   _meetupPlace,
                   style: const TextStyle(fontSize: 11, color: _C.muted),
                 ),
+                if (_pickupDetail != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    _pickupDetail!,
+                    style: const TextStyle(fontSize: 11, color: _C.muted),
+                  ),
+                ],
               ],
             ),
           ),
@@ -724,12 +774,13 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   }
 
   Widget? _primaryAction() {
+    if (_isSavingAction) return null;
     // ผู้ขายไม่มีปุ่มหลัก: completed เกิดจากผู้ซื้อกด Confirm received เท่านั้น
     if (!widget.isBuying) return null;
 
-    String label;
-    VoidCallback? onTap;
-    IconData? icon;
+    late final String label;
+    late final VoidCallback onTap;
+    late final IconData icon;
 
     switch (_status) {
       case OrderStatus.pendingPayment:
@@ -748,7 +799,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
       height: 54,
       child: FilledButton.icon(
         onPressed: onTap,
-        icon: icon == null ? const SizedBox.shrink() : Icon(icon, size: 18),
+        icon: Icon(icon, size: 18),
         label: Text(label, overflow: TextOverflow.ellipsis),
         style: FilledButton.styleFrom(
           backgroundColor: _C.ink,

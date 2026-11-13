@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:uni_swap/view/user/campus_locations.dart';
+import 'package:uni_swap/controller/api_client.dart';
+import 'package:uni_swap/controller/app_controllers.dart';
+import 'package:uni_swap/model/category.dart';
+import 'package:uni_swap/model/location.dart';
 import 'package:uni_swap/view/user/product_categories.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -20,21 +23,34 @@ class SellDraft {
     required this.productId,
     required this.title,
     required this.price,
-    required this.location,
+    required this.categoryId,
     this.description = '',
-    this.categoryId = 1,
+    this.pickupNote = '',
     this.condition,
     this.deadline,
+    this.imageUrl,
+    this.imageUrls = const <String>[],
+    this.imageCount = 0,
   });
 
   final int productId; // products.product_id
   final String title;
   final double price;
-  final String description;
   final int categoryId; // products.category_id
+  final String description;
+  final String pickupNote;
   final String? condition; // products.item_condition (null = ไม่ระบุ)
-  final CampusLocation location; // products.location_id
   final DateTime? deadline; // products.clearance_deadline
+  final String? imageUrl; // cover (fallback when imageUrls is empty)
+  final List<String> imageUrls; // all saved photos, in display order
+  final int imageCount;
+}
+
+class SellResult {
+  const SellResult({required this.message, this.isError = false});
+
+  final String message;
+  final bool isError;
 }
 
 class SellPage extends StatefulWidget {
@@ -49,18 +65,23 @@ class SellPage extends StatefulWidget {
 
 class _SellPageState extends State<SellPage> {
   static const _maxPhotos = 6;
-  static final _categories = <(String, IconData)>[
-    for (final c in kProductCategories) (c.name, c.icon),
-  ];
 
   final _formKey = GlobalKey<FormState>();
   final _titleCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
+  final _pickupNoteCtrl = TextEditingController();
   final _picker = ImagePicker();
 
   final List<XFile> _photos = [];
-  int _categoryIndex = 0;
+  List<Category> _categories = [];
+  Category? _selectedCategory;
+  Location? _pickup;
+  String? _optionsError;
+  bool _loadingOptions = true;
+  bool _isSubmitting = false;
+  bool _isDirty = false;
+  bool _showingDiscardDialog = false;
   // products.item_condition: new / like_new / good / fair (ไม่เลือก = NULL)
   static const _conditions = <(String, String)>[
     ('new', 'New'),
@@ -69,9 +90,6 @@ class _SellPageState extends State<SellPage> {
     ('fair', 'Fair'),
   ];
   int? _conditionIndex;
-  // ที่รับสินค้า (products.zone / location_id) ตั้งต้นจากที่พักของผู้ขาย
-  // TODO: ตั้งค่าเริ่มต้นจากโปรไฟล์ผู้ใช้
-  CampusLocation _pickup = locationsIn(CampusZone.onCampus).first;
   bool _isFree = false;
   DateTime? _deadline;
 
@@ -81,39 +99,165 @@ class _SellPageState extends State<SellPage> {
   void initState() {
     super.initState();
     final e = widget.existing;
-    if (e == null) return;
-    _titleCtrl.text = e.title;
-    _descCtrl.text = e.description;
-    _isFree = e.price == 0;
-    _priceCtrl.text = e.price == e.price.roundToDouble()
-        ? e.price.toInt().toString()
-        : e.price.toString();
-    final ci = kProductCategories.indexWhere((c) => c.id == e.categoryId);
-    if (ci >= 0) _categoryIndex = ci;
-    final ki = _conditions.indexWhere((c) => c.$1 == e.condition);
-    _conditionIndex = ki >= 0 ? ki : null;
-    _pickup = e.location;
-    _deadline = e.deadline;
+    if (e != null) {
+      _titleCtrl.text = e.title;
+      _descCtrl.text = e.description;
+      _pickupNoteCtrl.text = e.pickupNote;
+      _isFree = e.price == 0;
+      _priceCtrl.text = e.price == e.price.roundToDouble()
+          ? e.price.toInt().toString()
+          : e.price.toString();
+      final ki = _conditions.indexWhere((c) => c.$1 == e.condition);
+      _conditionIndex = ki >= 0 ? ki : null;
+      _deadline = e.deadline;
+    }
+    _titleCtrl.addListener(_markDirty);
+    _priceCtrl.addListener(_markDirty);
+    _descCtrl.addListener(_markDirty);
+    _pickupNoteCtrl.addListener(_markDirty);
+    _loadOptions();
+  }
+
+  Future<void> _loadOptions() async {
+    try {
+      final responses = await Future.wait<Object>([
+        productController.categories(),
+        productController.locations(),
+        authController.loadProfile(),
+      ]);
+      final categories = (responses[0] as List<Map<String, dynamic>>)
+          .map(Category.fromJson)
+          .toList(growable: false);
+      final locations = (responses[1] as List<Map<String, dynamic>>)
+          .map(Location.fromJson)
+          .toList(growable: false);
+      final residenceId = int.tryParse(
+        authController.user?['residence_location_id']?.toString() ?? '',
+      );
+      final residenceMatches = locations.where(
+        (location) => location.id == residenceId,
+      );
+      if (categories.isEmpty) {
+        throw const ApiException('Categories are not available.');
+      }
+      if (residenceMatches.isEmpty) {
+        throw const ApiException(
+          'Set an approved residence in your profile before listing an item.',
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _categories = categories;
+        _pickup = residenceMatches.first;
+        _selectedCategory = categories.cast<Category?>().firstWhere(
+          (category) => category!.id == widget.existing?.categoryId,
+          orElse: () => categories.first,
+        );
+        _loadingOptions = false;
+        _optionsError = null;
+      });
+    } on ApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _loadingOptions = false;
+          _optionsError = error.message;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loadingOptions = false;
+          _optionsError = 'Could not load categories and locations.';
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
+    _titleCtrl.removeListener(_markDirty);
+    _priceCtrl.removeListener(_markDirty);
+    _descCtrl.removeListener(_markDirty);
+    _pickupNoteCtrl.removeListener(_markDirty);
     _titleCtrl.dispose();
     _priceCtrl.dispose();
     _descCtrl.dispose();
+    _pickupNoteCtrl.dispose();
     super.dispose();
   }
 
+  void _markDirty() {
+    if (!mounted || _isDirty) return;
+    setState(() => _isDirty = true);
+  }
+
+  Future<void> _confirmDiscard() async {
+    if (_isSubmitting || _showingDiscardDialog) return;
+    _showingDiscardDialog = true;
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_isEdit ? 'Discard changes?' : 'Discard this listing?'),
+        content: Text(
+          _isEdit
+              ? 'Your existing listing will stay unchanged.'
+              : 'Your listing has not been submitted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep editing'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(foregroundColor: _cRedFg),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    _showingDiscardDialog = false;
+    if (discard != true || !mounted) return;
+    setState(() => _isDirty = false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).maybePop();
+    });
+  }
+
+  void _handleBack() {
+    if (_isDirty) {
+      _confirmDiscard();
+    } else {
+      Navigator.maybePop(context);
+    }
+  }
+
+  void _popAfterSave(SellResult result) {
+    if (!mounted) return;
+    setState(() => _isDirty = false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.pop(context, result);
+    });
+  }
+
   Future<void> _pickPhotos() async {
-    final remaining = _maxPhotos - _photos.length;
+    final remaining =
+        _maxPhotos - (widget.existing?.imageCount ?? 0) - _photos.length;
     if (remaining <= 0) return;
     final picked = await _picker.pickMultiImage();
-    setState(() => _photos.addAll(picked.take(remaining)));
+    if (!mounted) return;
+    final additions = picked.take(remaining).toList();
+    if (additions.isEmpty) return;
+    setState(() {
+      _photos.addAll(additions);
+      _isDirty = true;
+    });
   }
 
   void _toggleFree(bool v) {
     setState(() {
       _isFree = v;
+      _isDirty = true;
       if (v) {
         _priceCtrl.text = '0';
       } else if (_priceCtrl.text == '0') {
@@ -122,56 +266,115 @@ class _SellPageState extends State<SellPage> {
     });
   }
 
-  void _publish() {
+  Future<void> _publish() async {
     if (!(_formKey.currentState?.validate() ?? false)) {
       _showSnack(context, 'Please fix the errors');
       return;
     }
-    // โหมดแก้ไข: UPDATE products WHERE product_id = widget.existing!.productId แล้วตั้ง status='pending_review'
-    //   และล้าง review_note / reject_reason เดิม (รูป: ถ้าไม่เลือกใหม่ = ใช้รูปเดิม)
-    // TODO: ส่งไป API -> title, price (0 = ฟรี DB รองรับ), description,
-    //   category_id: kProductCategories[_categoryIndex].id,
-    //   item_condition: _conditionIndex == null ? null : _conditions[_conditionIndex!].$1,
-    //   zone: _pickup.zone.code, location_id: _pickup.id,
-    //   clearance_deadline: _deadline, photos (product_images.display_order = ลำดับ)
-    if (!_isEdit)
-      setState(() {
-        _titleCtrl.clear();
-        _priceCtrl.clear();
-        _descCtrl.clear();
-        _photos.clear();
-        _isFree = false;
-        _deadline = null;
-        _categoryIndex = 0;
-        _conditionIndex = null;
-      });
-    if (!_isEdit) _formKey.currentState?.reset();
-    // ลงขายแล้วต้องรอแอดมินตรวจสอบก่อนขึ้นหน้าร้าน (ดู Admin > Items review)
-    // TODO: ส่งไป API ให้สถานะสินค้าเป็น pending_review
-    _showSnack(
-      context,
-      _isEdit
-          ? 'Changes saved. Your item will be reviewed again.'
-          : 'Submitted for review. Track its status in My items.',
-    );
-    Navigator.pop(context, true); // หน้านี้เปิดจาก My items จึงปิดกลับหลังส่ง
+    final category = _selectedCategory;
+    final pickup = _pickup;
+    if (category == null || pickup == null) {
+      _showSnack(context, 'Choose an available category and pickup location.');
+      return;
+    }
+    setState(() => _isSubmitting = true);
+    try {
+      final listing = <String, Object?>{
+        'title': _titleCtrl.text.trim(),
+        'description': _descCtrl.text.trim(),
+        'price': _isFree ? 0 : double.parse(_priceCtrl.text.trim()),
+        'category_id': category.id,
+        'item_condition': _conditionIndex == null
+            ? null
+            : _conditions[_conditionIndex!].$1,
+        'urgency_level': _deadline == null ? 'normal' : 'urgent',
+        'zone': pickup.zone.apiValue,
+        'location_id': pickup.id,
+        'location_detail': _pickupNoteCtrl.text.trim().isEmpty
+            ? null
+            : _pickupNoteCtrl.text.trim(),
+        'clearance_deadline': _deadline == null ? null : _dateOnly(_deadline!),
+      };
+      final response = _isEdit
+          ? await productController.update(widget.existing!.productId, listing)
+          : await productController.create(listing);
+      if (response['success'] != true) {
+        throw ApiException(
+          response['message']?.toString() ?? 'Could not save your listing.',
+        );
+      }
+      final productId = _isEdit
+          ? widget.existing!.productId
+          : int.tryParse(response['product_id']?.toString() ?? '');
+      if (productId == null) {
+        throw const ApiException('The server did not return a product ID.');
+      }
+
+      try {
+        var imageOrder = widget.existing?.imageCount ?? 0;
+        for (final photo in _photos) {
+          imageOrder++;
+          await productController.uploadImage(
+            productId,
+            bytes: await photo.readAsBytes(),
+            fileName: photo.name,
+            mimeType: photo.mimeType,
+            displayOrder: imageOrder,
+          );
+        }
+      } catch (error, stack) {
+        // The listing row already exists at this point, so never report the
+        // whole save as failed (a retry would create a duplicate).
+        debugPrint('photo upload failed: $error\n$stack');
+        final reason = error is ApiException ? error.message : '$error';
+        _popAfterSave(
+          SellResult(
+            message:
+                'Listing saved for review, but a photo could not be uploaded: $reason. You can edit it and retry.',
+            isError: true,
+          ),
+        );
+        return;
+      }
+
+      _popAfterSave(
+        SellResult(
+          message: _isEdit
+              ? 'Changes submitted for admin review.'
+              : 'Listing submitted for admin review.',
+        ),
+      );
+    } on ApiException catch (error) {
+      if (mounted) _showSnack(context, error.message);
+    } catch (error, stack) {
+      debugPrint('publish failed: $error\n$stack');
+      if (mounted) _showSnack(context, 'Could not save listing. Please retry.');
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
+
+  String _dateOnly(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _cBg,
-      body: SafeArea(child: _buildForm()),
+    return PopScope<SellResult>(
+      canPop: !_isDirty && !_isSubmitting,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _isDirty && !_isSubmitting) _confirmDiscard();
+      },
+      child: Scaffold(
+        backgroundColor: _cBg,
+        body: SafeArea(child: _buildForm()),
+      ),
     );
   }
 
   Widget _buildHeader() {
     return Row(
       children: [
-        IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.maybePop(context),
-        ),
+        IconButton(icon: const Icon(Icons.arrow_back), onPressed: _handleBack),
         Expanded(
           child: Column(
             children: [
@@ -199,8 +402,6 @@ class _SellPageState extends State<SellPage> {
   }
 
   Widget _buildForm() {
-    final cat = _categories[_categoryIndex];
-
     return Form(
       key: _formKey,
       child: ListView(
@@ -209,6 +410,22 @@ class _SellPageState extends State<SellPage> {
         children: [
           _buildHeader(),
           const SizedBox(height: 20),
+          if (_loadingOptions)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          if (_optionsError != null) ...[
+            Text(
+              _optionsError!,
+              style: const TextStyle(color: _cRedFg),
+              textAlign: TextAlign.center,
+            ),
+            TextButton(
+              onPressed: _loadOptions,
+              child: const Text('Retry loading options'),
+            ),
+          ],
 
           const _FieldLabel('Photos'),
           _buildPhotos(),
@@ -229,16 +446,22 @@ class _SellPageState extends State<SellPage> {
 
           const _FieldLabel('Category'),
           _TapField(
-            onTap: _pickCategory,
+            onTap: _categories.isEmpty ? () {} : _pickCategory,
             child: Row(
               children: [
-                Icon(cat.$2, size: 18, color: const Color(0xFF8B4A3C)),
+                Icon(
+                  categoryIcon(_selectedCategory?.name),
+                  size: 18,
+                  color: const Color(0xFF8B4A3C),
+                ),
                 const SizedBox(width: 10),
-                Text(
-                  cat.$1,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                Expanded(
+                  child: Text(
+                    _selectedCategory?.name ?? 'Loading categories…',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
@@ -256,8 +479,10 @@ class _SellPageState extends State<SellPage> {
                   label: Text(_conditions[i].$2),
                   selected: _conditionIndex == i,
                   // กดซ้ำเพื่อยกเลิก (ส่ง null)
-                  onSelected: (on) =>
-                      setState(() => _conditionIndex = on ? i : null),
+                  onSelected: (on) => setState(() {
+                    _conditionIndex = on ? i : null;
+                    _isDirty = true;
+                  }),
                   showCheckmark: false,
                   backgroundColor: Colors.white,
                   selectedColor: _cInk,
@@ -333,8 +558,7 @@ class _SellPageState extends State<SellPage> {
           const SizedBox(height: 24),
 
           const _FieldLabel('Pickup location'),
-          _TapField(
-            onTap: _pickPickup,
+          _AppCard(
             child: Row(
               children: [
                 const Icon(
@@ -345,7 +569,9 @@ class _SellPageState extends State<SellPage> {
                 const SizedBox(width: 10),
                 Flexible(
                   child: Text(
-                    _pickup.place,
+                    _pickup == null
+                        ? 'Loading your residence…'
+                        : '${_pickup!.zone.apiValue == 'on_campus' ? 'On-campus' : 'Off-campus'} · ${_pickup!.name}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -357,6 +583,30 @@ class _SellPageState extends State<SellPage> {
               ],
             ),
           ),
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text(
+              'Pickup is set to the residence saved in your profile.',
+              style: TextStyle(fontSize: 12, color: _cMuted),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          const _FieldLabel('Pickup detail (optional)'),
+          TextFormField(
+            controller: _pickupNoteCtrl,
+            maxLength: 255,
+            maxLines: 2,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: _dec('e.g. Meet at the main entrance'),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text(
+              'Visible to buyers. Do not include your room number or private contact details.',
+              style: TextStyle(fontSize: 12, color: _cMuted),
+            ),
+          ),
           const SizedBox(height: 24),
 
           const _FieldLabel('Move-out deadline'),
@@ -366,7 +616,10 @@ class _SellPageState extends State<SellPage> {
                 ? null
                 : IconButton(
                     icon: const Icon(Icons.close, size: 18),
-                    onPressed: () => setState(() => _deadline = null),
+                    onPressed: () => setState(() {
+                      _deadline = null;
+                      _isDirty = true;
+                    }),
                   ),
             child: Row(
               children: [
@@ -402,24 +655,40 @@ class _SellPageState extends State<SellPage> {
           ),
           const SizedBox(height: 24),
 
-          _DarkButton(
-            label: _isEdit ? 'Save and resubmit' : 'Publish item',
-            onPressed: _publish,
+          SizedBox(
+            height: 54,
+            child: FilledButton(
+              onPressed:
+                  _isSubmitting || _loadingOptions || _optionsError != null
+                  ? null
+                  : _publish,
+              style: FilledButton.styleFrom(
+                backgroundColor: _cInk,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: Text(
+                _isSubmitting
+                    ? 'Saving listing…'
+                    : _isEdit
+                    ? 'Save and resubmit'
+                    : 'Publish item',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _pickPickup() async {
-    final picked = await showCampusLocationPicker(context, selected: _pickup);
-    if (picked?.location != null) {
-      setState(() => _pickup = picked!.location!);
-    }
-  }
-
   Future<void> _pickCategory() async {
-    await showModalBottomSheet(
+    final selected = await showModalBottomSheet<Category>(
       context: context,
       backgroundColor: _cBg,
       shape: const RoundedRectangleBorder(
@@ -430,22 +699,27 @@ class _SellPageState extends State<SellPage> {
           shrinkWrap: true,
           padding: const EdgeInsets.symmetric(vertical: 12),
           children: [
-            for (var i = 0; i < _categories.length; i++)
+            for (final category in _categories)
               ListTile(
-                leading: Icon(_categories[i].$2),
-                title: Text(_categories[i].$1),
-                trailing: i == _categoryIndex
+                leading: Icon(categoryIcon(category.name)),
+                title: Text(category.name),
+                trailing: category.id == _selectedCategory?.id
                     ? const Icon(Icons.check, color: _cSageDark)
                     : null,
                 onTap: () {
-                  setState(() => _categoryIndex = i);
-                  Navigator.pop(ctx);
+                  Navigator.pop(ctx, category);
                 },
               ),
           ],
         ),
       ),
     );
+    if (selected != null && mounted) {
+      setState(() {
+        _selectedCategory = selected;
+        _isDirty = true;
+      });
+    }
   }
 
   Future<void> _pickDeadline() async {
@@ -456,11 +730,25 @@ class _SellPageState extends State<SellPage> {
       firstDate: now,
       lastDate: now.add(const Duration(days: 365)),
     );
-    if (d != null) setState(() => _deadline = d);
+    if (d != null) {
+      setState(() {
+        _deadline = d;
+        _isDirty = true;
+      });
+    }
   }
 
   Widget _buildPhotos() {
-    if (_photos.isEmpty) {
+    final existing = widget.existing;
+    final existingUrls = <String>[
+      if (existing != null && existing.imageUrls.isNotEmpty)
+        ...existing.imageUrls
+      else if (existing?.imageUrl != null && existing!.imageUrl!.isNotEmpty)
+        existing.imageUrl!,
+    ];
+    final existingCount = existing?.imageCount ?? 0;
+    final hasExistingPhoto = existingUrls.isNotEmpty;
+    if (_photos.isEmpty && !hasExistingPhoto) {
       return InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: _pickPhotos,
@@ -490,15 +778,16 @@ class _SellPageState extends State<SellPage> {
       );
     }
 
-    final hasAddButton = _photos.length < _maxPhotos;
+    final hasAddButton = existingCount + _photos.length < _maxPhotos;
+    final localOffset = existingUrls.length;
     return SizedBox(
       height: 96,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: _photos.length + (hasAddButton ? 1 : 0),
+        itemCount: localOffset + _photos.length + (hasAddButton ? 1 : 0),
         separatorBuilder: (_, __) => const SizedBox(width: 10),
         itemBuilder: (ctx, i) {
-          if (i == _photos.length) {
+          if (hasAddButton && i == localOffset + _photos.length) {
             return InkWell(
               onTap: _pickPhotos,
               child: Container(
@@ -511,12 +800,30 @@ class _SellPageState extends State<SellPage> {
               ),
             );
           }
+          if (i < localOffset) {
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                existingUrls[i],
+                width: 96,
+                height: 96,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => Container(
+                  width: 96,
+                  height: 96,
+                  color: _cChip,
+                  child: const Icon(Icons.image_outlined),
+                ),
+              ),
+            );
+          }
+          final photoIndex = i - localOffset;
           return Stack(
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: FutureBuilder(
-                  future: _photos[i].readAsBytes(),
+                  future: _photos[photoIndex].readAsBytes(),
                   builder: (_, snap) => Container(
                     width: 96,
                     height: 96,
@@ -527,7 +834,7 @@ class _SellPageState extends State<SellPage> {
                   ),
                 ),
               ),
-              if (i == 0)
+              if (!hasExistingPhoto && photoIndex == 0)
                 Positioned(
                   left: 6,
                   bottom: 6,
@@ -550,7 +857,10 @@ class _SellPageState extends State<SellPage> {
                 right: 4,
                 top: 4,
                 child: GestureDetector(
-                  onTap: () => setState(() => _photos.removeAt(i)),
+                  onTap: () => setState(() {
+                    _photos.removeAt(photoIndex);
+                    _isDirty = true;
+                  }),
                   child: const CircleAvatar(
                     radius: 10,
                     backgroundColor: _cInk,
@@ -664,30 +974,6 @@ class _AppCard extends StatelessWidget {
       ),
     );
   }
-}
-
-class _DarkButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onPressed;
-  const _DarkButton({super.key, required this.label, required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    width: double.infinity,
-    height: 54,
-    child: FilledButton(
-      style: FilledButton.styleFrom(
-        backgroundColor: _cInk,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      ),
-      onPressed: onPressed,
-      child: Text(
-        label,
-        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-      ),
-    ),
-  );
 }
 
 class _FieldLabel extends StatelessWidget {

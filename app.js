@@ -3,6 +3,10 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const argon2 = require('@node-rs/argon2');
+const multer = require('multer');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 const con = require('./db_config');
 
 const app = express();
@@ -14,9 +18,57 @@ const FAILED_RESERVATION_LIMIT = 2;
 const FAILED_RESERVATION_WINDOW_HOURS = 24;
 const ORDER_EXPIRY_BATCH_SIZE = 100;
 const ORDER_EXPIRY_INTERVAL_MS = 30_000;
+const MAX_PRODUCT_IMAGES = 6;
+const uploadDirectory = path.join(__dirname, 'uploads');
+
+fs.mkdirSync(uploadDirectory, { recursive: true });
 
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
+app.use('/uploads', express.static(uploadDirectory, { index: false }));
+
+const imageExtensions = {
+    'image/jpeg': '.jpg',
+    'image/png': '.png',
+    'image/webp': '.webp'
+};
+const imageUpload = multer({
+    storage: multer.diskStorage({
+        destination: uploadDirectory,
+        filename: (_req, file, done) => done(null, `${crypto.randomBytes(16).toString('hex')}${imageExtensions[file.mimetype] || ''}`)
+    }),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (_req, file, done) => {
+        if (!imageExtensions[file.mimetype]) return done(new Error('Only JPEG, PNG, and WebP images are allowed'));
+        done(null, true);
+    }
+});
+function parseProductImage(req, res, next) {
+    imageUpload.single('image')(req, res, err => {
+        if (!err) return next();
+        const status = err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+        return res.status(status).json({ success: false, message: err.message || 'Invalid image upload' });
+    });
+}
+async function removeUploadedFile(filePath) {
+    try {
+        await fs.promises.unlink(filePath);
+    } catch (err) {
+        if (err.code !== 'ENOENT') console.error('Failed to remove uploaded image:', err);
+    }
+}
+function uploadedFilePath(imageUrl) {
+    try {
+        const pathname = new URL(imageUrl, 'http://localhost').pathname;
+        if (!pathname.startsWith('/uploads/')) return null;
+        const fileName = path.basename(pathname);
+        if (!/^[a-f0-9]{32}\.(jpg|png|webp)$/.test(fileName)) return null;
+        const filePath = path.resolve(uploadDirectory, fileName);
+        return path.dirname(filePath) === path.resolve(uploadDirectory) ? filePath : null;
+    } catch (_) {
+        return null;
+    }
+}
 
 const db = (sql, values = []) => new Promise((resolve, reject) => con.query(sql, values, (err, rows) => err ? reject(err) : resolve(rows)));
 const validId = value => /^[1-9]\d*$/.test(String(value));
@@ -72,7 +124,7 @@ async function expirePendingOrders() {
             const result = await query(`UPDATE orders SET status='expired'
                 WHERE order_id=? AND status='pending_payment'
                   AND (payment_deadline IS NULL OR payment_deadline<=UTC_TIMESTAMP())`,
-            [order.order_id]);
+                [order.order_id]);
             if (result.affectedRows) {
                 expiredCount += 1;
                 await releaseProductIfUnreserved(query, order.product_id);
@@ -86,7 +138,7 @@ async function auth(req, res, next) {
     if (!header || !header.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Token required' });
     try {
         const token = jwt.verify(header.slice(7), JWT_KEY);
-        const users = await db('SELECT user_id,email,display_name,username,role,status FROM users WHERE user_id=?', [token.user_id]);
+        const users = await db('SELECT user_id,email,display_name,username,role,status,residence_zone,residence_location_id FROM users WHERE user_id=?', [token.user_id]);
         if (!users.length || users[0].status !== 'active') return res.status(403).json({ success: false, message: 'Account is not active' });
         req.user = users[0]; return next();
     } catch (_) { return res.status(401).json({ success: false, message: 'Invalid or expired token' }); }
@@ -136,9 +188,41 @@ app.get('/api/profile', auth, async (req, res) => {
     try { const rows = await db('SELECT u.user_id,u.student_id,u.username,u.email,u.display_name,u.residence_zone,u.residence_location_id,u.role,u.status,u.created_at,l.name AS residence_name FROM users u LEFT JOIN locations l ON l.location_id=u.residence_location_id WHERE u.user_id=?', [req.user.user_id]); res.json({ success: true, data: rows[0] }); } catch (err) { dbError(res, err); }
 });
 app.put('/api/profile', auth, async (req, res) => {
-    const b = req.body || {}; const name = b.display_name ?? b.displayName;
-    if (!validText(name, 100, true) || (b.username !== undefined && !validText(b.username, 50, true))) return bad(res, 'Invalid display name or username');
-    try { await db('UPDATE users SET display_name=?,username=COALESCE(?,username) WHERE user_id=?', [name.trim(), b.username?.trim() || null, req.user.user_id]); res.json({ success: true, message: 'Profile updated' }); } catch (err) { dbError(res, err); }
+    const b = req.body || {};
+    const name = b.display_name ?? b.displayName;
+    const hasResidence = b.residence_zone !== undefined || b.residence_location_id !== undefined;
+    if ((name !== undefined && !validText(name, 100, true)) ||
+        (b.username !== undefined && !validText(b.username, 50, true)) ||
+        (name === undefined && b.username === undefined && !hasResidence) ||
+        (hasResidence && (!zones.includes(b.residence_zone) || !validId(b.residence_location_id)))) {
+        return bad(res, 'Invalid profile details');
+    }
+    try {
+        if (hasResidence) {
+            const locations = await db('SELECT location_id FROM locations WHERE location_id=? AND zone=? AND is_active=1',
+                [b.residence_location_id, b.residence_zone]);
+            if (!locations.length) return bad(res, 'Residence does not exist or is inactive');
+        }
+        const fields = [];
+        const values = [];
+        if (name !== undefined) {
+            fields.push('display_name=?');
+            values.push(name.trim());
+        }
+        if (b.username !== undefined) {
+            fields.push('username=?');
+            values.push(b.username.trim());
+        }
+        if (hasResidence) {
+            fields.push('residence_zone=?', 'residence_location_id=?');
+            values.push(b.residence_zone, b.residence_location_id);
+        }
+        values.push(req.user.user_id);
+        await db(`UPDATE users SET ${fields.join(',')} WHERE user_id=?`, values);
+        res.json({ success: true, message: 'Profile updated' });
+    } catch (err) {
+        dbError(res, err);
+    }
 });
 
 // ---------- Catalogue and member dashboard ----------
@@ -151,9 +235,9 @@ app.get('/api/dashboard', auth, async (req, res) => {
     const userId = req.user.user_id;
     try {
         const [counts, listings, orders, requests] = await Promise.all([
-            db(`SELECT (SELECT COUNT(*) FROM products WHERE seller_id=?) AS my_listings,(SELECT COUNT(*) FROM products WHERE seller_id=? AND status='pending_review') AS listings_to_review,(SELECT COUNT(*) FROM products WHERE seller_id=? AND status='changes_requested') AS listings_to_fix,(SELECT COUNT(*) FROM orders WHERE buyer_id=? AND status IN ('pending_payment','paid','ready_for_meetup')) AS buying_active,(SELECT COUNT(*) FROM orders WHERE seller_id=? AND status IN ('pending_payment','paid','ready_for_meetup')) AS selling_active`, [userId,userId,userId,userId,userId]),
+            db(`SELECT (SELECT COUNT(*) FROM products WHERE seller_id=?) AS my_listings,(SELECT COUNT(*) FROM products WHERE seller_id=? AND status='pending_review') AS listings_to_review,(SELECT COUNT(*) FROM products WHERE seller_id=? AND status='changes_requested') AS listings_to_fix,(SELECT COUNT(*) FROM orders WHERE buyer_id=? AND status IN ('pending_payment','paid','ready_for_meetup')) AS buying_active,(SELECT COUNT(*) FROM orders WHERE seller_id=? AND status IN ('pending_payment','paid','ready_for_meetup')) AS selling_active`, [userId, userId, userId, userId, userId]),
             db("SELECT product_id,title,price,status,review_note,created_at FROM products WHERE seller_id=? ORDER BY updated_at DESC,product_id DESC LIMIT 5", [userId]),
-            db(`SELECT o.order_id,o.status,o.total_amount,o.meetup_location,o.meetup_datetime,o.created_at,p.title,CASE WHEN o.buyer_id=? THEN 'buying' ELSE 'selling' END AS perspective FROM orders o JOIN products p ON p.product_id=o.product_id WHERE o.buyer_id=? OR o.seller_id=? ORDER BY o.updated_at DESC,o.order_id DESC LIMIT 5`, [userId,userId,userId]),
+            db(`SELECT o.order_id,o.status,o.total_amount,o.meetup_location,o.meetup_datetime,o.created_at,p.title,CASE WHEN o.buyer_id=? THEN 'buying' ELSE 'selling' END AS perspective FROM orders o JOIN products p ON p.product_id=o.product_id WHERE o.buyer_id=? OR o.seller_id=? ORDER BY o.updated_at DESC,o.order_id DESC LIMIT 5`, [userId, userId, userId]),
             db("SELECT request_id,status,name,zone FROM location_requests WHERE requested_by=? AND status IN ('pending','reviewing') ORDER BY created_at DESC LIMIT 1", [userId])
         ]);
         res.json({ success: true, data: { user: req.user, counts: counts[0], recent_listings: listings, recent_orders: orders, pending_location_request: requests[0] || null } });
@@ -168,7 +252,7 @@ app.get('/api/products', async (req, res) => {
     const clauses = ["p.status='available'", "u.status='active'"]; const values = [];
     if (keyword) { clauses.push('(p.title LIKE ? OR p.description LIKE ?)'); values.push(`%${keyword.trim()}%`, `%${keyword.trim()}%`); }
     if (category_id) { clauses.push('p.category_id=?'); values.push(category_id); } if (zone) { clauses.push('p.zone=?'); values.push(zone); } if (location_id) { clauses.push('p.location_id=?'); values.push(location_id); }
-    try { await expirePendingOrders(); const rows = await db(`SELECT p.product_id,p.title,p.description,p.price,p.item_condition,p.urgency_level,p.zone,l.name AS location_name,p.location_id,p.location_detail,p.clearance_deadline,p.created_at,p.category_id,c.name AS category_name,u.user_id AS seller_id,u.display_name AS seller_name,(SELECT image_url FROM product_images WHERE product_id=p.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url FROM products p JOIN users u ON u.user_id=p.seller_id LEFT JOIN categories c ON c.category_id=p.category_id LEFT JOIN locations l ON l.location_id=p.location_id WHERE ${clauses.join(' AND ')} ORDER BY ${orderBy} LIMIT ? OFFSET ?`, [...values,paging.limit + 1,paging.offset]); sendPage(res, rows, paging); } catch (err) { dbError(res, err); }
+    try { await expirePendingOrders(); const rows = await db(`SELECT p.product_id,p.title,p.description,p.price,p.item_condition,p.urgency_level,p.zone,l.name AS location_name,p.location_id,p.location_detail,p.clearance_deadline,p.created_at,p.category_id,c.name AS category_name,u.user_id AS seller_id,u.display_name AS seller_name,(SELECT image_url FROM product_images WHERE product_id=p.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url,(SELECT COUNT(*) FROM product_images WHERE product_id=p.product_id) AS image_count FROM products p JOIN users u ON u.user_id=p.seller_id LEFT JOIN categories c ON c.category_id=p.category_id LEFT JOIN locations l ON l.location_id=p.location_id WHERE ${clauses.join(' AND ')} ORDER BY ${orderBy} LIMIT ? OFFSET ?`, [...values, paging.limit + 1, paging.offset]); sendPage(res, rows, paging); } catch (err) { dbError(res, err); }
 });
 app.get('/api/products/:product_id', async (req, res) => {
     if (!validId(req.params.product_id)) return bad(res, 'Invalid product_id');
@@ -176,16 +260,131 @@ app.get('/api/products/:product_id', async (req, res) => {
 });
 function getProductInput(b) {
     const x = b || {}; const locationId = x.location_id ?? x.locationId;
-    if (!validId(x.category_id ?? x.categoryId) || !validText(x.title, 150, true) || !validText(x.description, 5000) || !/^\d+(\.\d{1,2})?$/.test(String(x.price)) || Number(x.price) > 99999999.99 || (x.item_condition != null && !['new','like_new','good','fair'].includes(x.item_condition)) || !['normal','urgent','very_urgent'].includes(x.urgency_level || x.urgencyLevel || 'normal') || !zones.includes(x.zone) || !validId(locationId) || !validText(x.location_detail ?? x.locationDetail, 255)) return null;
+    if (!validId(x.category_id ?? x.categoryId) || !validText(x.title, 150, true) || !validText(x.description, 5000) || !/^\d+(\.\d{1,2})?$/.test(String(x.price)) || Number(x.price) > 99999999.99 || (x.item_condition != null && !['new', 'like_new', 'good', 'fair'].includes(x.item_condition)) || !['normal', 'urgent', 'very_urgent'].includes(x.urgency_level || x.urgencyLevel || 'normal') || !zones.includes(x.zone) || !validId(locationId) || !validText(x.location_detail ?? x.locationDetail, 255)) return null;
     return { categoryId: x.category_id ?? x.categoryId, title: x.title.trim(), description: x.description?.trim() || null, price: Number(x.price), condition: x.item_condition || null, urgency: x.urgency_level ?? x.urgencyLevel ?? 'normal', zone: x.zone, locationId, locationDetail: (x.location_detail ?? x.locationDetail)?.trim() || null, deadline: x.clearance_deadline ?? x.clearanceDeadline ?? null };
+}
+function usesSellerResidence(user, product) {
+    return user.residence_location_id != null &&
+        Number(user.residence_location_id) === Number(product.locationId) &&
+        user.residence_zone === product.zone;
 }
 app.post('/api/products', auth, async (req, res) => {
     const x = getProductInput(req.body); if (!x) return bad(res, 'Invalid product details');
-    try { const locations = await db('SELECT location_id FROM locations WHERE location_id=? AND zone=? AND is_active=1', [x.locationId,x.zone]); const cats = await db('SELECT category_id FROM categories WHERE category_id=? AND is_active=1', [x.categoryId]); if (!locations.length || !cats.length) return bad(res, 'Category or pickup location is unavailable'); const result = await db(`INSERT INTO products (seller_id,title,description,category_id,price,item_condition,urgency_level,zone,location_id,location_detail,clearance_deadline,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending_review')`, [req.user.user_id,x.title,x.description,x.categoryId,x.price,x.condition,x.urgency,x.zone,x.locationId,x.locationDetail,x.deadline]); res.status(201).json({ success: true, product_id: result.insertId, status: 'pending_review' }); } catch (err) { dbError(res, err); }
+    if (!req.user.residence_location_id) return res.status(409).json({ success: false, message: 'Set an approved residence in your profile before listing an item' });
+    if (!usesSellerResidence(req.user, x)) return bad(res, 'Listings must use your registered residence');
+    try { const locations = await db('SELECT location_id FROM locations WHERE location_id=? AND zone=? AND is_active=1', [x.locationId, x.zone]); const cats = await db('SELECT category_id FROM categories WHERE category_id=? AND is_active=1', [x.categoryId]); if (!locations.length || !cats.length) return bad(res, 'Category or pickup location is unavailable'); const result = await db(`INSERT INTO products (seller_id,title,description,category_id,price,item_condition,urgency_level,zone,location_id,location_detail,clearance_deadline,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending_review')`, [req.user.user_id, x.title, x.description, x.categoryId, x.price, x.condition, x.urgency, x.zone, x.locationId, x.locationDetail, x.deadline]); res.status(201).json({ success: true, product_id: result.insertId, status: 'pending_review' }); } catch (err) { dbError(res, err); }
 });
-app.get('/api/my/listings', auth, async (req, res) => { const paging = getPaging(req, res); if (!paging) return; try { const rows = await db(`SELECT p.*,c.name AS category_name,l.name AS location_name,(SELECT image_url FROM product_images WHERE product_id=p.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url FROM products p LEFT JOIN categories c ON c.category_id=p.category_id LEFT JOIN locations l ON l.location_id=p.location_id WHERE p.seller_id=? ORDER BY p.updated_at DESC,p.product_id DESC LIMIT ? OFFSET ?`, [req.user.user_id,paging.limit + 1,paging.offset]); sendPage(res, rows, paging); } catch (err) { dbError(res, err); } });
-app.put('/api/products/:product_id', auth, async (req, res) => { if (!validId(req.params.product_id)) return bad(res, 'Invalid product_id'); const x = getProductInput(req.body); if (!x) return bad(res, 'Invalid product details'); try { const result = await db(`UPDATE products SET title=?,description=?,category_id=?,price=?,item_condition=?,urgency_level=?,zone=?,location_id=?,location_detail=?,clearance_deadline=?,status='pending_review',review_note=NULL,reject_reason=NULL WHERE product_id=? AND seller_id=? AND status IN ('pending_review','changes_requested','rejected','available')`, [x.title,x.description,x.categoryId,x.price,x.condition,x.urgency,x.zone,x.locationId,x.locationDetail,x.deadline,req.params.product_id,req.user.user_id]); if (!result.affectedRows) return res.status(409).json({ success: false, message: 'Listing cannot be edited in its current state' }); res.json({ success: true, status: 'pending_review' }); } catch (err) { dbError(res, err); } });
-app.post('/api/products/:product_id/images', auth, async (req, res) => { const b = req.body || {}; const url = b.image_url ?? b.imageUrl; const order = b.display_order ?? b.displayOrder ?? 1; if (!validId(req.params.product_id) || !validText(url, 500, true) || !Number.isInteger(Number(order)) || Number(order) < 1) return bad(res, 'Invalid image'); try { const owner = await db('SELECT product_id FROM products WHERE product_id=? AND seller_id=?', [req.params.product_id,req.user.user_id]); if (!owner.length) return notFound(res, 'Product not found'); const result = await db('INSERT INTO product_images (product_id,image_url,display_order) VALUES (?,?,?)', [req.params.product_id,url.trim(),order]); res.status(201).json({ success: true, image_id: result.insertId }); } catch (err) { dbError(res, err); } });
+app.get('/api/my/listings', auth, async (req, res) => { const paging = getPaging(req, res); if (!paging) return; try { const rows = await db(`SELECT p.*,c.name AS category_name,l.name AS location_name,(SELECT image_url FROM product_images WHERE product_id=p.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url,(SELECT COUNT(*) FROM product_images WHERE product_id=p.product_id) AS image_count FROM products p LEFT JOIN categories c ON c.category_id=p.category_id LEFT JOIN locations l ON l.location_id=p.location_id WHERE p.seller_id=? ORDER BY p.updated_at DESC,p.product_id DESC LIMIT ? OFFSET ?`, [req.user.user_id, paging.limit + 1, paging.offset]); const pageRows = rows.slice(0, paging.limit); if (pageRows.length) { const imgs = await db('SELECT image_id,product_id,image_url,display_order FROM product_images WHERE product_id IN (?) ORDER BY display_order,image_id', [pageRows.map(r => r.product_id)]); for (const r of pageRows) r.images = imgs.filter(i => i.product_id === r.product_id); } sendPage(res, rows, paging); } catch (err) { dbError(res, err); } });
+app.put('/api/products/:product_id', auth, async (req, res) => {
+    if (!validId(req.params.product_id)) return bad(res, 'Invalid product_id');
+    const x = getProductInput(req.body);
+    if (!x) return bad(res, 'Invalid product details');
+    if (!req.user.residence_location_id) return res.status(409).json({ success: false, message: 'Set an approved residence in your profile before editing listings' });
+    if (!usesSellerResidence(req.user, x)) return bad(res, 'Listings must use your registered residence');
+    try {
+        const locations = await db('SELECT location_id FROM locations WHERE location_id=? AND zone=? AND is_active=1', [x.locationId, x.zone]);
+        const categories = await db('SELECT category_id FROM categories WHERE category_id=? AND is_active=1', [x.categoryId]);
+        if (!locations.length || !categories.length) return bad(res, 'Category or pickup location is unavailable');
+        const result = await db(`UPDATE products SET title=?,description=?,category_id=?,price=?,item_condition=?,urgency_level=?,zone=?,location_id=?,location_detail=?,clearance_deadline=?,status='pending_review',review_note=NULL,reject_reason=NULL WHERE product_id=? AND seller_id=? AND status IN ('pending_review','changes_requested','rejected','available')`,
+            [x.title, x.description, x.categoryId, x.price, x.condition, x.urgency, x.zone, x.locationId, x.locationDetail, x.deadline, req.params.product_id, req.user.user_id]);
+        if (!result.affectedRows) return res.status(409).json({ success: false, message: 'Listing cannot be edited in its current state' });
+        res.json({ success: true, status: 'pending_review' });
+    } catch (err) {
+        dbError(res, err);
+    }
+});
+app.delete('/api/products/:product_id', auth, async (req, res) => {
+    if (!validId(req.params.product_id)) return bad(res, 'Invalid product_id');
+    try {
+        const imageUrls = await transaction(async query => {
+            const products = await query(`SELECT p.product_id FROM products p
+                WHERE p.product_id=? AND p.seller_id=?
+                  AND p.status IN ('pending_review','changes_requested','rejected')
+                  AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.product_id=p.product_id)
+                FOR UPDATE`, [req.params.product_id, req.user.user_id]);
+            if (!products.length) {
+                throw Object.assign(new Error('Only unreviewed listings without orders can be deleted'), { status: 409 });
+            }
+            const images = await query(
+                'SELECT image_url FROM product_images WHERE product_id=?',
+                [req.params.product_id]
+            );
+            await query('DELETE FROM product_images WHERE product_id=?', [req.params.product_id]);
+            const result = await query(`DELETE FROM products
+                WHERE product_id=? AND seller_id=?
+                  AND status IN ('pending_review','changes_requested','rejected')`,
+                [req.params.product_id, req.user.user_id]);
+            if (!result.affectedRows) {
+                throw Object.assign(new Error('Listing can no longer be deleted'), { status: 409 });
+            }
+            return images.map(image => image.image_url);
+        });
+        await Promise.all(imageUrls.map(imageUrl => {
+            const filePath = uploadedFilePath(imageUrl);
+            return filePath ? removeUploadedFile(filePath) : Promise.resolve();
+        }));
+        res.json({ success: true, status: 'deleted' });
+    } catch (err) {
+        if (err.status) return res.status(err.status).json({ success: false, message: err.message });
+        dbError(res, err);
+    }
+});
+app.put('/api/products/:product_id/hide', auth, async (req, res) => {
+    if (!validId(req.params.product_id)) return bad(res, 'Invalid product_id');
+    try {
+        const result = await db(`UPDATE products SET status='hidden'
+            WHERE product_id=? AND seller_id=? AND status='available'`,
+            [req.params.product_id, req.user.user_id]);
+        if (!result.affectedRows) {
+            return res.status(409).json({ success: false, message: 'Only available listings can be taken off the marketplace' });
+        }
+        res.json({ success: true, status: 'hidden' });
+    } catch (err) {
+        dbError(res, err);
+    }
+});
+app.post('/api/products/:product_id/images', auth, parseProductImage, async (req, res) => {
+    const body = req.body || {};
+    const order = Number(body.display_order ?? body.displayOrder ?? 1);
+    const imageUrl = req.file
+        ? `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`
+        : body.image_url ?? body.imageUrl;
+    if (!validId(req.params.product_id) || !validText(imageUrl, 500, true) ||
+        !Number.isInteger(order) || order < 1 || order > MAX_PRODUCT_IMAGES) {
+        if (req.file) await removeUploadedFile(req.file.path);
+        return bad(res, 'Invalid image');
+    }
+
+    try {
+        const result = await transaction(async query => {
+            const products = await query(
+                `SELECT product_id FROM products
+                 WHERE product_id=? AND seller_id=?
+                   AND status IN ('pending_review','changes_requested','rejected','available')
+                 FOR UPDATE`,
+                [req.params.product_id, req.user.user_id]
+            );
+            if (!products.length) throw Object.assign(new Error('Product not found or cannot be edited'), { status: 404 });
+            const images = await query(
+                'SELECT COUNT(*) AS image_count FROM product_images WHERE product_id=?',
+                [req.params.product_id]
+            );
+            if (Number(images[0].image_count) >= MAX_PRODUCT_IMAGES) {
+                throw Object.assign(new Error('A product can have at most six photos'), { status: 409 });
+            }
+            const inserted = await query(
+                'INSERT INTO product_images (product_id,image_url,display_order) VALUES (?,?,?)',
+                [req.params.product_id, imageUrl.trim(), order]
+            );
+            return inserted;
+        });
+        res.status(201).json({ success: true, image_id: result.insertId, image_url: imageUrl });
+    } catch (err) {
+        if (req.file) await removeUploadedFile(req.file.path);
+        if (err.status) return res.status(err.status).json({ success: false, message: err.message });
+        dbError(res, err);
+    }
+});
 
 // ---------- Purchase flow ----------
 app.post('/api/orders', auth, async (req, res) => {
@@ -216,7 +415,7 @@ app.post('/api/orders', auth, async (req, res) => {
             const attempts = await query(`SELECT COUNT(*) AS attempt_count FROM orders
                 WHERE buyer_id=? AND product_id=? AND status IN ('expired','cancelled')
                   AND updated_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL ${FAILED_RESERVATION_WINDOW_HOURS} HOUR)`,
-            [req.user.user_id, product_id]);
+                [req.user.user_id, product_id]);
             if (Number(attempts[0].attempt_count) >= FAILED_RESERVATION_LIMIT) {
                 throw Object.assign(new Error('You have reached the limit of two expired or cancelled reservations for this item in 24 hours.'), { status: 429 });
             }
@@ -224,8 +423,8 @@ app.post('/api/orders', auth, async (req, res) => {
             const order = await query(`INSERT INTO orders
                 (product_id,buyer_id,seller_id,seller_price,total_amount,seller_payout,meetup_location,meetup_datetime,payment_deadline)
                 VALUES (?,?,?,?,?,?,?,?,DATE_ADD(UTC_TIMESTAMP(),INTERVAL ${ORDER_PAYMENT_WINDOW_MINUTES} MINUTE))`,
-            [product_id, req.user.user_id, product.seller_id, price, price, price,
-                product.seller_location, meetup_datetime ? new Date(meetup_datetime) : null]);
+                [product_id, req.user.user_id, product.seller_id, price, price, price,
+                    product.seller_location, meetup_datetime ? new Date(meetup_datetime) : null]);
             await query("UPDATE products SET status='reserved' WHERE product_id=?", [product_id]);
             return order;
         });
@@ -234,7 +433,7 @@ app.post('/api/orders', auth, async (req, res) => {
         err.status ? res.status(err.status).json({ success: false, message: err.message }) : dbError(res, err);
     }
 });
-app.get('/api/orders', auth, async (req, res) => { const paging = getPaging(req, res); if (!paging) return; try { await expirePendingOrders(); const rows = await db(`SELECT o.*,p.title,l.name AS location_name,b.display_name AS buyer_name,s.display_name AS seller_name,(SELECT image_url FROM product_images WHERE product_id=o.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url,CASE WHEN o.buyer_id=? THEN 'buying' ELSE 'selling' END AS perspective FROM orders o JOIN products p ON p.product_id=o.product_id LEFT JOIN locations l ON l.location_id=p.location_id JOIN users b ON b.user_id=o.buyer_id JOIN users s ON s.user_id=o.seller_id WHERE o.buyer_id=? OR o.seller_id=? ORDER BY o.updated_at DESC,o.order_id DESC LIMIT ? OFFSET ?`, [req.user.user_id,req.user.user_id,req.user.user_id,paging.limit + 1,paging.offset]); sendPage(res, rows, paging); } catch (err) { dbError(res, err); } });
+app.get('/api/orders', auth, async (req, res) => { const paging = getPaging(req, res); if (!paging) return; try { await expirePendingOrders(); const rows = await db(`SELECT o.*,p.title,l.name AS location_name,p.location_detail AS pickup_detail,b.display_name AS buyer_name,s.display_name AS seller_name,(SELECT image_url FROM product_images WHERE product_id=o.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url,CASE WHEN o.buyer_id=? THEN 'buying' ELSE 'selling' END AS perspective FROM orders o JOIN products p ON p.product_id=o.product_id LEFT JOIN locations l ON l.location_id=p.location_id JOIN users b ON b.user_id=o.buyer_id JOIN users s ON s.user_id=o.seller_id WHERE o.buyer_id=? OR o.seller_id=? ORDER BY o.updated_at DESC,o.order_id DESC LIMIT ? OFFSET ?`, [req.user.user_id, req.user.user_id, req.user.user_id, paging.limit + 1, paging.offset]); sendPage(res, rows, paging); } catch (err) { dbError(res, err); } });
 app.put('/api/orders/:order_id/meetup', auth, async (req, res) => {
     const { meetup_location, meetup_datetime } = req.body || {};
     if (!validId(req.params.order_id) ||
@@ -267,27 +466,27 @@ app.post('/api/orders/:order_id/pay', auth, async (req, res) => {
     const method = b.payment_method ?? b.paymentMethod ?? 'gateway';
     const reference = b.transaction_ref ?? b.transactionRef;
     const slip = b.payment_slip_url ?? b.paymentSlipUrl;
-    if (!validId(req.params.order_id) || !['gateway','bank_transfer','cash','free'].includes(method) || !validText(reference,150) || !validText(slip,500)) return bad(res, 'Invalid payment');
+    if (!validId(req.params.order_id) || !['gateway', 'bank_transfer', 'cash', 'free'].includes(method) || !validText(reference, 150) || !validText(slip, 500)) return bad(res, 'Invalid payment');
     try {
         const result = await transaction(async query => {
             const orders = await query(`SELECT * FROM orders
                 WHERE order_id=? AND buyer_id=? AND status='pending_payment' FOR UPDATE`,
-            [req.params.order_id, req.user.user_id]);
+                [req.params.order_id, req.user.user_id]);
             if (!orders.length) throw Object.assign(new Error('Order is not awaiting payment'), { status: 409 });
             const order = orders[0];
             const updated = await query(`UPDATE orders SET status='ready_for_meetup'
                 WHERE order_id=? AND status='pending_payment'
                   AND payment_deadline IS NOT NULL AND payment_deadline>UTC_TIMESTAMP()`,
-            [order.order_id]);
+                [order.order_id]);
             if (!updated.affectedRows) {
                 await query(`UPDATE orders SET status='expired'
                     WHERE order_id=? AND status='pending_payment'`,
-                [order.order_id]);
+                    [order.order_id]);
                 await releaseProductIfUnreserved(query, order.product_id);
                 return { expired: true, order_id: order.order_id };
             }
             await query("INSERT INTO payments (order_id,payment_method,transaction_ref,payment_slip_url,amount,payment_status,seller_transfer_status,paid_at) VALUES (?,?,?,?,?,'paid','held',UTC_TIMESTAMP())",
-            [order.order_id,method,reference || null,slip || null,order.total_amount]);
+                [order.order_id, method, reference || null, slip || null, order.total_amount]);
             return { expired: false, order_id: order.order_id };
         });
         if (result.expired) {
@@ -298,20 +497,20 @@ app.post('/api/orders/:order_id/pay', auth, async (req, res) => {
         err.status ? res.status(err.status).json({ success: false, message: err.message }) : dbError(res, err);
     }
 });
-app.post('/api/orders/:order_id/received', auth, async (req, res) => { if (!validId(req.params.order_id)) return bad(res, 'Invalid order_id'); try { const result = await transaction(async query => { const orders = await query("SELECT * FROM orders WHERE order_id=? AND buyer_id=? AND status='ready_for_meetup' FOR UPDATE", [req.params.order_id,req.user.user_id]); if (!orders.length) throw Object.assign(new Error('Order is not ready to complete'), { status: 409 }); const order = orders[0]; await query("UPDATE orders SET status='completed',received_at=UTC_TIMESTAMP() WHERE order_id=?", [order.order_id]); await query("UPDATE products SET status='sold' WHERE product_id=?", [order.product_id]); await query("UPDATE payments SET seller_transfer_status='pending' WHERE order_id=?", [order.order_id]); return order; }); res.json({ success: true, order_id: result.order_id, status: 'completed' }); } catch (err) { err.status ? res.status(err.status).json({ success: false, message: err.message }) : dbError(res, err); } });
+app.post('/api/orders/:order_id/received', auth, async (req, res) => { if (!validId(req.params.order_id)) return bad(res, 'Invalid order_id'); try { const result = await transaction(async query => { const orders = await query("SELECT * FROM orders WHERE order_id=? AND buyer_id=? AND status='ready_for_meetup' FOR UPDATE", [req.params.order_id, req.user.user_id]); if (!orders.length) throw Object.assign(new Error('Order is not ready to complete'), { status: 409 }); const order = orders[0]; await query("UPDATE orders SET status='completed',received_at=UTC_TIMESTAMP() WHERE order_id=?", [order.order_id]); await query("UPDATE products SET status='sold' WHERE product_id=?", [order.product_id]); await query("UPDATE payments SET seller_transfer_status='pending' WHERE order_id=?", [order.order_id]); return order; }); res.json({ success: true, order_id: result.order_id, status: 'completed' }); } catch (err) { err.status ? res.status(err.status).json({ success: false, message: err.message }) : dbError(res, err); } });
 app.post('/api/orders/:order_id/cancel', auth, async (req, res) => {
     if (!validId(req.params.order_id)) return bad(res, 'Invalid order_id');
     try {
         const result = await transaction(async query => {
             const orders = await query(`SELECT * FROM orders
                 WHERE order_id=? AND buyer_id=? AND status='pending_payment' FOR UPDATE`,
-            [req.params.order_id, req.user.user_id]);
+                [req.params.order_id, req.user.user_id]);
             if (!orders.length) throw Object.assign(new Error('Order cannot be cancelled'), { status: 409 });
             const order = orders[0];
             const updated = await query(`UPDATE orders SET status='cancelled'
                 WHERE order_id=? AND status='pending_payment'
                   AND payment_deadline>UTC_TIMESTAMP()`,
-            [order.order_id]);
+                [order.order_id]);
             if (!updated.affectedRows) {
                 await query("UPDATE orders SET status='expired' WHERE order_id=? AND status='pending_payment'", [order.order_id]);
                 await releaseProductIfUnreserved(query, order.product_id);
@@ -329,7 +528,7 @@ app.post('/api/orders/:order_id/cancel', auth, async (req, res) => {
     }
 });
 // ---------- Residence requests ----------
-app.post('/api/location-requests', auth, async (req, res) => { const { name, zone, address, reason } = req.body || {}; if (!validText(name,150,true) || !zones.includes(zone) || !validText(address,255) || !validText(reason,5000)) return bad(res, 'Invalid location request'); try { const result = await db('INSERT INTO location_requests (requested_by,name,zone,address,reason) VALUES (?,?,?,?,?)', [req.user.user_id,name.trim(),zone,address?.trim() || null,reason?.trim() || null]); res.status(201).json({ success: true, request_id: result.insertId, status: 'pending' }); } catch (err) { dbError(res, err); } });
+app.post('/api/location-requests', auth, async (req, res) => { const { name, zone, address, reason } = req.body || {}; if (!validText(name, 150, true) || !zones.includes(zone) || !validText(address, 255) || !validText(reason, 5000)) return bad(res, 'Invalid location request'); try { const result = await db('INSERT INTO location_requests (requested_by,name,zone,address,reason) VALUES (?,?,?,?,?)', [req.user.user_id, name.trim(), zone, address?.trim() || null, reason?.trim() || null]); res.status(201).json({ success: true, request_id: result.insertId, status: 'pending' }); } catch (err) { dbError(res, err); } });
 
 // ---------- Admin dashboard and moderation ----------
 app.get('/api/admin/dashboard', auth, adminOnly, async (_req, res) => {
@@ -342,10 +541,32 @@ app.get('/api/admin/dashboard', auth, adminOnly, async (_req, res) => {
         res.json({ success: true, data: { overview: overview[0], pending_listings: listings, pending_location_requests: locations } });
     } catch (err) { dbError(res, err); }
 });
-app.get('/api/admin/users', auth, adminOnly, async (req, res) => { const status = req.query.status; if (status && !['pending','active','suspended','rejected'].includes(status)) return bad(res, 'Invalid status'); const paging = getPaging(req,res); if (!paging) return; try { const rows = await db(`SELECT user_id,student_id,username,email,display_name,residence_zone,residence_location_id,role,status,created_at FROM users${status ? ' WHERE status=?' : ''} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...(status ? [status] : []),paging.limit + 1,paging.offset]); sendPage(res,rows,paging); } catch (err) { dbError(res,err); } });
-app.put('/api/admin/users/:user_id/status', auth, adminOnly, async (req,res) => { const { status } = req.body || {}; if (!validId(req.params.user_id) || !['active','suspended','rejected'].includes(status)) return bad(res,'Invalid user status'); try { const result = await db("UPDATE users SET status=?,verified_by=?,verified_at=UTC_TIMESTAMP() WHERE user_id=? AND role='member'",[status,req.user.user_id,req.params.user_id]); if (!result.affectedRows) return notFound(res,'Member not found'); res.json({success:true,status}); } catch(err) { dbError(res,err); } });
-app.get('/api/admin/listings', auth, adminOnly, async (req,res) => { const status = req.query.status || 'pending_review'; if (!['pending_review','changes_requested','rejected','available','reserved','sold','hidden','all'].includes(status)) return bad(res,'Invalid listing status'); const paging=getPaging(req,res); if(!paging)return; try { const rows=await db(`SELECT p.*,u.display_name AS seller_name,c.name AS category_name FROM products p JOIN users u ON u.user_id=p.seller_id LEFT JOIN categories c ON c.category_id=p.category_id${status==='all'?'':' WHERE p.status=?'} ORDER BY p.created_at LIMIT ? OFFSET ?`,[...(status==='all'?[]:[status]),paging.limit+1,paging.offset]);sendPage(res,rows,paging);}catch(err){dbError(res,err);} });
-app.put('/api/admin/listings/:product_id/review', auth, adminOnly, async (req,res) => { const b=req.body||{}; const map={approve:'available',changes_requested:'changes_requested',reject:'rejected'}; if(!validId(req.params.product_id)||!map[b.action]||!validText(b.review_note ?? b.reviewNote,5000,b.action!=='approve')||(b.action==='reject'&&!['prohibited_item','misleading','poor_photos','duplicate','other'].includes(b.reject_reason ?? b.rejectReason)))return bad(res,'Invalid review'); try {const result=await db("UPDATE products SET status=?,review_note=?,reject_reason=?,reviewed_by=?,reviewed_at=UTC_TIMESTAMP() WHERE product_id=? AND status='pending_review'",[map[b.action],(b.review_note ?? b.reviewNote)?.trim()||null,b.action==='reject'?(b.reject_reason ?? b.rejectReason):null,req.user.user_id,req.params.product_id]);if(!result.affectedRows)return res.status(409).json({success:false,message:'Listing is not awaiting review'});res.json({success:true,status:map[b.action]});}catch(err){dbError(res,err);} });
+app.get('/api/admin/users', auth, adminOnly, async (req, res) => { const status = req.query.status; if (status && !['pending', 'active', 'suspended', 'rejected'].includes(status)) return bad(res, 'Invalid status'); const paging = getPaging(req, res); if (!paging) return; try { const rows = await db(`SELECT user_id,student_id,username,email,display_name,residence_zone,residence_location_id,role,status,created_at FROM users${status ? ' WHERE status=?' : ''} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...(status ? [status] : []), paging.limit + 1, paging.offset]); sendPage(res, rows, paging); } catch (err) { dbError(res, err); } });
+app.put('/api/admin/users/:user_id/status', auth, adminOnly, async (req, res) => { const { status } = req.body || {}; if (!validId(req.params.user_id) || !['active', 'suspended', 'rejected'].includes(status)) return bad(res, 'Invalid user status'); try { const result = await db("UPDATE users SET status=?,verified_by=?,verified_at=UTC_TIMESTAMP() WHERE user_id=? AND role='member'", [status, req.user.user_id, req.params.user_id]); if (!result.affectedRows) return notFound(res, 'Member not found'); res.json({ success: true, status }); } catch (err) { dbError(res, err); } });
+app.get('/api/admin/listings', auth, adminOnly, async (req, res) => {
+    const status = req.query.status || 'pending_review';
+    if (!['pending_review', 'changes_requested', 'rejected', 'available', 'reserved', 'sold', 'hidden', 'all'].includes(status)) return bad(res, 'Invalid listing status');
+    const paging = getPaging(req, res);
+    if (!paging) return;
+    try {
+        const rows = await db(`SELECT p.*,u.display_name AS seller_name,c.name AS category_name,l.name AS location_name,(SELECT image_url FROM product_images WHERE product_id=p.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url,(SELECT COUNT(*) FROM product_images WHERE product_id=p.product_id) AS image_count FROM products p JOIN users u ON u.user_id=p.seller_id LEFT JOIN categories c ON c.category_id=p.category_id LEFT JOIN locations l ON l.location_id=p.location_id${status === 'all' ? '' : ' WHERE p.status=?'} ORDER BY p.created_at LIMIT ? OFFSET ?`,
+            [...(status === 'all' ? [] : [status]), paging.limit + 1, paging.offset]);
+        const productIds = rows.map(row => row.product_id);
+        const images = productIds.length
+            ? await db('SELECT product_id,image_id,image_url,display_order FROM product_images WHERE product_id IN (?) ORDER BY product_id,display_order,image_id', [productIds])
+            : [];
+        const imagesByProduct = new Map();
+        for (const image of images) {
+            const productImages = imagesByProduct.get(image.product_id) || [];
+            productImages.push(image);
+            imagesByProduct.set(image.product_id, productImages);
+        }
+        sendPage(res, rows.map(row => ({ ...row, images: imagesByProduct.get(row.product_id) || [] })), paging);
+    } catch (err) {
+        dbError(res, err);
+    }
+});
+app.put('/api/admin/listings/:product_id/review', auth, adminOnly, async (req, res) => { const b = req.body || {}; const map = { approve: 'available', changes_requested: 'changes_requested', reject: 'rejected' }; if (!validId(req.params.product_id) || !map[b.action] || !validText(b.review_note ?? b.reviewNote, 5000, b.action !== 'approve') || (b.action === 'reject' && !['prohibited_item', 'misleading', 'poor_photos', 'duplicate', 'other'].includes(b.reject_reason ?? b.rejectReason))) return bad(res, 'Invalid review'); try { const result = await db("UPDATE products SET status=?,review_note=?,reject_reason=?,reviewed_by=?,reviewed_at=UTC_TIMESTAMP() WHERE product_id=? AND status='pending_review'", [map[b.action], (b.review_note ?? b.reviewNote)?.trim() || null, b.action === 'reject' ? (b.reject_reason ?? b.rejectReason) : null, req.user.user_id, req.params.product_id]); if (!result.affectedRows) return res.status(409).json({ success: false, message: 'Listing is not awaiting review' }); res.json({ success: true, status: map[b.action] }); } catch (err) { dbError(res, err); } });
 app.get('/api/admin/categories', auth, adminOnly, async (_req, res) => {
     try {
         const rows = await db(`SELECT c.category_id,c.name,c.emoji,c.is_active,c.created_at,
@@ -378,13 +599,13 @@ app.put('/api/admin/locations/:location_id', auth, adminOnly, async (req, res) =
     try { const result = await db('UPDATE locations SET name=?,is_active=? WHERE location_id=?', [name.trim(), is_active, req.params.location_id]); if (!result.affectedRows) return notFound(res, 'Location not found'); res.json({ success: true, message: 'Location updated' }); } catch (err) { dbError(res, err); }
 });
 app.get('/api/admin/location-requests', auth, adminOnly, async (req, res) => {
-    const status = req.query.status; if (status && !['pending','reviewing','approved','merged','rejected'].includes(status)) return bad(res, 'Invalid status');
+    const status = req.query.status; if (status && !['pending', 'reviewing', 'approved', 'merged', 'rejected'].includes(status)) return bad(res, 'Invalid status');
     const paging = getPaging(req, res); if (!paging) return;
     try { const rows = await db(`SELECT r.*,u.display_name AS requester_name,u.username FROM location_requests r JOIN users u ON u.user_id=r.requested_by${status ? ' WHERE r.status=?' : ''} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`, [...(status ? [status] : []), paging.limit + 1, paging.offset]); sendPage(res, rows, paging); } catch (err) { dbError(res, err); }
 });
 app.put('/api/admin/location-requests/:request_id/review', auth, adminOnly, async (req, res) => {
     const { action, merge_into_location_id } = req.body || {};
-    if (!validId(req.params.request_id) || !['reviewing','approve','merge','reject'].includes(action) || (action === 'merge' && !validId(merge_into_location_id))) return bad(res, 'Invalid location review');
+    if (!validId(req.params.request_id) || !['reviewing', 'approve', 'merge', 'reject'].includes(action) || (action === 'merge' && !validId(merge_into_location_id))) return bad(res, 'Invalid location review');
     try {
         const result = await transaction(async query => {
             const requests = await query("SELECT * FROM location_requests WHERE request_id=? AND status IN ('pending','reviewing') FOR UPDATE", [req.params.request_id]);
@@ -396,14 +617,14 @@ app.put('/api/admin/location-requests/:request_id/review', auth, adminOnly, asyn
             if (action === 'approve') {
                 const inserted = await query('INSERT INTO locations (name,zone) VALUES (?,?)', [request.name, request.zone]);
                 locationId = inserted.insertId;
-                await query("UPDATE location_requests SET status='approved',approved_location_id=?,handled_by=?,resolved_at=UTC_TIMESTAMP() WHERE request_id=?", [locationId,req.user.user_id,request.request_id]);
+                await query("UPDATE location_requests SET status='approved',approved_location_id=?,handled_by=?,resolved_at=UTC_TIMESTAMP() WHERE request_id=?", [locationId, req.user.user_id, request.request_id]);
             } else {
-                const locations = await query('SELECT location_id FROM locations WHERE location_id=? AND zone=? AND is_active=1', [merge_into_location_id,request.zone]);
+                const locations = await query('SELECT location_id FROM locations WHERE location_id=? AND zone=? AND is_active=1', [merge_into_location_id, request.zone]);
                 if (!locations.length) throw Object.assign(new Error('Merge target is unavailable'), { status: 400 });
                 locationId = locations[0].location_id;
-                await query("UPDATE location_requests SET status='merged',merged_into_location_id=?,handled_by=?,resolved_at=UTC_TIMESTAMP() WHERE request_id=?", [locationId,req.user.user_id,request.request_id]);
+                await query("UPDATE location_requests SET status='merged',merged_into_location_id=?,handled_by=?,resolved_at=UTC_TIMESTAMP() WHERE request_id=?", [locationId, req.user.user_id, request.request_id]);
             }
-            await query('UPDATE users SET residence_zone=?,residence_location_id=? WHERE user_id=?', [request.zone,locationId,request.requested_by]);
+            await query('UPDATE users SET residence_zone=?,residence_location_id=? WHERE user_id=?', [request.zone, locationId, request.requested_by]);
             return { status: action === 'approve' ? 'approved' : 'merged', location_id: locationId };
         });
         res.json({ success: true, ...result });
@@ -422,25 +643,25 @@ app.post('/api/dev/seed', async (_req, res) => {
             const categories = await query('SELECT category_id,name FROM categories WHERE is_active=1 ORDER BY category_id LIMIT 1');
             if (locations.length < 2 || !categories.length) throw Object.assign(new Error('Seed requires active locations and categories'), { status: 409 });
             const hash = argon2.hashSync('Demo12345!');
-            const admin = await query("INSERT INTO users (student_id,username,email,password_hash,display_name,residence_zone,residence_location_id,role,status) VALUES ('0000000001','admin_demo','admin@unisw.ap',?,'Admin Demo',? ,?,'admin','active')", [hash,locations[0].zone,locations[0].location_id]);
-            const maya = await query("INSERT INTO users (student_id,username,email,password_hash,display_name,residence_zone,residence_location_id,role,status) VALUES ('0000000002','maya_demo','maya@unisw.ap',?,'Maya Demo',? ,?,'member','active')", [hash,locations[0].zone,locations[0].location_id]);
-            const niran = await query("INSERT INTO users (student_id,username,email,password_hash,display_name,residence_zone,residence_location_id,role,status) VALUES ('0000000003','niran_demo','niran@unisw.ap',?,'Niran Demo',? ,?,'member','active')", [hash,locations[1].zone,locations[1].location_id]);
-            const p = (seller, title, price, status, location) => query('INSERT INTO products (seller_id,title,description,category_id,price,zone,location_id,status) VALUES (?,?,?,?,?,?,?,?)', [seller,title,`${title} for dashboard testing`,categories[0].category_id,price,location.zone,location.location_id,status]);
+            const admin = await query("INSERT INTO users (student_id,username,email,password_hash,display_name,residence_zone,residence_location_id,role,status) VALUES ('0000000001','admin_demo','admin@unisw.ap',?,'Admin Demo',? ,?,'admin','active')", [hash, locations[0].zone, locations[0].location_id]);
+            const maya = await query("INSERT INTO users (student_id,username,email,password_hash,display_name,residence_zone,residence_location_id,role,status) VALUES ('0000000002','maya_demo','maya@unisw.ap',?,'Maya Demo',? ,?,'member','active')", [hash, locations[0].zone, locations[0].location_id]);
+            const niran = await query("INSERT INTO users (student_id,username,email,password_hash,display_name,residence_zone,residence_location_id,role,status) VALUES ('0000000003','niran_demo','niran@unisw.ap',?,'Niran Demo',? ,?,'member','active')", [hash, locations[1].zone, locations[1].location_id]);
+            const p = (seller, title, price, status, location) => query('INSERT INTO products (seller_id,title,description,category_id,price,zone,location_id,status) VALUES (?,?,?,?,?,?,?,?)', [seller, title, `${title} for dashboard testing`, categories[0].category_id, price, location.zone, location.location_id, status]);
             const pending = await p(maya.insertId, 'Study desk (pending)', 450, 'pending_review', locations[0]);
             await p(maya.insertId, 'Lamp (needs changes)', 120, 'changes_requested', locations[0]);
             await p(niran.insertId, 'Campus bicycle', 950, 'available', locations[1]);
             const orderedProduct = await p(niran.insertId, 'Textbook bundle', 300, 'reserved', locations[1]);
-            const order = await query("INSERT INTO orders (product_id,buyer_id,seller_id,seller_price,total_amount,seller_payout,status,meetup_location,meetup_datetime) VALUES (?,?,?,?,?,?, 'ready_for_meetup', ?, DATE_ADD(UTC_TIMESTAMP(),INTERVAL 1 DAY))", [orderedProduct.insertId,maya.insertId,niran.insertId,300,300,300,locations[1].name]);
+            const order = await query("INSERT INTO orders (product_id,buyer_id,seller_id,seller_price,total_amount,seller_payout,status,meetup_location,meetup_datetime) VALUES (?,?,?,?,?,?, 'ready_for_meetup', ?, DATE_ADD(UTC_TIMESTAMP(),INTERVAL 1 DAY))", [orderedProduct.insertId, maya.insertId, niran.insertId, 300, 300, 300, locations[1].name]);
             await query("INSERT INTO payments (order_id,payment_method,amount,payment_status,seller_transfer_status,paid_at) VALUES (?,'gateway',300,'paid','held',UTC_TIMESTAMP())", [order.insertId]);
-            await query("INSERT INTO location_requests (requested_by,name,zone,reason,status) VALUES (?,?,?,'Demo location request','pending')", [maya.insertId,'Demo Residence',locations[0].zone]);
+            await query("INSERT INTO location_requests (requested_by,name,zone,reason,status) VALUES (?,?,?,'Demo location request','pending')", [maya.insertId, 'Demo Residence', locations[0].zone]);
             return { admin: admin.insertId, maya: maya.insertId, niran: niran.insertId, pending_product: pending.insertId, order: order.insertId };
         });
         res.status(201).json({ success: true, message: 'Demo data created', credentials: { admin: 'admin@unisw.ap / Demo12345!', member: 'maya@unisw.ap / Demo12345!' }, data: result });
     } catch (err) { err.status ? res.status(err.status).json({ success: false, message: err.message }) : dbError(res, err); }
 });
 
-app.use((err,_req,res,_next)=>err instanceof SyntaxError&&'body'in err?bad(res,'Invalid JSON body'):dbError(res,err));
-app.use((_req,res)=>res.status(404).json({success:false,message:'API endpoint not found'}));
+app.use((err, _req, res, _next) => err instanceof SyntaxError && 'body' in err ? bad(res, 'Invalid JSON body') : dbError(res, err));
+app.use((_req, res) => res.status(404).json({ success: false, message: 'API endpoint not found' }));
 
 function startServer() {
     const server = app.listen(PORT, '0.0.0.0', () => {
@@ -476,5 +697,5 @@ function startOrderExpiryWorker(server) {
     server.on('close', () => clearInterval(timer));
 }
 
-if(require.main===module)startServer();
-module.exports=app;
+if (require.main === module) startServer();
+module.exports = app;

@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:uni_swap/controller/api_client.dart';
+import 'package:uni_swap/controller/app_controllers.dart';
 import 'package:uni_swap/model/format.dart';
 import 'package:uni_swap/model/product.dart';
-import 'package:uni_swap/view/user/campus_locations.dart';
+import 'package:uni_swap/model/category.dart';
+import 'package:uni_swap/model/enums.dart';
+import 'package:uni_swap/model/location.dart';
+import 'package:uni_swap/view/user/location_picker.dart';
 import 'package:uni_swap/view/user/product_categories.dart';
 import 'package:uni_swap/view/user/product_detail_page.dart';
 
@@ -15,29 +20,6 @@ class _C {
   static const surface = Color(0xFFF3F2EE);
 }
 
-class _Product {
-  const _Product({
-    required this.id,
-    required this.title,
-    required this.price,
-    required this.category,
-    required this.location,
-    required this.imageUrl,
-    this.urgent = false,
-  });
-
-  final int id; // products.product_id
-  final String title;
-  final double price; // products.price DECIMAL(10,2)
-  final String category;
-  final CampusLocation location;
-  final String imageUrl;
-  final bool urgent;
-
-  String get place => location.place;
-  String get building => location.name;
-}
-
 enum _Sort {
   priceLow('Price: low to high'),
   priceHigh('Price: high to low');
@@ -45,69 +27,6 @@ enum _Sort {
   const _Sort(this.label);
   final String label;
 }
-
-final _categories = <(String, IconData?)>[
-  ('All', null),
-  for (final c in kProductCategories) (c.name, c.icon),
-];
-
-final _products = [
-  _Product(
-    id: 1,
-    title: 'Oak study desk',
-    price: 45,
-    category: 'Furniture',
-    location: locationById(12),
-    urgent: true,
-    imageUrl:
-        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
-  ),
-  _Product(
-    id: 2,
-    title: 'Acoustic guitar',
-    price: 80,
-    category: 'Music',
-    location: locationById(12),
-    imageUrl:
-        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
-  ),
-  _Product(
-    id: 3,
-    title: 'Calculus textbook',
-    price: 20,
-    category: 'Books',
-    location: locationById(12),
-    imageUrl:
-        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
-  ),
-  _Product(
-    id: 4,
-    title: 'Desk lamp',
-    price: 12,
-    category: 'Furniture',
-    location: locationById(13),
-    imageUrl:
-        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
-  ),
-  _Product(
-    id: 5,
-    title: 'Laptop stand',
-    price: 18,
-    category: 'Technology',
-    location: locationById(13),
-    imageUrl:
-        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
-  ),
-  _Product(
-    id: 6,
-    title: 'City bike',
-    price: 120,
-    category: 'Transport',
-    location: locationById(7),
-    imageUrl:
-        'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcnY2MWllbDFpNnU1bjNtc2Rwbzl5Y2VxemlnbTVtNW5mMWE3b2VrNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gKHGnB1ml0moQdjhEJ/giphy.gif',
-  ),
-];
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -118,11 +37,25 @@ class SearchPage extends StatefulWidget {
 
 class _SearchPageState extends State<SearchPage> {
   final _searchCtrl = TextEditingController();
+
   String _category = 'All';
   double _priceMin = 0;
-  double? _priceMax; // null = ไม่จำกัดราคาสูงสุด
+  double? _priceMax;
   final Set<int> _locations = {};
+  ResidenceZone _locationZone = ResidenceZone.onCampus;
   _Sort _sort = _Sort.priceLow;
+
+  List<Product> _products = [];
+  List<Category> _categories = [];
+  List<Location> _availableLocations = [];
+  bool _isLoading = true;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProducts();
+  }
 
   @override
   void dispose() {
@@ -130,17 +63,96 @@ class _SearchPageState extends State<SearchPage> {
     super.dispose();
   }
 
-  List<_Product> get _results {
+  // Load available products from the backend.
+  Future<void> _loadProducts() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+
+    try {
+      final responses = await Future.wait<Object>([
+        productController.browse(),
+        productController.categories(),
+        productController.locations(),
+      ]);
+      final response = responses[0] as Map<String, dynamic>;
+
+      if (response['success'] != true || response['data'] is! List) {
+        throw const ApiException(
+          'The server returned an invalid product response.',
+        );
+      }
+
+      final rows = response['data'] as List;
+
+      final products = rows.whereType<Map>().map((row) {
+        final json = Map<String, dynamic>.from(row);
+
+        // Browse API already filters available products,
+        // but does not include the status field in its SELECT.
+        json['status'] ??= 'available';
+
+        return Product.fromJson(json);
+      }).toList();
+      final categories = (responses[1] as List<Map<String, dynamic>>)
+          .map(Category.fromJson)
+          .toList(growable: false);
+      final locations = (responses[2] as List<Map<String, dynamic>>)
+          .map(Location.fromJson)
+          .toList(growable: false);
+
+      if (!mounted) return;
+
+      setState(() {
+        _products = products;
+        _categories = categories;
+        _availableLocations = locations;
+        _isLoading = false;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _loadError = error.message;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _loadError = 'Could not load products. Please try again.';
+        _isLoading = false;
+      });
+    }
+  }
+
+  // Filter and sort products locally.
+  List<Product> get _results {
     final q = _searchCtrl.text.trim().toLowerCase();
+
     final list = _products.where((p) {
-      if (q.isNotEmpty && !p.title.toLowerCase().contains(q)) return false;
-      if (_category != 'All' && p.category != _category) return false;
-      if (p.price < _priceMin) return false;
+      if (q.isNotEmpty && !p.title.toLowerCase().contains(q)) {
+        return false;
+      }
+
+      if (_category != 'All' && p.categoryLabel != _category) {
+        return false;
+      }
+
+      if (p.price < _priceMin) {
+        return false;
+      }
+
       if (_priceMax != null && p.price > _priceMax!) {
         return false;
       }
-      if (_locations.isNotEmpty && !_locations.contains(p.location.id))
+
+      if (_locations.isNotEmpty &&
+          (p.locationId == null || !_locations.contains(p.locationId))) {
         return false;
+      }
+
       return true;
     }).toList();
 
@@ -150,6 +162,7 @@ class _SearchPageState extends State<SearchPage> {
       case _Sort.priceHigh:
         list.sort((a, b) => b.price.compareTo(a.price));
     }
+
     return list;
   }
 
@@ -161,15 +174,30 @@ class _SearchPageState extends State<SearchPage> {
       _priceMax != null;
 
   String get _priceLabel {
-    if (_priceMin == 0 && _priceMax == null) return 'Any price';
-    if (_priceMax == null) return 'From ${_priceMin.round()} THB';
+    if (_priceMin == 0 && _priceMax == null) {
+      return 'Any price';
+    }
+
+    if (_priceMax == null) {
+      return 'From ${_priceMin.round()} THB';
+    }
+
     return '${_priceMin.round()} – ${_priceMax!.round()} THB';
   }
 
   String get _locationLabel {
     if (_locations.isEmpty) return 'All campus';
-    final first = locationById(_locations.first).name;
-    return _locations.length == 1 ? first : '$first +${_locations.length - 1}';
+
+    final matches = _availableLocations.where(
+      (location) => location.id == _locations.first,
+    );
+    final firstName = matches.isEmpty
+        ? 'Selected location'
+        : matches.first.name;
+
+    return _locations.length == 1
+        ? firstName
+        : '$firstName +${_locations.length - 1}';
   }
 
   void _clearAll() {
@@ -190,6 +218,7 @@ class _SearchPageState extends State<SearchPage> {
       backgroundColor: Colors.white,
       builder: (_) => _PriceSheet(min: _priceMin, max: _priceMax),
     );
+
     if (result != null) {
       setState(() {
         _priceMin = result.$1;
@@ -200,7 +229,8 @@ class _SearchPageState extends State<SearchPage> {
 
   Future<void> _pickLocations() async {
     final temp = {..._locations};
-    var zone = CampusZone.onCampus; // เลือกหอใน/หอนอกก่อน แล้วค่อยติ๊กหอ
+    var zone = _locationZone;
+
     final result = await showModalBottomSheet<Set<int>>(
       context: context,
       showDragHandle: true,
@@ -222,10 +252,10 @@ class _SearchPageState extends State<SearchPage> {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 12),
-                // ✨ เปลี่ยนจาก Wrap เป็น Row แล้วใช้ Expanded ช่วยดันให้เต็มจอ
+
                 Row(
                   children: [
-                    for (final z in CampusZone.values)
+                    for (final z in ResidenceZone.values)
                       Expanded(
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -233,10 +263,12 @@ class _SearchPageState extends State<SearchPage> {
                             label: Container(
                               width: double.infinity,
                               alignment: Alignment.center,
-                              child: Text(z.label),
+                              child: Text(locationZoneLabel(z)),
                             ),
                             selected: zone == z,
-                            onSelected: (_) => setSheet(() => zone = z),
+                            onSelected: (_) {
+                              setSheet(() => zone = z);
+                            },
                             showCheckmark: false,
                             backgroundColor: Colors.white,
                             selectedColor: _C.ink,
@@ -251,39 +283,55 @@ class _SearchPageState extends State<SearchPage> {
                       ),
                   ],
                 ),
+
                 const SizedBox(height: 4),
+
                 Flexible(
                   child: ListView(
                     shrinkWrap: true,
                     padding: EdgeInsets.zero,
                     children: [
-                      for (final l in locationsIn(zone))
+                      for (final l in _availableLocations.where(
+                        (location) => location.zone == zone,
+                      ))
                         CheckboxListTile(
                           contentPadding: EdgeInsets.zero,
                           activeColor: _C.ink,
                           controlAffinity: ListTileControlAffinity.leading,
                           title: Text(l.name),
                           value: temp.contains(l.id),
-                          onChanged: (on) => setSheet(() {
-                            on == true ? temp.add(l.id) : temp.remove(l.id);
-                          }),
+                          onChanged: (on) {
+                            setSheet(() {
+                              if (on == true) {
+                                temp.add(l.id);
+                              } else {
+                                temp.remove(l.id);
+                              }
+                            });
+                          },
                         ),
                     ],
                   ),
                 ),
+
                 const SizedBox(height: 8),
+
                 Row(
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () => Navigator.pop(context, <int>{}),
+                        onPressed: () {
+                          Navigator.pop(context, <int>{});
+                        },
                         child: const Text('Any location'),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: FilledButton(
-                        onPressed: () => Navigator.pop(context, temp),
+                        onPressed: () {
+                          Navigator.pop(context, temp);
+                        },
                         style: FilledButton.styleFrom(backgroundColor: _C.ink),
                         child: const Text('Apply'),
                       ),
@@ -296,11 +344,13 @@ class _SearchPageState extends State<SearchPage> {
         ),
       ),
     );
+
     if (result != null) {
       setState(() {
         _locations
           ..clear()
           ..addAll(result);
+        _locationZone = zone;
       });
     }
   }
@@ -326,7 +376,10 @@ class _SearchPageState extends State<SearchPage> {
         ),
       ),
     );
-    if (picked != null) setState(() => _sort = picked);
+
+    if (picked != null) {
+      setState(() => _sort = picked);
+    }
   }
 
   @override
@@ -366,6 +419,7 @@ class _SearchPageState extends State<SearchPage> {
                     const SizedBox(height: 24),
                     _buildFilterBox(),
                     const SizedBox(height: 28),
+
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       crossAxisAlignment: CrossAxisAlignment.center,
@@ -391,8 +445,7 @@ class _SearchPageState extends State<SearchPage> {
                                 const Icon(Icons.sort, size: 18, color: _C.ink),
                                 const SizedBox(width: 6),
                                 Text(
-                                  _sort
-                                      .label, // โชว์คำว่า Price: low to high ตรงนี้เลย
+                                  _sort.label,
                                   style: const TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
@@ -405,14 +458,60 @@ class _SearchPageState extends State<SearchPage> {
                         ),
                       ],
                     ),
+
                     const SizedBox(height: 16),
                   ],
                 ),
               ),
             ),
-            if (items.isEmpty)
+
+            if (_isLoading)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_loadError != null)
               SliverFillRemaining(
-                hasScrollBody: false, // บอกว่าข้างในไม่ต้องซ้อน Scroll อีกชั้น
+                hasScrollBody: false,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.cloud_off_outlined,
+                          size: 40,
+                          color: _C.faint,
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Could not load products',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: _C.ink,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _loadError!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 13, color: _C.muted),
+                        ),
+                        const SizedBox(height: 16),
+                        OutlinedButton(
+                          onPressed: _loadProducts,
+                          child: const Text('Try again'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else if (items.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
                 child: _buildEmptyState(),
               )
             else
@@ -456,7 +555,9 @@ class _SearchPageState extends State<SearchPage> {
             ? null
             : IconButton(
                 icon: const Icon(Icons.close, size: 20, color: _C.muted),
-                onPressed: () => setState(_searchCtrl.clear),
+                onPressed: () {
+                  setState(_searchCtrl.clear);
+                },
               ),
         contentPadding: const EdgeInsets.symmetric(vertical: 16),
         filled: true,
@@ -501,8 +602,10 @@ class _SearchPageState extends State<SearchPage> {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          for (final (label, icon) in _categories) ...[
-            _buildChip(label, icon),
+          _buildChip('All', null),
+          const SizedBox(width: 10),
+          for (final category in _categories) ...[
+            _buildChip(category.name, categoryIcon(category.name)),
             const SizedBox(width: 10),
           ],
         ],
@@ -512,6 +615,7 @@ class _SearchPageState extends State<SearchPage> {
 
   Widget _buildChip(String label, IconData? icon) {
     final selected = _category == label;
+
     return GestureDetector(
       onTap: () => setState(() => _category = label),
       child: Container(
@@ -585,10 +689,7 @@ class _SearchPageState extends State<SearchPage> {
             Icon(icon, size: 20, color: _C.muted),
             const SizedBox(width: 12),
             Text(title, style: const TextStyle(fontSize: 14, color: _C.ink)),
-            const SizedBox(
-              width: 16,
-            ), // เว้นระยะเผื่อกรณีที่ชื่อยาวจะได้ไม่ชนกัน
-            // ✨ เปลี่ยนจาก Spacer() + Flexible มาใช้ Expanded แล้วดัน Text ชิดขวา
+            const SizedBox(width: 16),
             Expanded(
               child: Text(
                 value,
@@ -608,11 +709,9 @@ class _SearchPageState extends State<SearchPage> {
 
   Widget _buildEmptyState() {
     return Padding(
-      // ✨ เปลี่ยน padding ด้านล่างเป็น 120 เพื่อดันเนื้อหาให้พ้นแถบ Bottom Bar
       padding: const EdgeInsets.fromLTRB(24, 48, 24, 120),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment
-            .center, // ✨ จัดให้อยู่กึ่งกลางพื้นที่ที่มองเห็นได้
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Icon(Icons.search_off, size: 40, color: _C.faint),
           const SizedBox(height: 12),
@@ -642,21 +741,13 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
-  Widget _buildProductCard(_Product p) {
+  Widget _buildProductCard(Product p) {
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => ProductDetailPage(
-            product: ProductDetail.mock(
-              id: p.id,
-              title: p.title,
-              price: p.price,
-              place: p.place,
-              category: p.category,
-              urgent: p.urgent,
-            ),
-          ),
+          builder: (_) =>
+              ProductDetailPage(product: ProductDetail.fromProduct(p)),
         ),
       ),
       child: Column(
@@ -668,8 +759,9 @@ class _SearchPageState extends State<SearchPage> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  _buildImage(p.imageUrl),
-                  if (p.urgent)
+                  _buildImage(p.primaryImageUrl),
+
+                  if (p.isUrgent)
                     Positioned(
                       bottom: 8,
                       left: 8,
@@ -696,7 +788,9 @@ class _SearchPageState extends State<SearchPage> {
               ),
             ),
           ),
+
           const SizedBox(height: 10),
+
           Text(
             p.title,
             maxLines: 1,
@@ -707,7 +801,9 @@ class _SearchPageState extends State<SearchPage> {
               color: _C.ink,
             ),
           ),
+
           const SizedBox(height: 4),
+
           Text(
             formatPriceTHB(p.price),
             style: const TextStyle(
@@ -716,9 +812,13 @@ class _SearchPageState extends State<SearchPage> {
               color: _C.ink,
             ),
           ),
+
           const SizedBox(height: 4),
+
           Text(
-            p.building,
+            p.locationName.isEmpty ? 'Location not specified' : p.locationName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontSize: 12, color: _C.muted),
           ),
         ],
@@ -732,7 +832,11 @@ class _SearchPageState extends State<SearchPage> {
       alignment: Alignment.center,
       child: const Icon(Icons.image_outlined, size: 32, color: _C.faint),
     );
-    if (url == null) return placeholder;
+
+    if (url == null || url.isEmpty) {
+      return placeholder;
+    }
+
     return Image.network(
       url,
       fit: BoxFit.cover,
@@ -743,9 +847,11 @@ class _SearchPageState extends State<SearchPage> {
   }
 }
 
-/// ช่องกรอกราคาต่ำสุด-สูงสุด (เว้นว่างช่องสูงสุด = ไม่จำกัด)
+/// ช่องกรอกราคาต่ำสุด-สูงสุด
+/// เว้นว่างช่องสูงสุด = ไม่จำกัด
 class _PriceSheet extends StatefulWidget {
   const _PriceSheet({required this.min, required this.max});
+
   final double min;
   final double? max;
 
@@ -757,6 +863,7 @@ class _PriceSheetState extends State<_PriceSheet> {
   late final _minCtrl = TextEditingController(
     text: widget.min > 0 ? widget.min.round().toString() : '',
   );
+
   late final _maxCtrl = TextEditingController(
     text: widget.max == null ? '' : widget.max!.round().toString(),
   );
@@ -787,30 +894,34 @@ class _PriceSheetState extends State<_PriceSheet> {
     ),
   );
 
-  Widget _field(TextEditingController c, String label, String hint) => Expanded(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 13, color: _C.muted)),
-        const SizedBox(height: 6),
-        TextField(
-          controller: c,
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          decoration: _dec(hint),
-        ),
-      ],
-    ),
-  );
+  Widget _field(TextEditingController c, String label, String hint) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 13, color: _C.muted)),
+          const SizedBox(height: 6),
+          TextField(
+            controller: c,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: _dec(hint),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _apply() {
     var lo = double.tryParse(_minCtrl.text) ?? 0;
     var hi = double.tryParse(_maxCtrl.text);
+
     if (hi != null && hi < lo) {
       final t = lo;
       lo = hi;
       hi = t;
     }
+
     Navigator.pop(context, (lo, hi));
   }
 
@@ -832,7 +943,9 @@ class _PriceSheetState extends State<_PriceSheet> {
               'Price range',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
+
             const SizedBox(height: 16),
+
             Row(
               children: [
                 _field(_minCtrl, 'Min', '0'),
@@ -843,12 +956,16 @@ class _PriceSheetState extends State<_PriceSheet> {
                 _field(_maxCtrl, 'Max', 'No limit'),
               ],
             ),
+
             const SizedBox(height: 20),
+
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context, (0.0, null)),
+                    onPressed: () {
+                      Navigator.pop(context, (0.0, null));
+                    },
                     child: const Text('Any price'),
                   ),
                 ),

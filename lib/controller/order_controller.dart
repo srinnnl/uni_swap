@@ -24,6 +24,9 @@ class OrderController {
   Future<Map<String, dynamic>> cancel(int orderId) =>
       _api.post('orders/$orderId/cancel');
 
+  Future<Map<String, dynamic>> received(int orderId) =>
+      _api.post('orders/$orderId/received');
+
   Future<Map<String, dynamic>> updateMeetup({
     required int orderId,
     required String location,

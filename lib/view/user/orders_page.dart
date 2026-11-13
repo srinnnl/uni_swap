@@ -35,6 +35,7 @@ class _Order {
   final Color thumbColor;
   final IconData thumbIcon;
   final String? imageUrl;
+  final String? pickupDetail;
   final String productLocation; // products.location_name
   final double commissionRate; // orders.commission_rate
   final double commissionAmount; // orders.commission_amount
@@ -57,6 +58,7 @@ class _Order {
     required this.meetupPlace,
     required this.status,
     this.imageUrl,
+    this.pickupDetail,
     this.meetupAt,
     this.paymentDeadline,
     this.commissionRate = 5,
@@ -82,6 +84,7 @@ class _Order {
     thumbColor: const Color(0xFFD9DEE3),
     thumbIcon: Icons.shopping_bag_outlined,
     imageUrl: order.imageUrl,
+    pickupDetail: order.pickupDetail,
     productLocation: order.productLocationName ?? 'Seller pickup location',
     commissionRate: order.commissionRate,
     commissionAmount: order.commissionAmount,
@@ -451,6 +454,7 @@ class _OrdersPageState extends State<OrdersPage> {
           meetupAt: o.meetupAt,
           paymentDeadline: o.paymentDeadline,
           productLocation: o.productLocation,
+          pickupDetail: o.pickupDetail,
           commissionRate: o.commissionRate,
           commissionAmount: o.commissionAmount,
           sellerPayout: o.sellerPayout,

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -32,12 +33,18 @@ void main() {
       api.close();
     });
 
-    test('query ที่เป็น null หรือสตริงว่างถูกตัดทิ้ง แต่เลข 0 ยังอยู่', () async {
-      final api = fakeApi(calls);
-      await api.get('products', query: {'a': null, 'b': '', 'c': 0, 'd': 'x'});
-      expect(calls.single.query, {'c': '0', 'd': 'x'});
-      api.close();
-    });
+    test(
+      'query ที่เป็น null หรือสตริงว่างถูกตัดทิ้ง แต่เลข 0 ยังอยู่',
+      () async {
+        final api = fakeApi(calls);
+        await api.get(
+          'products',
+          query: {'a': null, 'b': '', 'c': 0, 'd': 'x'},
+        );
+        expect(calls.single.query, {'c': '0', 'd': 'x'});
+        api.close();
+      },
+    );
   });
 
   group('header และ method', () {
@@ -82,6 +89,51 @@ void main() {
       expect(calls[1].label, 'DELETE /api/products/1');
       api.close();
     });
+
+    test(
+      'multipart upload attaches the file, fields, and bearer token',
+      () async {
+        final directory = await Directory.systemTemp.createTemp(
+          'uni-swap-upload-',
+        );
+        final file = File(
+          '${directory.path}${Platform.pathSeparator}photo.png',
+        );
+        await file.writeAsBytes([65, 66, 67]);
+        http.Request? captured;
+        final api = ApiClient(
+          tokenProvider: () => 'seller-token',
+          client: MockClient((request) async {
+            captured = request;
+            return http.Response('{"success":true}', 201);
+          }),
+        );
+
+        try {
+          await api.postMultipart(
+            'products/12/images',
+            fileField: 'image',
+            filePath: file.path,
+            fileName: 'photo.png',
+            fields: {'display_order': '2'},
+          );
+
+          expect(captured!.url.path, '/api/products/12/images');
+          expect(captured!.headers['authorization'], 'Bearer seller-token');
+          expect(
+            captured!.headers['content-type'],
+            startsWith('multipart/form-data;'),
+          );
+          expect(captured!.body, contains('name="display_order"'));
+          expect(captured!.body, contains('filename="photo.png"'));
+          expect(captured!.body, contains('name="image"'));
+          expect(captured!.body, contains('ABC'));
+        } finally {
+          api.close();
+          await directory.delete(recursive: true);
+        }
+      },
+    );
   });
 
   group('การอ่าน response', () {
@@ -101,7 +153,9 @@ void main() {
 
     test('response ที่ไม่ใช่ JSON → ApiException (status เดิม)', () async {
       final api = ApiClient(
-        client: MockClient((_) async => http.Response('<html>oops</html>', 200)),
+        client: MockClient(
+          (_) async => http.Response('<html>oops</html>', 200),
+        ),
       );
 
       await expectLater(
@@ -161,23 +215,26 @@ void main() {
       api.close();
     });
 
-    test('ต่อ server ไม่ได้ → ApiException Could not reach the server', () async {
-      final api = ApiClient(
-        client: MockClient((_) async => throw http.ClientException('boom')),
-      );
+    test(
+      'ต่อ server ไม่ได้ → ApiException Could not reach the server',
+      () async {
+        final api = ApiClient(
+          client: MockClient((_) async => throw http.ClientException('boom')),
+        );
 
-      await expectLater(
-        api.get('x'),
-        throwsA(
-          isA<ApiException>().having(
-            (e) => e.message,
-            'message',
-            'Could not reach the server: boom',
+        await expectLater(
+          api.get('x'),
+          throwsA(
+            isA<ApiException>().having(
+              (e) => e.message,
+              'message',
+              'Could not reach the server: boom',
+            ),
           ),
-        ),
-      );
-      api.close();
-    });
+        );
+        api.close();
+      },
+    );
 
     test('timeout → ApiException The server took too long', () async {
       final api = ApiClient(

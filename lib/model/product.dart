@@ -116,6 +116,7 @@ class Product {
     this.reviewedBy,
     this.reviewedAt,
     this.viewCount = 0,
+    this.imageCount = 0,
     this.imageUrl,
     this.images = const <ProductImage>[],
     this.isOwnItem = false,
@@ -150,6 +151,9 @@ class Product {
       reviewedBy: jsonInt(json['reviewed_by']),
       reviewedAt: jsonDateTime(json['reviewed_at']),
       viewCount: jsonInt(json['view_count']) ?? 0,
+      imageCount:
+          jsonInt(json['image_count']) ??
+          jsonParseList(json['images'], ProductImage.fromJson).length,
       imageUrl: jsonString(json['image_url']),
       images: jsonParseList(json['images'], ProductImage.fromJson),
       isOwnItem: jsonBool(json['is_own_item']) ?? false,
@@ -181,6 +185,7 @@ class Product {
   final int? reviewedBy; // products.reviewed_by
   final DateTime? reviewedAt; // products.reviewed_at
   final int viewCount; // products.view_count
+  final int imageCount; // product_images count (listing endpoints)
   final String? imageUrl; // product_images.image_url (join 1 รูป)
   final List<ProductImage> images; // product_images (detail endpoint)
   final bool isOwnItem; // คำนวณจาก seller_id == user ที่ login
@@ -232,6 +237,7 @@ class Product {
     int? reviewedBy,
     DateTime? reviewedAt,
     int? viewCount,
+    int? imageCount,
     String? imageUrl,
     List<ProductImage>? images,
     bool? isOwnItem,
@@ -262,6 +268,7 @@ class Product {
       reviewedBy: reviewedBy ?? this.reviewedBy,
       reviewedAt: reviewedAt ?? this.reviewedAt,
       viewCount: viewCount ?? this.viewCount,
+      imageCount: imageCount ?? this.imageCount,
       imageUrl: imageUrl ?? this.imageUrl,
       images: images ?? this.images,
       isOwnItem: isOwnItem ?? this.isOwnItem,
@@ -295,6 +302,7 @@ class Product {
       'reviewed_by': reviewedBy,
       'reviewed_at': reviewedAt?.toUtc().toIso8601String(),
       'view_count': viewCount,
+      'image_count': imageCount,
       'image_url': imageUrl,
       'images': images.map((image) => image.toJson()).toList(growable: false),
       'is_own_item': isOwnItem,

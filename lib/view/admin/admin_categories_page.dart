@@ -73,7 +73,8 @@ class _AdminCategoriesPageState extends State<AdminCategoriesPage> {
     final q = _query.trim().toLowerCase();
     return _cats.where((c) {
       final matchQ = q.isEmpty || c.name.toLowerCase().contains(q);
-      final matchF = _filter == 'All' ||
+      final matchF =
+          _filter == 'All' ||
           (_filter == 'Active' && c.isActive) ||
           (_filter == 'Inactive' && !c.isActive);
       return matchQ && matchF;
@@ -94,10 +95,17 @@ class _AdminCategoriesPageState extends State<AdminCategoriesPage> {
           try {
             if (cat == null) {
               await adminController.createCategory(
-                  name: name, emoji: emoji, active: active);
+                name: name,
+                emoji: emoji,
+                active: active,
+              );
             } else {
-              await adminController.updateCategory(cat.id,
-                  name: name, emoji: emoji, active: active);
+              await adminController.updateCategory(
+                cat.id,
+                name: name,
+                emoji: emoji,
+                active: active,
+              );
             }
           } on ApiException catch (e) {
             return e.message;
@@ -121,46 +129,52 @@ class _AdminCategoriesPageState extends State<AdminCategoriesPage> {
     return Scaffold(
       backgroundColor: _cBg,
       body: SafeArea(
-        child: Column(children: [
-          _Header(
+        child: Column(
+          children: [
+            _Header(
               title: 'Categories',
-              subtitle: '${_cats.length} marketplace categories'),
-          _SearchRow(
-            hint: 'Search categories',
-            filterActive: _filter != 'All',
-            onChanged: (v) => setState(() => _query = v),
-            onFilter: _openFilter,
-          ),
-          _SectionRow(label: 'All records', shown: list.length),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null
-                ? _ErrorView(message: _error!, onRetry: _load)
-                : list.isEmpty
-                ? const _Empty('No categories found')
-                : ListView(
-                    padding: const EdgeInsets.only(bottom: 24),
-                    children: [
-                      for (final c in list)
-                        _ListRow(
-                          icon: Icons.sell_outlined,
-                          iconBg: _cAmberBg,
-                          iconFg: _cAmberFg,
-                          title: c.name,
-                          subtitle: '${c.emoji} ${c.productCount ?? 0} active products',
-                          badge: c.isActive ? 'Active' : 'Inactive',
-                          badgeBg: c.isActive ? _cSage : _cChip,
-                          badgeFg: c.isActive ? _cSageDark : _cMuted,
-                          onTap: () => _openForm(c),
-                        ),
-                    ],
-                  ),
-          ),
-        ]),
+              subtitle: '${_cats.length} marketplace categories',
+            ),
+            _SearchRow(
+              hint: 'Search categories',
+              filterActive: _filter != 'All',
+              onChanged: (v) => setState(() => _query = v),
+              onFilter: _openFilter,
+            ),
+            _SectionRow(label: 'All records', shown: list.length),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                  ? _ErrorView(message: _error!, onRetry: _load)
+                  : list.isEmpty
+                  ? const _Empty('No categories found')
+                  : ListView(
+                      padding: const EdgeInsets.only(bottom: 24),
+                      children: [
+                        for (final c in list)
+                          _ListRow(
+                            icon: Icons.sell_outlined,
+                            iconBg: _cAmberBg,
+                            iconFg: _cAmberFg,
+                            title: c.name,
+                            subtitle:
+                                '${c.emoji} ${c.productCount ?? 0} active products',
+                            badge: c.isActive ? 'Active' : 'Inactive',
+                            badgeBg: c.isActive ? _cSage : _cChip,
+                            badgeFg: c.isActive ? _cSageDark : _cMuted,
+                            onTap: () => _openForm(c),
+                          ),
+                      ],
+                    ),
+            ),
+          ],
+        ),
       ),
-      bottomNavigationBar:
-          _BottomBar(label: 'Add category', onPressed: () => _openForm()),
+      bottomNavigationBar: _BottomBar(
+        label: 'Add category',
+        onPressed: () => _openForm(),
+      ),
     );
   }
 }
@@ -196,12 +210,15 @@ class _CategoryFormState extends State<_CategoryForm> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(editing ? 'Edit category' : 'Add category',
-            style:
-                const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+        Text(
+          editing ? 'Edit category' : 'Add category',
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+        ),
         const SizedBox(height: 18),
-        const Text('Name',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+        const Text(
+          'Name',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
         const SizedBox(height: 8),
         TextField(
           controller: _name,
@@ -209,27 +226,29 @@ class _CategoryFormState extends State<_CategoryForm> {
           decoration: _dec('e.g. Furniture', error: _error),
         ),
         const SizedBox(height: 16),
-        const Text('Emoji',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _emoji,
-          maxLength: 4,
-          decoration: _dec('🏷️'),
+        const Text(
+          'Emoji',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 8),
-        Row(children: [
-          const Expanded(
-            child: Text('Active',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-          ),
-          Switch(
-            value: _active,
-            onChanged: (v) => setState(() => _active = v),
-            activeColor: Colors.white,
-            activeTrackColor: _cSageDark,
-          ),
-        ]),
+        TextField(controller: _emoji, maxLength: 4, decoration: _dec('🏷️')),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Active',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+            ),
+            Switch(
+              value: _active,
+              onChanged: (v) => setState(() => _active = v),
+              activeColor: Colors.white,
+              activeTrackColor: _cSageDark,
+            ),
+          ],
+        ),
         const SizedBox(height: 14),
         _ActionButton(
           label: editing ? 'Save changes' : 'Add category',
@@ -243,8 +262,11 @@ class _CategoryFormState extends State<_CategoryForm> {
               _saving = true;
               _error = null;
             });
-            final err = await widget.onSave(_name.text.trim(),
-                _emoji.text.trim().isEmpty ? '🏷️' : _emoji.text.trim(), _active);
+            final err = await widget.onSave(
+              _name.text.trim(),
+              _emoji.text.trim().isEmpty ? '🏷️' : _emoji.text.trim(),
+              _active,
+            );
             if (!mounted) return;
             if (err == null) {
               Navigator.pop(context);
@@ -259,10 +281,11 @@ class _CategoryFormState extends State<_CategoryForm> {
         if (widget.onDelete != null) ...[
           const SizedBox(height: 10),
           _ActionButton(
-              filled: false,
-              danger: true,
-              label: 'Delete category',
-              onPressed: widget.onDelete!),
+            filled: false,
+            danger: true,
+            label: 'Delete category',
+            onPressed: widget.onDelete!,
+          ),
         ],
       ],
     );
@@ -273,33 +296,44 @@ class _CategoryFormState extends State<_CategoryForm> {
 void _snack(BuildContext context, String msg) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(
-      content: Text(msg),
-      behavior: SnackBarBehavior.floating,
-      backgroundColor: _cInk,
-    ));
+    ..showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: _cInk,
+      ),
+    );
 }
 
 Future<T?> _showSheet<T>(
-    BuildContext context, Widget Function(BuildContext) builder) {
+  BuildContext context,
+  Widget Function(BuildContext) builder,
+) {
   return showModalBottomSheet<T>(
     context: context,
     isScrollControlled: true,
     backgroundColor: _cBg,
     shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
     builder: (ctx) => Padding(
       padding: EdgeInsets.fromLTRB(
-          20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 24),
+        20,
+        20,
+        20,
+        MediaQuery.of(ctx).viewInsets.bottom + 24,
+      ),
       child: SingleChildScrollView(child: builder(ctx)),
     ),
   );
 }
 
-Future<bool> _confirm(BuildContext context,
-    {required String title,
-    required String message,
-    required String confirmLabel}) async {
+Future<bool> _confirm(
+  BuildContext context, {
+  required String title,
+  required String message,
+  required String confirmLabel,
+}) async {
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -309,8 +343,9 @@ Future<bool> _confirm(BuildContext context,
       content: Text(message),
       actions: [
         TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel')),
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancel'),
+        ),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: _cRedFg),
           onPressed: () => Navigator.pop(ctx, true),
@@ -323,12 +358,16 @@ Future<bool> _confirm(BuildContext context,
 }
 
 Future<String?> _pickFilter(
-    BuildContext context, String current, List<String> options) {
+  BuildContext context,
+  String current,
+  List<String> options,
+) {
   return showModalBottomSheet<String>(
     context: context,
     backgroundColor: _cBg,
     shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
     builder: (ctx) => SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -336,24 +375,31 @@ Future<String?> _pickFilter(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Filter',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+            const Text(
+              'Filter',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 16),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final o in options)
-                ChoiceChip(
-                  label: Text(o),
-                  selected: o == current,
-                  showCheckmark: false,
-                  selectedColor: _cInk,
-                  backgroundColor: _cCard,
-                  side: const BorderSide(color: _cBorder),
-                  labelStyle: TextStyle(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final o in options)
+                  ChoiceChip(
+                    label: Text(o),
+                    selected: o == current,
+                    showCheckmark: false,
+                    selectedColor: _cInk,
+                    backgroundColor: _cCard,
+                    side: const BorderSide(color: _cBorder),
+                    labelStyle: TextStyle(
                       color: o == current ? Colors.white : _cInk,
-                      fontWeight: FontWeight.w600),
-                  onSelected: (_) => Navigator.pop(ctx, o),
-                ),
-            ]),
+                      fontWeight: FontWeight.w600,
+                    ),
+                    onSelected: (_) => Navigator.pop(ctx, o),
+                  ),
+              ],
+            ),
           ],
         ),
       ),
@@ -363,9 +409,9 @@ Future<String?> _pickFilter(
 
 InputDecoration _dec(String hint, {String? error}) {
   OutlineInputBorder b(Color c) => OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: c),
-      );
+    borderRadius: BorderRadius.circular(12),
+    borderSide: BorderSide(color: c),
+  );
   return InputDecoration(
     hintText: hint,
     errorText: error,
@@ -390,28 +436,36 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
-      child: Row(children: [
-        IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-        Expanded(
-          child: Column(children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.w700, color: _cInk)),
-            const SizedBox(height: 4),
-            Text(subtitle,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13, color: _cMuted)),
-          ]),
-        ),
-        IconButton(
-          icon: const Icon(Icons.more_horiz),
-          onPressed: () => _snack(context, 'More options (coming soon)'),
-        ),
-      ]),
+      padding: const EdgeInsets.fromLTRB(8, 24, 8, 0),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.pop(context),
+          ),
+          Expanded(
+            child: Column(
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: _cInk,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 13, color: _cMuted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 48),
+        ],
+      ),
     );
   }
 }
@@ -431,57 +485,67 @@ class _SearchRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     OutlineInputBorder b(Color c) => OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: c),
-        );
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: c),
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-      child: Row(children: [
-        Expanded(
-          child: TextField(
-            onChanged: onChanged,
-            style: const TextStyle(fontSize: 14),
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle:
-                  const TextStyle(color: Color(0xFFB0AFA8), fontSize: 13),
-              prefixIcon: const Icon(Icons.search, size: 20, color: _cInk),
-              filled: true,
-              fillColor: _cCard,
-              contentPadding: const EdgeInsets.symmetric(vertical: 15),
-              border: b(_cBorder),
-              enabledBorder: b(_cBorder),
-              focusedBorder: b(_cInk),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Material(
-          color: _cCard,
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: onFilter,
-            child: Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: filterActive ? _cInk : _cBorder),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              onChanged: onChanged,
+              style: const TextStyle(fontSize: 14),
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: const TextStyle(
+                  color: Color(0xFFB0AFA8),
+                  fontSize: 13,
+                ),
+                prefixIcon: const Icon(Icons.search, size: 20, color: _cInk),
+                filled: true,
+                fillColor: _cCard,
+                contentPadding: const EdgeInsets.symmetric(vertical: 15),
+                border: b(_cBorder),
+                enabledBorder: b(_cBorder),
+                focusedBorder: b(_cInk),
               ),
-              child: Stack(alignment: Alignment.center, children: [
-                const Icon(Icons.tune, size: 20),
-                if (filterActive)
-                  const Positioned(
-                    top: 12,
-                    right: 12,
-                    child: CircleAvatar(radius: 4, backgroundColor: _cRedFg),
-                  ),
-              ]),
             ),
           ),
-        ),
-      ]),
+          const SizedBox(width: 12),
+          Material(
+            color: _cCard,
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: onFilter,
+              child: Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: filterActive ? _cInk : _cBorder),
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    const Icon(Icons.tune, size: 20),
+                    if (filterActive)
+                      const Positioned(
+                        top: 12,
+                        right: 12,
+                        child: CircleAvatar(
+                          radius: 4,
+                          backgroundColor: _cRedFg,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -495,12 +559,19 @@ class _SectionRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 6),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Text(label,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-        Text('$shown shown',
-            style: const TextStyle(fontSize: 11, color: _cMuted)),
-      ]),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+          Text(
+            '$shown shown',
+            style: const TextStyle(fontSize: 11, color: _cMuted),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -513,13 +584,16 @@ class _Badge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration:
-            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w600, color: fg)),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fg),
+    ),
+  );
 }
 
 class _IconBox extends StatelessWidget {
@@ -527,17 +601,23 @@ class _IconBox extends StatelessWidget {
   final Color bg;
   final Color fg;
   final double size;
-  const _IconBox(
-      {required this.icon, required this.bg, required this.fg, this.size = 48});
+  const _IconBox({
+    required this.icon,
+    required this.bg,
+    required this.fg,
+    this.size = 48,
+  });
 
   @override
   Widget build(BuildContext context) => Container(
-        width: size,
-        height: size,
-        decoration:
-            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
-        child: Icon(icon, size: size * 0.42, color: fg),
-      );
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Icon(icon, size: size * 0.42, color: fg),
+  );
 }
 
 class _ListRow extends StatelessWidget {
@@ -570,28 +650,37 @@ class _ListRow extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 20),
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: _cBorder))),
-        child: Row(children: [
-          _IconBox(icon: icon, bg: iconBg, fg: iconFg),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
+          border: Border(bottom: BorderSide(color: _cBorder)),
+        ),
+        child: Row(
+          children: [
+            _IconBox(icon: icon, bg: iconBg, fg: iconFg),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
                     style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
-                Text(subtitle,
-                    style: const TextStyle(fontSize: 11, color: _cMuted)),
-              ],
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(fontSize: 11, color: _cMuted),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          _Badge(label: badge, bg: badgeBg, fg: badgeFg),
-          const SizedBox(width: 6),
-          const Icon(Icons.chevron_right, size: 20),
-        ]),
+            const SizedBox(width: 8),
+            _Badge(label: badge, bg: badgeBg, fg: badgeFg),
+            const SizedBox(width: 6),
+            const Icon(Icons.chevron_right, size: 20),
+          ],
+        ),
       ),
     );
   }
@@ -620,13 +709,18 @@ class _BottomBar extends StatelessWidget {
               style: FilledButton.styleFrom(
                 backgroundColor: _cInk,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               onPressed: onPressed,
               icon: const Icon(Icons.add, size: 20),
-              label: Text(label,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 15)),
+              label: Text(
+                label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+              ),
             ),
           ),
         ),
@@ -650,26 +744,34 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = danger ? _cRedFg : _cInk;
-    final shape =
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(12));
-    final text = Text(label,
-        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14));
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    );
+    final text = Text(
+      label,
+      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+    );
     return SizedBox(
       width: double.infinity,
       height: 50,
       child: filled
           ? FilledButton(
               style: FilledButton.styleFrom(
-                  backgroundColor: color, shape: shape),
+                backgroundColor: color,
+                shape: shape,
+              ),
               onPressed: onPressed,
-              child: text)
+              child: text,
+            )
           : OutlinedButton(
               style: OutlinedButton.styleFrom(
-                  foregroundColor: color,
-                  side: BorderSide(color: danger ? _cRedFg : _cBorder),
-                  shape: shape),
+                foregroundColor: color,
+                side: BorderSide(color: danger ? _cRedFg : _cBorder),
+                shape: shape,
+              ),
               onPressed: onPressed,
-              child: text),
+              child: text,
+            ),
     );
   }
 }
@@ -680,8 +782,8 @@ class _Empty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Text(text, style: const TextStyle(color: _cMuted)),
-      );
+    child: Text(text, style: const TextStyle(color: _cMuted)),
+  );
 }
 
 class _ErrorView extends StatelessWidget {
@@ -691,15 +793,20 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: _cMuted)),
-            const SizedBox(height: 12),
-            TextButton(onPressed: onRetry, child: const Text('Try again')),
-          ]),
-        ),
-      );
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: _cMuted),
+          ),
+          const SizedBox(height: 12),
+          TextButton(onPressed: onRetry, child: const Text('Try again')),
+        ],
+      ),
+    ),
+  );
 }

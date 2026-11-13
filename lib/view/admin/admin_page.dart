@@ -39,76 +39,53 @@ class AdminPage extends StatelessWidget {
       backgroundColor: _cBg,
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
           children: [
-            // Header
-            Row(
-              children: [
-                const SizedBox(width: 40),
-                const Expanded(
-                  child: _PageHeader(
-                    title: 'Admin',
-                    subtitle: 'Marketplace overview',
-                  ),
-                ),
-                Container(
-                  width: 40,
-                  alignment: Alignment.centerRight,
-                  child: const Icon(Icons.circle, size: 10, color: _cSageDark),
-                ),
-              ],
+            // 1. Header แบบคลีนๆ กึ่งกลาง พร้อมเส้นคั่นด้านล่าง
+            const _PageHeader(title: 'Admin', subtitle: 'Marketplace overview'),
+
+            const SizedBox(height: 18),
+            const Divider(height: 1, thickness: 1, color: _cBorder),
+            const SizedBox(height: 20),
+
+            // 2. Greeting
+            Text(
+              _formatDate(DateTime.now()),
+              style: const TextStyle(fontSize: 12, color: _cMuted),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '$_greeting, $displayName',
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: _cInk,
+                letterSpacing: -0.3,
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // 3. Pending approval
+            _PendingApprovalCard(
+              count: '4',
+              onTap: () => _open(context, const AdminItemsPage()),
             ),
 
             const SizedBox(height: 26),
 
-            // Greeting
-            Text(
-              _formatDate(DateTime.now()),
-              style: const TextStyle(fontSize: 11, color: _cMuted),
-            ),
-            const SizedBox(height: 8),
-
-            Text(
-              '$_greeting, $displayName',
-              style: const TextStyle(
-                fontFamily: 'serif',
-                fontSize: 26,
-                fontWeight: FontWeight.w500,
-                color: _cInk,
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: _StatusBadge(
-                label: 'All systems normal',
-                bg: _cSage,
-                fg: _cSageDark,
-              ),
-            ),
-
-            const SizedBox(height: 28),
-
-            // Overview
+            // 4. Overview Section
             const Text(
               'Overview',
               style: TextStyle(
-                fontFamily: 'serif',
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
                 color: _cInk,
               ),
             ),
-            const SizedBox(height: 5),
-            const Text(
-              'A quick look at your marketplace',
-              style: TextStyle(fontSize: 11, color: _cMuted),
-            ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
 
-            // Statistics
+            // Statistics Grid
             // TODO: ตัวเลขทั้งหมดในหน้านี้เป็นข้อมูลจำลอง ให้เพื่อนทำ API สรุปตัวเลข (users, items)
             GridView(
               shrinkWrap: true,
@@ -117,7 +94,7 @@ class AdminPage extends StatelessWidget {
                 crossAxisCount: 2,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
-                mainAxisExtent: 140,
+                mainAxisExtent: 108,
               ),
               children: [
                 _StatCard(
@@ -127,12 +104,12 @@ class AdminPage extends StatelessWidget {
                   note: '+12%',
                   onTap: () => _open(context, const AdminUsersPage()),
                 ),
-
                 _StatCard(
                   icon: Icons.location_on_outlined,
                   label: 'Locations',
                   value: '28',
                   note: '4 pending',
+                  highlightNote: true,
                   onTap: () => _open(context, const AdminLocationsPage()),
                 ),
                 _StatCard(
@@ -152,97 +129,53 @@ class AdminPage extends StatelessWidget {
               ],
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 28),
 
-            // Pending approval - highlighted card
-            _PendingApprovalCard(
-              count: '4',
-              onTap: () => _open(context, const AdminItemsPage()),
+            // 5. Recent activity
+            // ไม่มีตาราง log ใน DB: ดึงจาก timestamp ที่มี (users.created_at, products.reviewed_at, location_requests.resolved_at) หรือตัดส่วนนี้
+            const Text(
+              'Recent activity',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: _cInk,
+              ),
             ),
-
-            const SizedBox(height: 30),
-
-            // Needs attention
-            _sectionHeader('Needs attention', 'View all'),
-            const SizedBox(height: 14),
-
             const SizedBox(height: 12),
 
-            _AppCard(
-              onTap: () => _open(context, const AdminItemsPage()),
-              child: Row(
+            const _AppCard(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Column(
                 children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: const BoxDecoration(
-                      color: _cAmberBg,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.fact_check_outlined,
-                      color: _cAmberFg,
-                      size: 22,
-                    ),
+                  _ActivityRow(
+                    title: 'New location approved',
+                    subtitle: 'Westwood Condos · 12 min ago',
+                    icon: Icons.check,
+                    bg: _cSage,
+                    fg: _cSageDark,
                   ),
-                  const SizedBox(width: 14),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '4 items awaiting review',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: _cInk,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Approve new items before they go live',
-                          style: TextStyle(fontSize: 11, color: _cMuted),
-                        ),
-                      ],
-                    ),
+                  _ActivityRow(
+                    title: '14 new users joined',
+                    subtitle: 'North Campus · 1 hour ago',
+                    icon: Icons.group_outlined,
+                    bg: _cBlueBg,
+                    fg: _cBlueFg,
                   ),
-                  const Icon(Icons.chevron_right, color: _cMuted),
+                  _ActivityRow(
+                    title: 'Category updated',
+                    subtitle: 'Electronics · 3 hours ago',
+                    icon: Icons.sell_outlined,
+                    bg: _cAmberBg,
+                    fg: _cAmberFg,
+                    isLast: true,
+                  ),
                 ],
               ),
             ),
 
-            const SizedBox(height: 12),
-
-            // Recent activity
-            // ไม่มีตาราง log ใน DB: ดึงจาก timestamp ที่มี (users.created_at, products.reviewed_at, location_requests.resolved_at) หรือตัดส่วนนี้
-            _sectionHeader('Recent activity', ''),
-            const SizedBox(height: 8),
-
-            const _ActivityRow(
-              title: 'New location approved',
-              subtitle: 'Westwood Condos · 12 min ago',
-              icon: Icons.check,
-              bg: _cSage,
-              fg: _cSageDark,
-            ),
-            const _ActivityRow(
-              title: '14 new users joined',
-              subtitle: 'North Campus · 1 hour ago',
-              icon: Icons.group_outlined,
-              bg: _cBlueBg,
-              fg: _cBlueFg,
-            ),
-            const _ActivityRow(
-              title: 'Category updated',
-              subtitle: 'Electronics · 3 hours ago',
-              icon: Icons.sell_outlined,
-              bg: _cAmberBg,
-              fg: _cAmberFg,
-            ),
-
             const SizedBox(height: 28),
 
-            // Logout
+            // 6. Logout (ย้ายกลับมาไว้ด้านล่างเหมือนเดิม)
             OutlinedButton(
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(52),
@@ -299,31 +232,6 @@ class AdminPage extends StatelessWidget {
   void _open(BuildContext context, Widget page) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => page));
   }
-
-  // Section header
-  Widget _sectionHeader(String title, String action) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: _cInk,
-          ),
-        ),
-        Text(
-          action,
-          style: const TextStyle(
-            fontSize: 12,
-            decoration: TextDecoration.underline,
-            color: _cInk,
-          ),
-        ),
-      ],
-    );
-  }
 }
 
 // ---- Pending approval card ----
@@ -351,8 +259,8 @@ class _PendingApprovalCard extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: 46,
-                height: 46,
+                width: 44,
+                height: 44,
                 decoration: const BoxDecoration(
                   color: Color(0xFFFFF5D9),
                   shape: BoxShape.circle,
@@ -376,38 +284,25 @@ class _PendingApprovalCard extends StatelessWidget {
                         color: _cInk,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Items waiting for your review',
-                      style: TextStyle(fontSize: 11, color: _cAmberFg),
-                    ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 3),
                     Text(
-                      '$count submissions need approval',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: _cInk,
-                      ),
+                      '$count items waiting for your review',
+                      style: const TextStyle(fontSize: 12, color: _cAmberFg),
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              Column(
-                children: [
-                  Text(
-                    count,
-                    style: const TextStyle(
-                      fontFamily: 'serif',
-                      fontSize: 28,
-                      fontWeight: FontWeight.w600,
-                      color: _cInk,
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right, color: _cAmberFg),
-                ],
+              Text(
+                count,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: _cInk,
+                ),
               ),
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right, color: _cAmberFg),
             ],
           ),
         ),
@@ -423,6 +318,7 @@ class _StatCard extends StatelessWidget {
   final String label;
   final String value;
   final String note;
+  final bool highlightNote;
   final VoidCallback onTap;
 
   const _StatCard({
@@ -430,6 +326,7 @@ class _StatCard extends StatelessWidget {
     required this.label,
     required this.value,
     required this.note,
+    this.highlightNote = false,
     required this.onTap,
   });
 
@@ -440,13 +337,30 @@ class _StatCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          _IconBox(icon: icon, size: 40),
-          const Spacer(),
-          Text(label, style: const TextStyle(fontSize: 11, color: _cMuted)),
-          const SizedBox(height: 2),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _IconBox(icon: icon, size: 30),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _cMuted,
+                  ),
+                ),
+              ),
+              const Icon(Icons.chevron_right, size: 16, color: _cMuted),
+            ],
+          ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Flexible(
@@ -454,18 +368,20 @@ class _StatCard extends StatelessWidget {
                   value,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontFamily: 'serif',
-                    fontSize: 26,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
                     color: _cInk,
+                    letterSpacing: -0.5,
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4, left: 4),
-                child: Text(
-                  note,
-                  style: const TextStyle(fontSize: 10, color: _cMuted),
+              const SizedBox(width: 4),
+              Text(
+                note,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: highlightNote ? FontWeight.w600 : FontWeight.w500,
+                  color: highlightNote ? _cAmberFg : _cMuted,
                 ),
               ),
             ],
@@ -484,6 +400,7 @@ class _ActivityRow extends StatelessWidget {
   final IconData icon;
   final Color bg;
   final Color fg;
+  final bool isLast;
 
   const _ActivityRow({
     required this.title,
@@ -491,24 +408,27 @@ class _ActivityRow extends StatelessWidget {
     required this.icon,
     required this.bg,
     required this.fg,
+    this.isLast = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: _cBorder)),
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        border: isLast
+            ? null
+            : const Border(bottom: BorderSide(color: _cBorder)),
       ),
       child: Row(
         children: [
           Container(
-            width: 40,
-            height: 40,
+            width: 38,
+            height: 38,
             decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
             child: Icon(icon, size: 18, color: fg),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -521,7 +441,7 @@ class _ActivityRow extends StatelessWidget {
                     color: _cInk,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
                   subtitle,
                   style: const TextStyle(fontSize: 11, color: _cMuted),
@@ -585,9 +505,9 @@ class _IconBox extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         color: _cChip,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
       ),
-      child: Icon(icon, size: size * 0.45, color: _cInk),
+      child: Icon(icon, size: size * 0.55, color: _cInk),
     );
   }
 }
@@ -607,7 +527,7 @@ class _PageHeader extends StatelessWidget {
         Text(
           title,
           style: const TextStyle(
-            fontSize: 20,
+            fontSize: 22,
             fontWeight: FontWeight.w700,
             color: _cInk,
           ),
@@ -617,36 +537,6 @@ class _PageHeader extends StatelessWidget {
           Text(subtitle!, style: const TextStyle(fontSize: 13, color: _cMuted)),
         ],
       ],
-    );
-  }
-}
-
-// ---- Status badge ----
-
-class _StatusBadge extends StatelessWidget {
-  final String label;
-  final Color bg;
-  final Color fg;
-
-  const _StatusBadge({
-    super.key,
-    required this.label,
-    required this.bg,
-    required this.fg,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: fg),
-      ),
     );
   }
 }
@@ -670,16 +560,4 @@ String _formatDate(DateTime d) {
   ];
 
   return '${m[d.month - 1]} ${d.day}, ${d.year}';
-}
-
-void _showSnack(BuildContext context, String msg) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: _cInk,
-      ),
-    );
 }

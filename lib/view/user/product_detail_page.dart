@@ -271,6 +271,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
   Widget _buildContent() {
     final seller = _p.seller;
+    final pickupDetail = _p.product?.locationDetail?.trim();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -349,6 +350,21 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           const SizedBox(height: 8),
           Text(
             _p.description!,
+            style: const TextStyle(fontSize: 14, height: 1.55, color: _C.muted),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Divider(height: 1, color: _C.border),
+          ),
+        ],
+        if (pickupDetail != null && pickupDetail.isNotEmpty) ...[
+          const Text(
+            'Pickup detail',
+            style: TextStyle(fontSize: 17, color: _C.ink),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            pickupDetail,
             style: const TextStyle(fontSize: 14, height: 1.55, color: _C.muted),
           ),
           const Padding(

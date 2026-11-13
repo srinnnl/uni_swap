@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:uni_swap/view/user/campus_locations.dart';
+import 'package:uni_swap/controller/api_client.dart';
+import 'package:uni_swap/controller/app_controllers.dart';
+import 'package:uni_swap/model/enums.dart';
+import 'package:uni_swap/model/location.dart';
+import 'package:uni_swap/view/user/location_picker.dart';
 import 'package:uni_swap/view/login.dart';
 import 'package:uni_swap/view/user/request_location_page.dart';
 
@@ -17,6 +21,7 @@ const _cRedFg = Color(0xFFB3402F);
 class ProfilePage extends StatefulWidget {
   /// Show the "Admin dashboard" menu item (role = admin).
   final bool isAdmin;
+
   const ProfilePage({super.key, this.isAdmin = false});
 
   @override
@@ -24,11 +29,111 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  // Mock data (UI only)
-  static const _username = 'mayakim';
-  // static const _displayName = 'Maya';
+  Location? _selectedLocation;
+  List<Location> _locations = [];
 
-  CampusLocation _selectedLocation = locationsIn(CampusZone.onCampus).first;
+  bool _isLoading = true;
+  bool _savingLocation = false;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  // ---- Profile data from AuthController ----
+
+  String get _username {
+    final user = authController.user;
+
+    final username = user?['username']?.toString().trim() ?? '';
+    if (username.isNotEmpty) return username;
+
+    final displayName = user?['display_name']?.toString().trim() ?? '';
+    if (displayName.isNotEmpty) return displayName;
+
+    final email = user?['email']?.toString().trim() ?? '';
+    if (email.isNotEmpty) return email.split('@').first;
+
+    return 'User';
+  }
+
+  String get _memberSince {
+    final createdAt = authController.user?['created_at'];
+
+    if (createdAt == null) return 'Member since —';
+
+    final date = DateTime.tryParse(createdAt.toString());
+    if (date == null) return 'Member since —';
+
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    return 'Member since ${months[date.month - 1]} ${date.year}';
+  }
+
+  String get _residenceLabel {
+    final location = _selectedLocation;
+    if (location != null) {
+      return '${locationZoneLabel(location.zone)} · ${location.name}';
+    }
+    return authController.user?['residence_name']?.toString() ??
+        'Choose a listed residence';
+  }
+
+  Future<void> _loadProfile() async {
+    if (!authController.isAuthenticated) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+
+    try {
+      await authController.loadProfile();
+      final locationRows = await productController.locations();
+      final locations = locationRows.map(Location.fromJson).toList();
+      final locationId = int.tryParse(
+        authController.user?['residence_location_id']?.toString() ?? '',
+      );
+      final matches = locations.where((location) => location.id == locationId);
+
+      if (!mounted) return;
+
+      setState(() {
+        _locations = locations;
+        _selectedLocation = matches.isEmpty ? null : matches.first;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        _loadError = 'Unable to load profile. Please try again.';
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +145,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Widget _buildList() {
     return ListView(
-      // ท้ายหน้าเว้น 120 ให้พ้นแถบเมนูล่าง
+      // Leave space at the bottom for the navigation bar.
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
       children: [
         Row(
@@ -54,6 +159,7 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         const SizedBox(height: 20),
 
+        // Profile avatar
         Center(
           child: CircleAvatar(
             radius: 36,
@@ -69,10 +175,12 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ),
         const SizedBox(height: 14),
-        const Center(
+
+        // Username from AuthController
+        Center(
           child: Text(
             '@$_username',
-            style: TextStyle(
+            style: const TextStyle(
               fontFamily: 'serif',
               fontSize: 24,
               fontWeight: FontWeight.w500,
@@ -80,14 +188,46 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ),
         const SizedBox(height: 6),
-        const Center(
+
+        // Account creation date from API
+        Center(
           child: Text(
-            'Member since 2024',
-            style: TextStyle(fontSize: 12, color: _cMuted),
+            _memberSince,
+            style: const TextStyle(fontSize: 12, color: _cMuted),
           ),
         ),
+
+        // Loading / retry message
+        if (_isLoading) ...[
+          const SizedBox(height: 8),
+          const Center(
+            child: SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: _cSageDark,
+              ),
+            ),
+          ),
+        ],
+
+        if (_loadError != null) ...[
+          const SizedBox(height: 6),
+          Center(
+            child: TextButton(
+              onPressed: _loadProfile,
+              child: const Text(
+                'Unable to load profile. Tap to retry.',
+                style: TextStyle(fontSize: 11, color: _cRedFg),
+              ),
+            ),
+          ),
+        ],
+
         const SizedBox(height: 22),
 
+        // Mock statistics - unchanged for now
         _AppCard(
           child: IntrinsicHeight(
             child: Row(
@@ -95,8 +235,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 _stat('12', 'Items'),
                 const VerticalDivider(color: _cBorder, width: 1),
                 _stat('8', 'Sold'),
-                const VerticalDivider(color: _cBorder, width: 1),
-                _stat('4.8', 'Rating'),
               ],
             ),
           ),
@@ -113,15 +251,17 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         const SizedBox(height: 8),
 
+        // Mock location - unchanged for now
         _menuTile(
           Icons.location_on_outlined,
           'My location',
-          _selectedLocation.place,
+          _residenceLabel,
           _pickLocation,
         ),
 
         const SizedBox(height: 22),
 
+        // Log out
         InkWell(
           onTap: _confirmLogout,
           child: const Padding(
@@ -206,16 +346,20 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _pickLocation() async {
-    final result = await showCampusLocationPicker(
+    if (_savingLocation || _locations.isEmpty) return;
+    final result = await showLocationPicker(
       context,
-      zone: _selectedLocation.zone,
-      selected: _selectedLocation,
+      locations: _locations,
+      zone:
+          _selectedLocation?.zone ??
+          ResidenceZone.tryParse(authController.user?['residence_zone']),
+      selectedLocationId: _selectedLocation?.id,
       otherLabel: 'Request a location',
     );
 
     if (!mounted || result == null) return;
 
-    // เลือก Request a location
+    // Request a location
     if (result.location == null) {
       Navigator.push(
         context,
@@ -224,10 +368,26 @@ class _ProfilePageState extends State<ProfilePage> {
       return;
     }
 
-    // เลือกหอพักจากรายการ
-    setState(() {
-      _selectedLocation = result.location!;
-    });
+    setState(() => _savingLocation = true);
+    try {
+      await authController.updateProfile({
+        'residence_zone': result.zone.apiValue,
+        'residence_location_id': result.location!.id,
+      });
+      if (!mounted) return;
+      setState(() => _selectedLocation = result.location);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Residence updated')));
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _savingLocation = false);
+    }
   }
 
   void _confirmLogout() {
@@ -247,7 +407,10 @@ class _ProfilePageState extends State<ProfilePage> {
             style: FilledButton.styleFrom(backgroundColor: _cRedFg),
             onPressed: () {
               Navigator.pop(ctx);
-              // TODO: ลบ token ที่เก็บไว้
+
+              // Clear the current session.
+              authController.signOut();
+
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const LoginPage()),
                 (_) => false,
@@ -262,10 +425,12 @@ class _ProfilePageState extends State<ProfilePage> {
 }
 
 // ---- small shared widgets (local to this file) ----
+
 class _AppCard extends StatelessWidget {
   final Widget child;
   final EdgeInsets padding;
   final VoidCallback? onTap;
+
   const _AppCard({
     super.key,
     required this.child,
@@ -297,6 +462,7 @@ class _AppCard extends StatelessWidget {
 class _IconBox extends StatelessWidget {
   final IconData icon;
   final double size;
+
   const _IconBox({super.key, required this.icon, this.size = 44});
 
   @override
@@ -314,6 +480,7 @@ class _IconBox extends StatelessWidget {
 class _PageHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
+
   const _PageHeader({super.key, required this.title, this.subtitle});
 
   @override

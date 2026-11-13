@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:uni_swap/view/user/campus_locations.dart';
-import 'package:uni_swap/view/user/sell_page.dart'; // ดึงหน้าลงขายมา
+import 'package:uni_swap/controller/api_client.dart';
+import 'package:uni_swap/controller/app_controllers.dart';
+import 'package:uni_swap/model/json_utils.dart';
+import 'package:uni_swap/model/order_status.dart';
+import 'package:uni_swap/model/product.dart';
+import 'package:uni_swap/view/user/sell_page.dart';
 
 const _cBg = Color(0xFFFAF9F6);
 const _cInk = Color(0xFF2B2B26);
 const _cMuted = Color(0xFF8A8A82);
 const _cBorder = Color(0xFFE6E4DE);
-const _cLink = Color(0xFF4A5C8F);
-
 const _cAmberBg = Color(0xFFFBEBC2);
 const _cAmberFg = Color(0xFF8A6410);
 const _cRedBg = Color(0xFFF8DADA);
@@ -26,107 +28,209 @@ enum ItemStatus {
   hidden,
 }
 
-class _Item {
-  const _Item({
-    required this.status,
-    required this.title,
-    required this.subtitle,
-    this.views,
-    this.adminNote,
-    this.draft,
-  });
-
-  final ItemStatus status;
-  final String title;
-  final String subtitle;
-  final int? views;
-  final String? adminNote;
-  final SellDraft? draft; // ข้อมูลเดิมสำหรับหน้าแก้ไข (TODO: มาจาก API)
-}
-
-final _items = <_Item>[
-  _Item(
-    status: ItemStatus.actionRequired,
-    title: 'Bean bag chair',
-    subtitle: '15 THB · Lamduan 1 Dormitory',
-    adminNote: 'Please add clearer photos of the front.',
-    draft: SellDraft(
-      productId: 1,
-      title: 'Bean bag chair',
-      price: 15,
-      categoryId: 1,
-      description: 'Comfy, lightly used.',
-      location: locationById(12),
-    ),
-  ),
-  _Item(
-    status: ItemStatus.rejected,
-    title: 'Energy drink pack',
-    subtitle: '40 THB · Lamduan 1 Dormitory',
-    adminNote: 'Prohibited item: food and drink are not allowed.',
-  ),
-  _Item(
-    status: ItemStatus.pending,
-    title: 'Mini fridge',
-    subtitle: '60 THB · Lamduan 2 Dormitory',
-    draft: SellDraft(
-      productId: 2,
-      title: 'Mini fridge',
-      price: 60,
-      categoryId: 7,
-      condition: 'good',
-      location: locationById(13),
-    ),
-  ),
-  _Item(
-    status: ItemStatus.reserved,
-    title: 'City bike',
-    subtitle: '120 THB · Lamduan 1 Dormitory',
-  ),
-  _Item(
-    status: ItemStatus.urgent,
-    title: 'Oak study desk',
-    subtitle: '45 THB · Lamduan 1 Dormitory',
-    views: 48,
-    draft: SellDraft(
-      productId: 3,
-      title: 'Oak study desk',
-      price: 45,
-      categoryId: 1,
-      condition: 'good',
-      location: locationById(12),
-      deadline: DateTime.now().add(const Duration(days: 3)),
-    ),
-  ),
-  _Item(
-    status: ItemStatus.active,
-    title: 'Acoustic guitar',
-    subtitle: '80 THB · Lamduan 1 Dormitory',
-    views: 31,
-    draft: SellDraft(
-      productId: 4,
-      title: 'Acoustic guitar',
-      price: 80,
-      categoryId: 9,
-      condition: 'like_new',
-      location: locationById(12),
-    ),
-  ),
-];
-
-const _soldCount = 8;
-
-class MyItemsPage extends StatelessWidget {
+class MyItemsPage extends StatefulWidget {
   const MyItemsPage({super.key});
 
-  static int get _activeCount => _items
-      .where(
-        (i) => i.status == ItemStatus.active || i.status == ItemStatus.urgent,
-      )
-      .length;
+  @override
+  State<MyItemsPage> createState() => _MyItemsPageState();
+}
 
-  static int get _totalViews =>
-      _items.fold(0, (sum, i) => sum + (i.views ?? 0));
+class _MyItemsPageState extends State<MyItemsPage> {
+  List<Product> _products = [];
+  final Set<int> _busyProductIds = {};
+  bool _loading = true;
+  String? _error;
+
+  int get _activeCount => _products.where((product) {
+    return product.status == ProductStatus.available;
+  }).length;
+  int get _soldCount =>
+      _products.where((product) => product.status == ProductStatus.sold).length;
+  int get _totalViews =>
+      _products.fold(0, (total, product) => total + product.viewCount);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadItems();
+  }
+
+  Future<void> _loadItems() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final response = await productController.myListings(limit: 100);
+      if (response['success'] != true || response['data'] is! List) {
+        throw const ApiException('The server returned invalid listings.');
+      }
+      final products = jsonParseList(response['data'], Product.fromJson);
+      if (products.any((product) => product.id <= 0)) {
+        throw const ApiException('The server returned invalid listing data.');
+      }
+      if (mounted) setState(() => _products = products);
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not load your listings.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _openSell([Product? product]) async {
+    final result = await Navigator.push<SellResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            SellPage(existing: product == null ? null : _draft(product)),
+      ),
+    );
+    if (!mounted || result == null) return;
+    await _loadItems();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          backgroundColor: result.isError ? _cRedFg : _cInk,
+        ),
+      );
+  }
+
+  Future<bool> _confirmItemAction({
+    required String title,
+    required String message,
+    required String confirmLabel,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(foregroundColor: _cRedFg),
+            child: Text(confirmLabel),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Future<void> _deleteUnreviewed(Product product) async {
+    if (_busyProductIds.contains(product.id)) return;
+    final confirmed = await _confirmItemAction(
+      title: 'Delete listing?',
+      message:
+          'This unreviewed listing and its photos will be permanently deleted.',
+      confirmLabel: 'Delete',
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _busyProductIds.add(product.id));
+    try {
+      final response = await productController.deleteUnreviewed(product.id);
+      if (response['success'] != true) {
+        throw ApiException(
+          response['message']?.toString() ?? 'Could not delete this listing.',
+        );
+      }
+      await _loadItems();
+      if (mounted) _showActionMessage('Listing deleted.');
+    } on ApiException catch (error) {
+      if (mounted) _showActionMessage(error.message, isError: true);
+    } catch (_) {
+      if (mounted) {
+        _showActionMessage(
+          'Could not delete this listing. Please retry.',
+          isError: true,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busyProductIds.remove(product.id));
+    }
+  }
+
+  Future<void> _hideAvailable(Product product) async {
+    if (_busyProductIds.contains(product.id)) return;
+    final confirmed = await _confirmItemAction(
+      title: 'Take listing off the marketplace?',
+      message:
+          'Buyers will no longer see this item. Its listing and order history will be kept.',
+      confirmLabel: 'Take off marketplace',
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _busyProductIds.add(product.id));
+    try {
+      final response = await productController.hideAvailable(product.id);
+      if (response['success'] != true) {
+        throw ApiException(
+          response['message']?.toString() ??
+              'Could not take this listing off the marketplace.',
+        );
+      }
+      await _loadItems();
+      if (mounted) _showActionMessage('Listing taken off the marketplace.');
+    } on ApiException catch (error) {
+      if (mounted) _showActionMessage(error.message, isError: true);
+    } catch (_) {
+      if (mounted) {
+        _showActionMessage(
+          'Could not take this listing off the marketplace. Please retry.',
+          isError: true,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busyProductIds.remove(product.id));
+    }
+  }
+
+  void _showActionMessage(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: isError ? _cRedFg : _cInk,
+        ),
+      );
+  }
+
+  SellDraft? _draft(Product product) {
+    final locationId = product.locationId;
+    if (locationId == null ||
+        product.status == ProductStatus.reserved ||
+        product.status == ProductStatus.sold ||
+        product.status == ProductStatus.hidden) {
+      return null;
+    }
+    return SellDraft(
+      productId: product.id,
+      title: product.title,
+      price: product.price,
+      description: product.description ?? '',
+      pickupNote: product.locationDetail ?? '',
+      categoryId: product.categoryId ?? 0,
+      condition: product.itemCondition?.apiValue,
+      deadline: product.clearanceDeadline,
+      imageUrl: product.imageUrl,
+      imageUrls: product.images
+          .map((image) => image.url)
+          .where((url) => url.isNotEmpty)
+          .toList(growable: false),
+      imageCount: product.imageCount,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -134,214 +238,181 @@ class MyItemsPage extends StatelessWidget {
       backgroundColor: _cBg,
       body: SafeArea(
         bottom: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
-          children: [
-            // Header (อยู่ตรงกลางเรียบร้อย)
-            Center(
-              child: Column(
-                children: [
-                  const Text(
-                    'My items',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: _cInk,
+        child: RefreshIndicator(
+          onRefresh: _loadItems,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+            children: [
+              Center(
+                child: Column(
+                  children: [
+                    const Text(
+                      'My items',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: _cInk,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '$_activeCount active items',
+                      style: const TextStyle(fontSize: 13, color: _cMuted),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              _buildStats(),
+              const SizedBox(height: 20),
+              SizedBox(
+                height: 54,
+                child: FilledButton.icon(
+                  onPressed: () => _openSell(),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Sell a new item'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _cInk,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '$_activeCount active items',
-                    style: const TextStyle(fontSize: 13, color: _cMuted),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Stats
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: _cBorder, width: 1),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _buildStat('$_activeCount', 'Active'),
-                  Container(width: 1, height: 40, color: _cBorder), // เส้นคั่น
-                  _buildStat('$_soldCount', 'Sold'),
-                  Container(width: 1, height: 40, color: _cBorder),
-                  _buildStat('$_totalViews', 'Views'),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // ✨ ปุ่ม Sell เปลี่ยนให้ทึบและเด่นขึ้น ไม่แย่งซีนกับกล่องสถิติ
-            SizedBox(
-              height: 54,
-              child: FilledButton.icon(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SellPage()),
                 ),
-                icon: const Icon(Icons.add),
-                label: const Text(
-                  'Sell a new item',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 32),
+              const Text(
+                'Recent items',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: _cInk,
                 ),
-                style: FilledButton.styleFrom(
-                  backgroundColor:
-                      _cInk, // ✨ 1. เปลี่ยนพื้นหลังเป็นสีดำ (_cInk)
-                  foregroundColor:
-                      Colors.white, // ✨ 2. เปลี่ยนตัวอักษร/ไอคอนเป็นสีขาว
-                  elevation: 0, // ✨ 3. เอาเงาออกให้ดูคลีนแบนราบไปเลย
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    // ✨ 4. เอาเส้นขอบ (side: BorderSide...) ออกไปเลยครับ
+              ),
+              const SizedBox(height: 12),
+              if (_loading && _products.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (_error != null && _products.isEmpty)
+                Column(
+                  children: [
+                    Text(_error!, textAlign: TextAlign.center),
+                    TextButton(
+                      onPressed: _loadItems,
+                      child: const Text('Try again'),
+                    ),
+                  ],
+                )
+              else if (_products.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(
+                    child: Text('You have not listed any items yet.'),
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            // Recent items
-            const Text(
-              'Recent items',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: _cInk,
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            for (final item in _items)
-              Container(
-                // ✨ 1. เปลี่ยน padding/margin ให้ห่างกันเหมือนหน้า Orders
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.all(16),
-                // ✨ 2. ทำกล่องสีขาว โค้งมน ไม่มีเส้นขอบ/เงา (สไตล์มินิมอล)
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
+              if (_error != null && _products.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(_error!, style: const TextStyle(color: _cRedFg)),
                 ),
-                child: _ItemCard(
-                  status: item.status,
-                  title: item.title,
-                  subtitle: item.subtitle,
-                  views: item.views,
-                  adminNote: item.adminNote,
-                  onEdit: item.draft == null
+              for (final product in _products)
+                _ItemCard(
+                  product: product,
+                  onEdit:
+                      _busyProductIds.contains(product.id) ||
+                          _draft(product) == null
                       ? null
-                      : () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => SellPage(existing: item.draft),
-                          ),
-                        ),
+                      : () => _openSell(product),
+                  onDelete:
+                      _busyProductIds.contains(product.id) ||
+                          !{
+                            ProductStatus.pendingReview,
+                            ProductStatus.changesRequested,
+                            ProductStatus.rejected,
+                          }.contains(product.status)
+                      ? null
+                      : () => _deleteUnreviewed(product),
+                  onHide:
+                      _busyProductIds.contains(product.id) ||
+                          product.status != ProductStatus.available
+                      ? null
+                      : () => _hideAvailable(product),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // ✨ 4. แก้ฟังก์ชัน _buildStat นิดหน่อย ให้ตัวหนังสือเป็นสีดำเพื่อให้กลืนกับพื้นหลังสีสว่าง
-  Widget _buildStat(String val, String label) {
-    return Column(
+  Widget _buildStats() => Container(
+    padding: const EdgeInsets.symmetric(vertical: 20),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: _cBorder),
+    ),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        Text(
-          val,
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: _cInk, // เปลี่ยนจากสีขาวเป็นสี _cInk
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(label, style: const TextStyle(fontSize: 12, color: _cMuted)),
+        _stat('$_activeCount', 'Active'),
+        Container(width: 1, height: 40, color: _cBorder),
+        _stat('$_soldCount', 'Sold'),
+        Container(width: 1, height: 40, color: _cBorder),
+        _stat('$_totalViews', 'Views'),
       ],
-    );
-  }
+    ),
+  );
+
+  Widget _stat(String value, String label) => Column(
+    children: [
+      Text(
+        value,
+        style: const TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+          color: _cInk,
+        ),
+      ),
+      const SizedBox(height: 4),
+      Text(label, style: const TextStyle(fontSize: 12, color: _cMuted)),
+    ],
+  );
 }
 
-// เปลี่ยนชื่อคลาส _ListingItem เป็น _ItemCard
 class _ItemCard extends StatelessWidget {
-  final String title, subtitle;
-  final String? imageUrl; // null = แสดงไอคอนแทนรูป
-  final ItemStatus status;
-  final int? views;
-  final String? adminNote;
-  final VoidCallback? onEdit;
-
   const _ItemCard({
-    required this.title,
-    required this.subtitle,
-    this.imageUrl,
-    required this.status,
-    this.views,
-    this.adminNote,
-    this.onEdit,
+    required this.product,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onHide,
   });
+
+  final Product product;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+  final VoidCallback? onHide;
 
   @override
   Widget build(BuildContext context) {
-    String badgeLabel;
-    Color badgeBg;
-    Color badgeFg;
-
-    switch (status) {
-      case ItemStatus.pending:
-        badgeLabel = 'Pending review';
-        badgeBg = _cAmberBg;
-        badgeFg = _cAmberFg;
-        break;
-      case ItemStatus.actionRequired:
-        badgeLabel = 'Action required';
-        badgeBg = _cRedBg;
-        badgeFg = _cRedFg;
-        break;
-      case ItemStatus.rejected:
-        badgeLabel = 'Rejected';
-        badgeBg = _cRedBg;
-        badgeFg = _cRedFg;
-        break;
-      case ItemStatus.urgent:
-        badgeLabel = 'Urgent';
-        badgeBg = _cRedBg;
-        badgeFg = _cRedFg;
-        break;
-      case ItemStatus.reserved:
-        badgeLabel = 'Reserved';
-        badgeBg = _cAmberBg;
-        badgeFg = _cAmberFg;
-        break;
-      case ItemStatus.sold:
-        badgeLabel = 'Sold';
-        badgeBg = _cSageBg;
-        badgeFg = _cSageFg;
-        break;
-      case ItemStatus.hidden:
-        badgeLabel = 'Hidden';
-        badgeBg = const Color(0xFFF0EEE9);
-        badgeFg = _cMuted;
-        break;
-      case ItemStatus.active:
-        badgeLabel = 'Active';
-        badgeBg = _cSageBg;
-        badgeFg = _cSageFg;
-        break;
-    }
-
-    final showViews =
-        (status == ItemStatus.active || status == ItemStatus.urgent) &&
-        views != null;
-
+    final (label, background, foreground) = switch (product.status) {
+      ProductStatus.pendingReview => ('Pending review', _cAmberBg, _cAmberFg),
+      ProductStatus.changesRequested => ('Action required', _cRedBg, _cRedFg),
+      ProductStatus.rejected => ('Rejected', _cRedBg, _cRedFg),
+      ProductStatus.available when product.isUrgent => (
+        'Urgent',
+        _cRedBg,
+        _cRedFg,
+      ),
+      ProductStatus.available => ('Active', _cSageBg, _cSageFg),
+      ProductStatus.reserved => ('Reserved', _cAmberBg, _cAmberFg),
+      ProductStatus.sold => ('Sold', _cSageBg, _cSageFg),
+      ProductStatus.hidden => ('Hidden', const Color(0xFFF0EEE9), _cMuted),
+    };
+    final price = product.price == 0 ? 'Free' : '${product.price} THB';
     final placeholder = Container(
       width: 80,
       height: 94,
@@ -349,150 +420,157 @@ class _ItemCard extends StatelessWidget {
       child: const Icon(Icons.image_outlined, color: _cMuted),
     );
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: imageUrl == null
-              ? placeholder
-              : Image.network(
-                  imageUrl!,
-                  width: 80,
-                  height: 94,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => placeholder,
-                ),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: product.primaryImageUrl == null
+                ? placeholder
+                : Image.network(
+                    product.primaryImageUrl!,
+                    width: 80,
+                    height: 94,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => placeholder,
+                  ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _Badge(
+                      label: label,
+                      background: background,
+                      foreground: foreground,
                     ),
-                    decoration: BoxDecoration(
-                      color: badgeBg,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      badgeLabel,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: badgeFg,
+                    if (product.status == ProductStatus.available ||
+                        product.status == ProductStatus.pendingReview)
+                      Text(
+                        '${product.viewCount} views',
+                        style: const TextStyle(fontSize: 11, color: _cMuted),
                       ),
-                    ),
-                  ),
-                  if (showViews)
-                    Text(
-                      '$views views',
-                      style: const TextStyle(fontSize: 11, color: _cMuted),
-                    )
-                  else if (status == ItemStatus.pending)
-                    const Text(
-                      'Not visible yet',
-                      style: TextStyle(fontSize: 11, color: _cMuted),
-                    )
-                  else if (status == ItemStatus.reserved)
-                    const Text(
-                      'In an order',
-                      style: TextStyle(fontSize: 11, color: _cMuted),
-                    )
-                  else if (status == ItemStatus.rejected)
-                    const Text(
-                      'Not published',
-                      style: TextStyle(fontSize: 11, color: _cMuted),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: _cInk,
+                  ],
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: const TextStyle(fontSize: 12, color: _cMuted),
-              ),
-              if ((status == ItemStatus.actionRequired ||
-                      status == ItemStatus.rejected) &&
-                  adminNote != null) ...[
                 const SizedBox(height: 8),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: _cRedBg.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: _cRedBg),
+                Text(
+                  product.title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: _cInk,
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$price · ${product.locationName}',
+                  style: const TextStyle(fontSize: 12, color: _cMuted),
+                ),
+                if (product.reviewNote?.isNotEmpty == true) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    product.reviewNote!,
+                    style: const TextStyle(fontSize: 12, color: _cRedFg),
+                  ),
+                ],
+                if (onEdit != null || onDelete != null || onHide != null) ...[
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 0,
                     children: [
-                      const Icon(Icons.info_outline, size: 14, color: _cRedFg),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          adminNote!,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: _cRedFg,
-                            height: 1.3,
+                      if (onEdit != null)
+                        TextButton(
+                          onPressed: onEdit,
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            minimumSize: const Size(0, 32),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: Text(
+                            product.status == ProductStatus.changesRequested ||
+                                    product.status == ProductStatus.rejected
+                                ? 'Fix item'
+                                : 'Edit item',
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              if (status != ItemStatus.rejected &&
-                  status != ItemStatus.reserved &&
-                  status != ItemStatus.sold) ...[
-                const SizedBox(height: 10),
-                InkWell(
-                  onTap: onEdit,
-                  child: Row(
-                    children: [
-                      Text(
-                        // แก้คำว่า listing เป็น item
-                        status == ItemStatus.actionRequired
-                            ? 'Fix item'
-                            : 'Edit item',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: status == ItemStatus.actionRequired
-                              ? _cRedFg
-                              : _cLink,
-                          fontWeight: FontWeight.w600,
+                      if (onDelete != null)
+                        TextButton.icon(
+                          onPressed: onDelete,
+                          style: TextButton.styleFrom(
+                            foregroundColor: _cRedFg,
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            minimumSize: const Size(0, 32),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          icon: const Icon(Icons.delete_outline, size: 16),
+                          label: const Text('Delete listing'),
                         ),
-                      ),
-                      Icon(
-                        Icons.chevron_right,
-                        size: 16,
-                        color: status == ItemStatus.actionRequired
-                            ? _cRedFg
-                            : _cLink,
-                      ),
+                      if (onHide != null)
+                        TextButton.icon(
+                          onPressed: onHide,
+                          style: TextButton.styleFrom(
+                            foregroundColor: _cMuted,
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            minimumSize: const Size(0, 32),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          icon: const Icon(
+                            Icons.visibility_off_outlined,
+                            size: 16,
+                          ),
+                          label: const Text('Take off marketplace'),
+                        ),
                     ],
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
+}
+
+class _Badge extends StatelessWidget {
+  const _Badge({
+    required this.label,
+    required this.background,
+    required this.foreground,
+  });
+
+  final String label;
+  final Color background;
+  final Color foreground;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: background,
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.bold,
+        color: foreground,
+      ),
+    ),
+  );
 }

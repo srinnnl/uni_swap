@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:uni_swap/controller/app_controllers.dart';
 import 'package:uni_swap/controller/api_client.dart';
-import 'package:uni_swap/view/user/campus_locations.dart';
+import 'package:uni_swap/model/enums.dart';
+import 'package:uni_swap/model/location.dart';
+import 'package:uni_swap/view/user/location_picker.dart';
 
 class _C {
   static const bg = Color(0xFFF7F6F2);
@@ -31,15 +33,53 @@ class _RegisterPageState extends State<RegisterPage> {
   final _customResidenceCtrl = TextEditingController(); // ที่พักที่พิมพ์เอง
 
   bool _obscure = true;
-  // ที่พัก: _zone + _location (null + มี _zone = เลือก Other รอแอดมินตรวจ)
-  CampusZone? _zone;
-  CampusLocation? _location;
+  ResidenceZone? _zone;
+  Location? _location;
+  List<Location> _locations = [];
+  bool _loadingLocations = true;
+  String? _locationError;
 
   bool get _isOther => _zone != null && _location == null;
   String? get _residenceLabel =>
       _zone == null ? null : (_location?.name ?? _otherOption);
   bool _residenceError = false;
   bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocations();
+  }
+
+  Future<void> _loadLocations() async {
+    try {
+      final rows = await productController.locations();
+      final locations = rows.map(Location.fromJson).toList(growable: false);
+      if (locations.isEmpty) {
+        throw const ApiException('No approved residences are available.');
+      }
+      if (!mounted) return;
+      setState(() {
+        _locations = locations;
+        _loadingLocations = false;
+        _locationError = null;
+      });
+    } on ApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _loadingLocations = false;
+          _locationError = error.message;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loadingLocations = false;
+          _locationError = 'Could not load approved residences.';
+        });
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -71,7 +111,7 @@ class _RegisterPageState extends State<RegisterPage> {
       // backend ควรเก็บเป็นสถานะ pending (approved / merged / rejected ภายหลัง)
       // users.residence_zone / residence_location_id (ต้องรอเพื่อน ALTER ตาม alter_request.sql)
       // ส่ง zone เป็น code ('on_campus' / 'off_campus') ตรงกับ enum ใน DB
-      'residenceZone': _zone!.code,
+      'residenceZone': _zone!.apiValue,
       'residenceLocationId': _location?.id,
       'customResidence': isOther ? _customResidenceCtrl.text.trim() : null,
     };
@@ -109,10 +149,12 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   Future<void> _pickResidence() async {
-    final picked = await showCampusLocationPicker(
+    if (_loadingLocations || _locationError != null) return;
+    final picked = await showLocationPicker(
       context,
+      locations: _locations,
       zone: _zone,
-      selected: _location,
+      selectedLocationId: _location?.id,
       otherLabel: _otherOption,
     );
     if (picked != null) {
@@ -335,7 +377,10 @@ class _RegisterPageState extends State<RegisterPage> {
               width: double.infinity,
               height: 52,
               child: FilledButton(
-                onPressed: _isSubmitting ? null : _submit,
+                onPressed:
+                    _isSubmitting || _loadingLocations || _locationError != null
+                    ? null
+                    : _submit,
                 style: FilledButton.styleFrom(
                   backgroundColor: _C.ink,
                   foregroundColor: Colors.white,
@@ -471,7 +516,9 @@ class _RegisterPageState extends State<RegisterPage> {
       children: [
         _buildLabel('Where do you live?'),
         InkWell(
-          onTap: _pickResidence,
+          onTap: _loadingLocations || _locationError != null
+              ? null
+              : _pickResidence,
           borderRadius: BorderRadius.circular(14),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -492,7 +539,11 @@ class _RegisterPageState extends State<RegisterPage> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    _residenceLabel ?? 'Select your residence',
+                    _loadingLocations
+                        ? 'Loading residences…'
+                        : _locationError ??
+                              _residenceLabel ??
+                              'Select your residence',
                     style: TextStyle(
                       fontSize: 15,
                       color: _zone == null ? _C.hint : _C.ink,
@@ -510,6 +561,14 @@ class _RegisterPageState extends State<RegisterPage> {
             child: Text(
               'Please select your residence',
               style: TextStyle(fontSize: 12, color: Colors.red.shade700),
+            ),
+          ),
+        if (_locationError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 16),
+            child: TextButton(
+              onPressed: _loadLocations,
+              child: const Text('Could not load residences. Tap to retry.'),
             ),
           ),
       ],

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/controller/api_client.dart';
+import 'package:uni_swap/controller/app_controllers.dart';
+import 'package:uni_swap/model/models.dart';
 
 // ---- colors (local to this file) ----
 const _cBg = Color(0xFFFAF9F6);
@@ -14,28 +17,6 @@ const _cAmberBg = Color(0xFFFBEBC2);
 const _cAmberFg = Color(0xFF8A6410);
 const _cRedBg = Color(0xFFF8DADA);
 const _cRedFg = Color(0xFFB3402F);
-
-// users.status ใน DB (ส่วน role = 'admin' แยกเป็น isAdmin)
-enum _UStatus { pending, active, suspended, rejected }
-
-class _User {
-  final int id; // users.user_id
-  final String name; // users.display_name
-  final String handle; // users.username
-  final String studentId; // users.student_id (เก็บเป็นข้อความ รักษาเลข 0 นำหน้า)
-  final String email;
-  final bool isAdmin; // users.role == 'admin'
-  _UStatus status;
-  _User(
-    this.id,
-    this.name,
-    this.handle,
-    this.studentId,
-    this.email,
-    this.status, {
-    this.isAdmin = false,
-  });
-}
 
 class AdminUsersPage extends StatefulWidget {
   const AdminUsersPage({super.key});
@@ -54,52 +35,78 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     'Rejected',
   ];
 
-  // Mock data (UI only)
-  // TODO: โหลดจาก API (users) ผู้สมัครใหม่เป็น pending รอ admin อนุมัติ (ไม่มี OTP)
-  final List<_User> _users = [
-    _User(1, 'Maya Kim', 'mayakim', '6731501001', 'admin@lamduan.mfu.ac.th',
-        _UStatus.active,
-        isAdmin: true),
-    _User(2, 'Jamie Lee', 'jamielee', '6731501002', 'jamie@lamduan.mfu.ac.th',
-        _UStatus.active),
-    _User(3, 'Noah Park', 'noahp', '6731501003', 'noah@lamduan.mfu.ac.th',
-        _UStatus.active),
-    _User(4, 'Alex Smith', 'alexs', '6731501004', 'alex@lamduan.mfu.ac.th',
-        _UStatus.pending),
-    _User(5, 'Pim Chai', 'pimc', '6731501005', 'pim@lamduan.mfu.ac.th',
-        _UStatus.rejected),
-  ];
+  List<User> _users = [];
+  bool _loading = true;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  // TODO: ตอนนี้โหลดแค่หน้าแรก (limit 100) ยังไม่ทำ pagination
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    try {
+      final res = await adminController.users(limit: 100);
+      final page = ApiPage.fromJson(res, User.fromJson);
+      if (!mounted) return;
+      setState(() {
+        _users = page.data;
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        if (!silent) _error = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        if (!silent) _error = 'Could not load users.';
+      });
+    }
+  }
 
   String _query = '';
   String _filter = 'All';
 
   // แอดมินแสดงเป็น Admin เสมอ นอกนั้นแสดงตาม users.status
-  String _label(_User u) {
+  String _label(User u) {
     if (u.isAdmin) return 'Admin';
     return switch (u.status) {
-      _UStatus.pending => 'Pending',
-      _UStatus.active => 'Active',
-      _UStatus.suspended => 'Suspended',
-      _UStatus.rejected => 'Rejected',
+      UserStatus.pending => 'Pending',
+      UserStatus.active => 'Active',
+      UserStatus.suspended => 'Suspended',
+      UserStatus.rejected => 'Rejected',
     };
   }
 
-  (Color, Color) _colors(_User u) {
+  (Color, Color) _colors(User u) {
     if (u.isAdmin) return (_cBlueBg, _cBlueFg);
     return switch (u.status) {
-      _UStatus.pending => (_cAmberBg, _cAmberFg),
-      _UStatus.active => (_cSage, _cSageDark),
-      _UStatus.suspended || _UStatus.rejected => (_cRedBg, _cRedFg),
+      UserStatus.pending => (_cAmberBg, _cAmberFg),
+      UserStatus.active => (_cSage, _cSageDark),
+      UserStatus.suspended || UserStatus.rejected => (_cRedBg, _cRedFg),
     };
   }
 
-  List<_User> get _visible {
+  List<User> get _visible {
     final q = _query.trim().toLowerCase();
     return _users.where((u) {
       final matchQ =
           q.isEmpty ||
-          u.name.toLowerCase().contains(q) ||
-          u.handle.toLowerCase().contains(q) ||
+          u.displayName.toLowerCase().contains(q) ||
+          u.username.toLowerCase().contains(q) ||
           u.studentId.contains(q) ||
           u.email.toLowerCase().contains(q);
       final matchF = _filter == 'All' || _label(u) == _filter;
@@ -112,20 +119,25 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     if (r != null) setState(() => _filter = r);
   }
 
-  // เปลี่ยนสถานะผู้ใช้ แล้วปิดชีต + แจ้งผล
-  // TODO: เรียก API แทน setState
-  //   approve: status='active', verified_by=admin, verified_at=now
-  //   reject:  status='rejected'
-  //   suspend / restore: status='suspended' / 'active'
-  //   กฎ suspend: login ไม่ได้, API ซ่อนสินค้าของผู้ใช้ที่ status != active ตอนอ่าน (ไม่แก้ products.status)
-  //   ออเดอร์ที่ค้างอยู่ดำเนินต่อได้ แต่สร้างออเดอร์ใหม่ไม่ได้
-  void _setStatus(BuildContext ctx, _User u, _UStatus next, String message) {
-    setState(() => u.status = next);
-    Navigator.pop(ctx);
-    _snack(context, '${u.name} $message (mock)');
+  // เปลี่ยนสถานะผู้ใช้ผ่าน API แล้วโหลดรายการใหม่ ปิดชีต และแจ้งผล
+  // ถ้า API error: แสดงข้อความและไม่ปิดชีต
+  Future<void> _setStatus(
+      BuildContext ctx, User u, UserStatus next, String message) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await adminController.setUserStatus(u.id, next.apiValue);
+      await _load(silent: true);
+      if (ctx.mounted) Navigator.pop(ctx);
+      if (mounted) _snack(context, '${u.displayName} $message');
+    } on ApiException catch (e) {
+      if (mounted) _snack(context, e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
-  void _openUser(_User u) {
+  void _openUser(User u) {
     final (bg, fg) = _colors(u);
     _showSheet(context, (ctx) {
       return Column(
@@ -145,7 +157,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      u.name,
+                      u.displayName,
                       style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w700,
@@ -153,7 +165,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '@${u.handle}',
+                      '@${u.username}',
                       style: const TextStyle(fontSize: 12, color: _cMuted),
                     ),
                   ],
@@ -170,36 +182,36 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
           const SizedBox(height: 20),
           // ผู้สมัครใหม่ (pending) หรือถูกปฏิเสธไปแล้ว: อนุมัติได้
           if (!u.isAdmin &&
-              (u.status == _UStatus.pending ||
-                  u.status == _UStatus.rejected)) ...[
+              (u.status == UserStatus.pending ||
+                  u.status == UserStatus.rejected)) ...[
             _ActionButton(
               label: 'Approve user',
               onPressed: () =>
-                  _setStatus(ctx, u, _UStatus.active, 'approved'),
+                  _setStatus(ctx, u, UserStatus.active, 'approved'),
             ),
             const SizedBox(height: 10),
           ],
-          if (!u.isAdmin && u.status == _UStatus.pending)
+          if (!u.isAdmin && u.status == UserStatus.pending)
             _ActionButton(
               filled: false,
               danger: true,
               label: 'Reject user',
               onPressed: () =>
-                  _setStatus(ctx, u, _UStatus.rejected, 'rejected'),
+                  _setStatus(ctx, u, UserStatus.rejected, 'rejected'),
             ),
-          if (!u.isAdmin && u.status == _UStatus.active)
+          if (!u.isAdmin && u.status == UserStatus.active)
             _ActionButton(
               filled: false,
               danger: true,
               label: 'Suspend user',
               onPressed: () =>
-                  _setStatus(ctx, u, _UStatus.suspended, 'suspended'),
+                  _setStatus(ctx, u, UserStatus.suspended, 'suspended'),
             ),
-          if (!u.isAdmin && u.status == _UStatus.suspended)
+          if (!u.isAdmin && u.status == UserStatus.suspended)
             _ActionButton(
               filled: false,
               label: 'Restore user',
-              onPressed: () => _setStatus(ctx, u, _UStatus.active, 'restored'),
+              onPressed: () => _setStatus(ctx, u, UserStatus.active, 'restored'),
             ),
         ],
       );
@@ -216,7 +228,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
           children: [
             _Header(
               title: 'Users',
-              subtitle: '${_users.length} registered students', // TODO: นับจาก API
+              subtitle: '${_users.length} registered students',
             ),
             _SearchRow(
               hint: 'Search users',
@@ -226,7 +238,11 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
             ),
             _SectionRow(label: 'All records', shown: list.length),
             Expanded(
-              child: list.isEmpty
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                  ? _ErrorView(message: _error!, onRetry: _load)
+                  : list.isEmpty
                   ? const _Empty('No users found')
                   : ListView(
                       padding: const EdgeInsets.only(bottom: 24),
@@ -236,8 +252,8 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                             icon: Icons.group_outlined,
                             iconBg: _cSage,
                             iconFg: _cSageDark,
-                            title: u.name,
-                            subtitle: '@${u.handle} · ${u.studentId}',
+                            title: u.displayName,
+                            subtitle: '@${u.username} · ${u.studentId}',
                             badge: _label(u),
                             badgeBg: _colors(u).$1,
                             badgeFg: _colors(u).$2,
@@ -676,4 +692,24 @@ class _Empty extends StatelessWidget {
   Widget build(BuildContext context) => Center(
     child: Text(text, style: const TextStyle(color: _cMuted)),
   );
+}
+
+class _ErrorView extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  const _ErrorView({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: _cMuted)),
+            const SizedBox(height: 12),
+            TextButton(onPressed: onRetry, child: const Text('Try again')),
+          ]),
+        ),
+      );
 }

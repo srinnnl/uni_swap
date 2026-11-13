@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'admin_categories_page.dart';
 import 'admin_items_page.dart';
 import 'admin_locations_page.dart';
+import 'admin_refunds_page.dart';
 import 'admin_reports_page.dart';
 import 'admin_users_page.dart';
+import 'package:uni_swap/controller/app_controllers.dart';
 import 'package:uni_swap/view/login.dart';
 
 // ---- colors ----
@@ -249,6 +251,51 @@ class AdminPage extends StatelessWidget {
               ),
             ),
 
+            const SizedBox(height: 12),
+
+            _AppCard(
+              onTap: () => _open(context, const AdminRefundsPage()),
+              child: Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: const BoxDecoration(
+                      color: _cBlueBg,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.currency_exchange,
+                      color: _cBlueFg,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Refund requests',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: _cInk,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Approve or reject refunds requested by buyers',
+                          style: TextStyle(fontSize: 11, color: _cMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, color: _cMuted),
+                ],
+              ),
+            ),
+
             const SizedBox(height: 30),
 
             // Recent activity
@@ -326,7 +373,7 @@ class AdminPage extends StatelessWidget {
 
     if (ok != true || !context.mounted) return;
 
-    // TODO: Remove stored token
+    authController.signOut(); // ล้าง token + user ในหน่วยความจำ
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginPage()),
       (_) => false,

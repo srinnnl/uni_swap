@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/controller/api_client.dart';
+import 'package:uni_swap/controller/app_controllers.dart';
+import 'package:uni_swap/model/models.dart';
 
 // ---- colors (local to this file) ----
 const _cBg = Color(0xFFFAF9F6);
@@ -13,14 +16,6 @@ const _cAmberBg = Color(0xFFFBEBC2);
 const _cAmberFg = Color(0xFF8A6410);
 const _cRedFg = Color(0xFFB3402F);
 
-class _Cat {
-  String name;
-  String emoji;
-  final int count;
-  bool active;
-  _Cat(this.name, this.emoji, this.count, this.active);
-}
-
 class AdminCategoriesPage extends StatefulWidget {
   const AdminCategoriesPage({super.key});
 
@@ -31,33 +26,56 @@ class AdminCategoriesPage extends StatefulWidget {
 class _AdminCategoriesPageState extends State<AdminCategoriesPage> {
   static const _filters = ['All', 'Active', 'Inactive'];
 
-  // Mock data (UI only)
-  // categories: name (UNIQUE), emoji, is_active / count = นับ products ตาม category_id
-  final List<_Cat> _cats = [
-    _Cat('Furniture', '🪑', 184, true),
-    _Cat('Books', '📚', 142, true),
-    _Cat('Technology', '📘', 119, true),
-    _Cat('Transport', '🚲', 76, true),
-    _Cat('Home & kitchen', '🏠', 63, true),
-    _Cat('Clothing', '👕', 58, true),
-    _Cat('Appliances', '🔌', 49, true),
-    _Cat('Sports', '⚽', 41, true),
-    _Cat('Music', '🎸', 37, true),
-    _Cat('Stationery', '✏️', 33, true),
-    _Cat('Other', '📦', 28, true),
-    _Cat('Toys', '🧸', 0, false),
-  ];
+  List<Category> _cats = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    try {
+      final res = await adminController.categories();
+      final list = jsonParseList(res['data'], Category.fromJson);
+      if (!mounted) return;
+      setState(() {
+        _cats = list;
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        if (!silent) _error = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        if (!silent) _error = 'Could not load categories.';
+      });
+    }
+  }
 
   String _query = '';
   String _filter = 'All';
 
-  List<_Cat> get _visible {
+  List<Category> get _visible {
     final q = _query.trim().toLowerCase();
     return _cats.where((c) {
       final matchQ = q.isEmpty || c.name.toLowerCase().contains(q);
       final matchF = _filter == 'All' ||
-          (_filter == 'Active' && c.active) ||
-          (_filter == 'Inactive' && !c.active);
+          (_filter == 'Active' && c.isActive) ||
+          (_filter == 'Inactive' && !c.isActive);
       return matchQ && matchF;
     }).toList();
   }
@@ -67,35 +85,32 @@ class _AdminCategoriesPageState extends State<AdminCategoriesPage> {
     if (r != null) setState(() => _filter = r);
   }
 
-  void _openForm([_Cat? cat]) {
+  void _openForm([Category? cat]) {
     _showSheet(context, (ctx) {
       return _CategoryForm(
         cat: cat,
-        onSave: (name, emoji, active) {
-          setState(() {
+        // คืนค่า null = สำเร็จ, ข้อความ = error (แสดงใต้ช่อง Name และไม่ปิดชีต)
+        onSave: (name, emoji, active) async {
+          try {
             if (cat == null) {
-              _cats.insert(0, _Cat(name, emoji, 0, active));
+              await adminController.createCategory(
+                  name: name, emoji: emoji, active: active);
             } else {
-              cat.name = name;
-              cat.emoji = emoji;
-              cat.active = active;
+              await adminController.updateCategory(cat.id,
+                  name: name, emoji: emoji, active: active);
             }
-          });
-          _snack(context, cat == null ? 'Category added (mock)' : 'Category saved (mock)');
+          } on ApiException catch (e) {
+            return e.message;
+          }
+          await _load(silent: true);
+          if (mounted) {
+            _snack(context, cat == null ? 'Category added' : 'Category saved');
+          }
+          return null;
         },
-        // ลบได้เฉพาะหมวดที่ไม่มีสินค้าเลย (products.category_id เป็น FK) ถ้ามีสินค้าให้ปิดด้วยสวิตช์ Active แทน
-        onDelete: (cat == null || cat.count > 0)
-            ? null
-            : () async {
-                final ok = await _confirm(ctx,
-                    title: 'Delete category?',
-                    message: '"${cat.name}" will be removed.',
-                    confirmLabel: 'Delete');
-                if (!ok || !mounted) return;
-                setState(() => _cats.remove(cat));
-                if (ctx.mounted) Navigator.pop(ctx);
-                _snack(context, 'Category deleted (mock)');
-              },
+        // TODO(ถามเพื่อน): AdminController ยังไม่มี deleteCategory จึงปิดปุ่มลบไว้ก่อน
+        // (เดิม: ลบได้เฉพาะหมวดที่ productCount == 0, ถ้ามีสินค้าให้ปิดด้วยสวิตช์ Active)
+        onDelete: null,
       );
     });
   }
@@ -118,7 +133,11 @@ class _AdminCategoriesPageState extends State<AdminCategoriesPage> {
           ),
           _SectionRow(label: 'All records', shown: list.length),
           Expanded(
-            child: list.isEmpty
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                ? _ErrorView(message: _error!, onRetry: _load)
+                : list.isEmpty
                 ? const _Empty('No categories found')
                 : ListView(
                     padding: const EdgeInsets.only(bottom: 24),
@@ -129,10 +148,10 @@ class _AdminCategoriesPageState extends State<AdminCategoriesPage> {
                           iconBg: _cAmberBg,
                           iconFg: _cAmberFg,
                           title: c.name,
-                          subtitle: '${c.emoji} ${c.count} active products',
-                          badge: c.active ? 'Active' : 'Inactive',
-                          badgeBg: c.active ? _cSage : _cChip,
-                          badgeFg: c.active ? _cSageDark : _cMuted,
+                          subtitle: '${c.emoji} ${c.productCount ?? 0} active products',
+                          badge: c.isActive ? 'Active' : 'Inactive',
+                          badgeBg: c.isActive ? _cSage : _cChip,
+                          badgeFg: c.isActive ? _cSageDark : _cMuted,
                           onTap: () => _openForm(c),
                         ),
                     ],
@@ -147,8 +166,8 @@ class _AdminCategoriesPageState extends State<AdminCategoriesPage> {
 }
 
 class _CategoryForm extends StatefulWidget {
-  final _Cat? cat;
-  final void Function(String name, String emoji, bool active) onSave;
+  final Category? cat;
+  final Future<String?> Function(String name, String emoji, bool active) onSave;
   final VoidCallback? onDelete;
   const _CategoryForm({required this.cat, required this.onSave, this.onDelete});
 
@@ -159,8 +178,9 @@ class _CategoryForm extends StatefulWidget {
 class _CategoryFormState extends State<_CategoryForm> {
   late final _name = TextEditingController(text: widget.cat?.name ?? '');
   late final _emoji = TextEditingController(text: widget.cat?.emoji ?? '🏷️');
-  late bool _active = widget.cat?.active ?? true;
+  late bool _active = widget.cat?.isActive ?? true;
   String? _error;
+  bool _saving = false;
 
   @override
   void dispose() {
@@ -213,14 +233,27 @@ class _CategoryFormState extends State<_CategoryForm> {
         const SizedBox(height: 14),
         _ActionButton(
           label: editing ? 'Save changes' : 'Add category',
-          onPressed: () {
+          onPressed: () async {
+            if (_saving) return;
             if (_name.text.trim().isEmpty) {
               setState(() => _error = 'Please enter a name');
               return;
             }
-            widget.onSave(_name.text.trim(),
+            setState(() {
+              _saving = true;
+              _error = null;
+            });
+            final err = await widget.onSave(_name.text.trim(),
                 _emoji.text.trim().isEmpty ? '🏷️' : _emoji.text.trim(), _active);
-            Navigator.pop(context);
+            if (!mounted) return;
+            if (err == null) {
+              Navigator.pop(context);
+            } else {
+              setState(() {
+                _saving = false;
+                _error = err;
+              });
+            }
           },
         ),
         if (widget.onDelete != null) ...[
@@ -648,5 +681,25 @@ class _Empty extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Center(
         child: Text(text, style: const TextStyle(color: _cMuted)),
+      );
+}
+
+class _ErrorView extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  const _ErrorView({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: _cMuted)),
+            const SizedBox(height: 12),
+            TextButton(onPressed: onRetry, child: const Text('Try again')),
+          ]),
+        ),
       );
 }

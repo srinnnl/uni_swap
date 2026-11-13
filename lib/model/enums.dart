@@ -157,9 +157,7 @@ enum PaymentStatus {
   pending('pending'),
   processing('processing'),
   paid('paid'),
-  failed('failed'),
-  partiallyRefunded('partially_refunded'),
-  refunded('refunded');
+  failed('failed');
 
   const PaymentStatus(this.apiValue);
   final String apiValue;
@@ -187,70 +185,4 @@ enum SellerTransferStatus {
 
   static SellerTransferStatus fromApi(Object? value) =>
       tryParse(value) ?? notReady;
-}
-
-/// refunds.refund_status
-enum RefundStatus {
-  pending('pending'),
-  approved('approved'),
-  rejected('rejected'),
-  processing('processing'),
-  completed('completed'),
-  failed('failed');
-
-  const RefundStatus(this.apiValue);
-  final String apiValue;
-
-  static RefundStatus? tryParse(Object? value) =>
-      _tryParse(values, value, (status) => status.apiValue);
-
-  static RefundStatus fromApi(Object? value) => tryParse(value) ?? pending;
-}
-
-/// reports.report_type
-enum ReportType {
-  productProblem('product_problem'),
-  paymentProblem('payment_problem'),
-  refundProblem('refund_problem'),
-  sellerProblem('seller_problem'),
-  other('other');
-
-  const ReportType(this.apiValue);
-  final String apiValue;
-
-  static ReportType? tryParse(Object? value) =>
-      _tryParse(values, value, (type) => type.apiValue);
-
-  static ReportType fromApi(Object? value) => tryParse(value) ?? other;
-}
-
-/// reports.status
-enum ReportStatus {
-  pending('pending'),
-  reviewing('reviewing'),
-  resolved('resolved'),
-  rejected('rejected');
-
-  const ReportStatus(this.apiValue);
-  final String apiValue;
-
-  static ReportStatus? tryParse(Object? value) =>
-      _tryParse(values, value, (status) => status.apiValue);
-
-  static ReportStatus fromApi(Object? value) => tryParse(value) ?? pending;
-}
-
-/// bank_accounts.status
-enum BankAccountStatus {
-  pending('pending'),
-  verified('verified'),
-  rejected('rejected');
-
-  const BankAccountStatus(this.apiValue);
-  final String apiValue;
-
-  static BankAccountStatus? tryParse(Object? value) =>
-      _tryParse(values, value, (status) => status.apiValue);
-
-  static BankAccountStatus fromApi(Object? value) => tryParse(value) ?? pending;
 }

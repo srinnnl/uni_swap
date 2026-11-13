@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:uni_swap/model/format.dart';
 import 'package:uni_swap/model/order_status.dart';
-import 'package:uni_swap/view/user/report_product_page.dart';
 import 'package:uni_swap/view/user/arrange_meetup_page.dart';
 import 'package:uni_swap/view/user/payment_page.dart';
 
@@ -9,8 +8,8 @@ import 'package:uni_swap/view/user/payment_page.dart';
 // ปิดหน้าแล้วจะ pop กลับพร้อมผลล่าสุด (OrderResult: สถานะ + จุดนัด) ให้หน้า Orders อัปเดตตาม
 //
 // flow ตาม DB (orders.status):
-//   pending_payment -> paid -> ready_for_meetup -> completed
-//   แตกแขนง: cancelled (ก่อนจ่าย), expired (เลย payment_deadline), refund_requested (หลังจ่าย)
+//   pending_payment -> ready_for_meetup -> completed
+//   แตกแขนง: cancelled (ก่อนจ่าย), expired (เลย payment_deadline)
 // ไม่มีขั้นผู้ขายตอบรับ/ปฏิเสธ: ผู้ซื้อกด Buy now แล้วออเดอร์เริ่มที่ pending_payment ทันที
 
 class _C {
@@ -113,8 +112,8 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(m)));
 
-  // ===== การกระทำต่างๆ (ทั้งหมดเป็นข้อมูลจำลอง) =====
-  // TODO: แต่ละฟังก์ชันด้านล่างให้เพื่อนต่อ API แล้วอัปเดตสถานะจากผลลัพธ์จริง
+  // Payment is persisted by the demo API; meetup, receipt, and cancellation
+  // remain local UI actions until their endpoints are connected.
 
   Future<void> _arrange() async {
     final r = await Navigator.push<MeetupChoice>(
@@ -142,7 +141,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
       context,
       MaterialPageRoute(
         builder: (_) => PaymentPage(
-          orderId: _orderLabel,
+          orderId: widget.orderId,
           title: widget.title,
           price: widget.price,
           sellerName: widget.person,
@@ -153,8 +152,8 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
       ),
     );
     if (ok == true && mounted) {
-      setState(() => _raw = OrderStatus.paid);
-      _toast('Payment held by UniSwap');
+      setState(() => _raw = OrderStatus.readyForMeetup);
+      _toast('Demo payment recorded; no money was transferred');
     }
   }
 
@@ -192,13 +191,12 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
     final ok = await _confirm(
       'Confirm received?',
       'Only confirm after you have the item in hand. '
-          'UniSwap will then release your payment to the seller.',
+          "This will record the handover and the seller's estimated payout. "
+          'No real money is transferred in the demo.',
       'Yes, I got it',
     );
     if (!ok) return;
-    // TODO: API ยืนยันรับของ
-    //   orders.status='completed', received_at=now, products.status='sold',
-    //   payments.seller_transfer_status 'held' -> 'pending' (UniSwap โอนให้ผู้ขาย)
+    // TODO: call the receive endpoint and refresh the order from the server.
     setState(() => _raw = OrderStatus.completed);
   }
 
@@ -213,69 +211,6 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
     if (!ok) return;
     // TODO: API ยกเลิกออเดอร์
     setState(() => _raw = OrderStatus.cancelled);
-  }
-
-  Future<void> _requestRefund() async {
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        final ctrl = TextEditingController();
-        String? error;
-        return StatefulBuilder(
-          builder: (ctx, setDialog) => AlertDialog(
-            backgroundColor: _C.bg,
-            surfaceTintColor: Colors.transparent,
-            title: const Text('Request a refund'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'UniSwap will review your request before refunding $_priceText.',
-                  style: const TextStyle(fontSize: 13, color: _C.muted),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: ctrl,
-                  maxLines: 3,
-                  maxLength: 500,
-                  decoration: InputDecoration(
-                    hintText: 'Why do you need a refund?',
-                    errorText: error,
-                    border: const OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Back'),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: _C.redFg),
-                onPressed: () {
-                  final text = ctrl.text.trim();
-                  if (text.isEmpty) {
-                    // refunds.reason เป็น NOT NULL ใน DB
-                    setDialog(() => error = 'Please tell us the reason');
-                    return;
-                  }
-                  Navigator.pop(ctx, text);
-                },
-                child: const Text('Send request'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-    if (reason == null || !mounted) return;
-    // TODO: API ขอคืนเงิน
-    //   INSERT refunds { order_id, requested_by, refund_amount: ราคาที่จ่าย, reason }
-    //   refund_status='pending'  และ orders.status='refund_requested'
-    setState(() => _raw = OrderStatus.refundRequested);
-    _toast('Refund requested · UniSwap will review it');
   }
 
   void _close() => Navigator.pop(
@@ -319,11 +254,8 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   }
 
   Widget _buildHeader() {
-    // ผู้ซื้อยกเลิกได้ก่อนจ่าย, หลังจ่ายเปลี่ยนเป็นขอคืนเงิน
+    // ผู้ซื้อยกเลิกได้ก่อนจ่าย
     final canCancel = widget.isBuying && _status == OrderStatus.pendingPayment;
-    final canRefund =
-        widget.isBuying &&
-        (_status == OrderStatus.paid || _status == OrderStatus.readyForMeetup);
     return Row(
       children: [
         IconButton(icon: const Icon(Icons.arrow_back), onPressed: _close),
@@ -346,47 +278,17 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
             ],
           ),
         ),
-        PopupMenuButton<String>(
-          icon: const Icon(Icons.more_horiz, color: _C.ink),
-          color: Colors.white,
-          onSelected: (v) {
-            if (v == 'cancel') _cancelOrder();
-            if (v == 'refund') _requestRefund();
-            if (v == 'report') _openReport();
-          },
-          itemBuilder: (_) => [
-            if (canCancel)
-              const PopupMenuItem(value: 'cancel', child: Text('Cancel order')),
-            if (canRefund)
-              const PopupMenuItem(
-                value: 'refund',
-                child: Text('Request a refund'),
-              ),
-            const PopupMenuItem(
-              value: 'report',
-              child: Text('Report a problem'),
-            ),
-          ],
-        ),
+        if (canCancel)
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_horiz, color: _C.ink),
+            color: Colors.white,
+            onSelected: (_) => _cancelOrder(),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'cancel', child: Text('Cancel order')),
+            ],
+          ),
       ],
     );
-  }
-
-  // รายงานปัญหาของออเดอร์นี้ (reports.order_id)
-  Future<void> _openReport() async {
-    final sent = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ReportProductPage(
-          orderId: widget.orderId,
-          productTitle: widget.title,
-          price: widget.price,
-          personName: widget.person,
-          imageUrl: widget.imageUrl,
-        ),
-      ),
-    );
-    if (sent == true && mounted) _toast('Report sent');
   }
 
   (String, Color, Color) get _badge => switch (_status.tone) {
@@ -554,7 +456,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
           ),
           const SizedBox(height: 2),
           Text(
-            'UniSwap transfers this to your bank account · Order $_orderLabel',
+            'Demo payout only; no bank transfer is made · Order $_orderLabel',
             style: const TextStyle(fontSize: 11, color: _C.muted),
           ),
         ],
@@ -572,7 +474,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
     final paymentText = !_needsPayment
         ? 'Free item · no payment needed'
         : _paid
-        ? 'Paid to UniSwap (held safely)'
+        ? 'Marked paid (demo; no funds transferred)'
         : deadline != null
         ? 'Pay before ${_formatTime(TimeOfDay.fromDateTime(deadline))}'
         : 'Waiting for payment';
@@ -588,7 +490,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
         'Completed',
         _completed
             ? (_needsPayment
-                  ? 'Confirmed · seller payout sent'
+                  ? 'Confirmed · demo payout recorded'
                   : 'Confirmed · handover done')
             : 'Confirm after handover',
         _completed,
@@ -617,11 +519,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
 
   // สถานะที่ออกนอกเส้นทางหลัก (ไม่แสดงเป็นเส้นเวลา)
   bool get _hasSpecialStatus => switch (_status) {
-    OrderStatus.cancelled ||
-    OrderStatus.expired ||
-    OrderStatus.refundRequested ||
-    OrderStatus.partiallyRefunded ||
-    OrderStatus.refunded => true,
+    OrderStatus.cancelled || OrderStatus.expired => true,
     _ => false,
   };
 
@@ -644,23 +542,11 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
         'Payment time ran out',
         'This order expired and the item is available again.',
       ),
-      OrderStatus.refundRequested => (
-        Icons.hourglass_top_outlined,
-        _C.amberFg,
-        'Refund requested',
-        'UniSwap is reviewing your request. We will update this order.',
-      ),
-      OrderStatus.partiallyRefunded => (
-        Icons.undo_outlined,
-        _C.blueFg,
-        'Partially refunded',
-        'Part of your payment was returned by UniSwap.',
-      ),
       _ => (
-        Icons.undo_outlined,
-        _C.blueFg,
-        'Refunded',
-        'Your payment was returned by UniSwap.',
+        Icons.timer_off_outlined,
+        _C.redFg,
+        'Payment time ran out',
+        'This order expired and the item is available again.',
       ),
     };
     return Column(
@@ -854,9 +740,6 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
         label = 'Confirm received';
         icon = Icons.check_circle_outline;
         onTap = _confirmReceived;
-      case OrderStatus.refundRequested:
-        label = 'Refund under review';
-        onTap = null;
       default:
         return null;
     }

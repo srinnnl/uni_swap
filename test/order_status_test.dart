@@ -6,8 +6,6 @@ void main() {
     test('apiValue ตรงกับ ENUM ใน DB', () {
       expect(OrderStatus.pendingPayment.apiValue, 'pending_payment');
       expect(OrderStatus.readyForMeetup.apiValue, 'ready_for_meetup');
-      expect(OrderStatus.refundRequested.apiValue, 'refund_requested');
-      expect(OrderStatus.partiallyRefunded.apiValue, 'partially_refunded');
     });
 
     test('tryParse แปลงกลับได้ครบทุกค่า', () {
@@ -32,12 +30,9 @@ void main() {
         OrderStatus.pendingPayment: true,
         OrderStatus.paid: true,
         OrderStatus.readyForMeetup: true,
-        OrderStatus.refundRequested: true,
         OrderStatus.completed: false,
         OrderStatus.cancelled: false,
         OrderStatus.expired: false,
-        OrderStatus.partiallyRefunded: false,
-        OrderStatus.refunded: false,
       };
       expect(expected.length, OrderStatus.values.length);
       expected.forEach((status, isActive) {
@@ -53,9 +48,6 @@ void main() {
         OrderStatus.completed: true,
         OrderStatus.cancelled: false,
         OrderStatus.expired: false,
-        OrderStatus.refundRequested: true,
-        OrderStatus.partiallyRefunded: true,
-        OrderStatus.refunded: true,
       };
       expect(expected.length, OrderStatus.values.length);
       expected.forEach((status, isPaid) {
@@ -78,19 +70,13 @@ void main() {
       expect(OrderStatus.completed.label, 'Completed');
       expect(OrderStatus.cancelled.label, 'Cancelled');
       expect(OrderStatus.expired.label, 'Expired');
-      expect(OrderStatus.refundRequested.label, 'Refund requested');
-      expect(OrderStatus.partiallyRefunded.label, 'Partially refunded');
-      expect(OrderStatus.refunded.label, 'Refunded');
     });
 
     test('tone ของป้ายสถานะ', () {
       const expected = {
         OrderStatus.pendingPayment: StatusTone.amber,
-        OrderStatus.refundRequested: StatusTone.amber,
         OrderStatus.paid: StatusTone.blue,
         OrderStatus.readyForMeetup: StatusTone.blue,
-        OrderStatus.partiallyRefunded: StatusTone.blue,
-        OrderStatus.refunded: StatusTone.blue,
         OrderStatus.completed: StatusTone.green,
         OrderStatus.cancelled: StatusTone.red,
         OrderStatus.expired: StatusTone.red,

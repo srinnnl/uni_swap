@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:uni_swap/view/user/campus_locations.dart';
-import 'bank_account_page.dart';
 import 'package:uni_swap/view/login.dart';
 import 'package:uni_swap/view/user/request_location_page.dart';
 
@@ -14,7 +13,6 @@ const _cChip = Color(0xFFF0EEE9);
 const _cSage = Color(0xFFD8E4DC);
 const _cSageDark = Color(0xFF3F6B52);
 const _cRedFg = Color(0xFFB3402F);
-const _cLink = Color(0xFF4A5C8F);
 
 class ProfilePage extends StatefulWidget {
   /// Show the "Admin dashboard" menu item (role = admin).
@@ -123,80 +121,6 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
 
         const SizedBox(height: 22),
-
-        _AppCard(
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  const _IconBox(icon: Icons.credit_card_outlined),
-                  const SizedBox(width: 14),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Bank account',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'For receiving marketplace payments',
-                          style: TextStyle(fontSize: 11, color: _cMuted),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const _StatusBadge(
-                    label: 'Verified',
-                    bg: _cSage,
-                    fg: _cSageDark,
-                  ),
-                ],
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Divider(height: 1, color: _cBorder),
-              ),
-              Row(
-                children: [
-                  const SizedBox(width: 58),
-                  const Expanded(
-                    child: Text(
-                      'Kasikornbank',
-                      style: TextStyle(fontSize: 12, color: _cMuted),
-                    ),
-                  ),
-                  const Text(
-                    '•••• 4821',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(width: 12),
-                  InkWell(
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const BankAccountPage(),
-                      ),
-                    ),
-                    child: const Text(
-                      'Edit',
-                      style: TextStyle(
-                        fontSize: 12,
-                        decoration: TextDecoration.underline,
-                        color: _cLink,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
 
         InkWell(
           onTap: _confirmLogout,
@@ -411,41 +335,4 @@ class _PageHeader extends StatelessWidget {
       ],
     );
   }
-}
-
-class _StatusBadge extends StatelessWidget {
-  final String label;
-  final Color bg;
-  final Color fg;
-  const _StatusBadge({
-    super.key,
-    required this.label,
-    required this.bg,
-    required this.fg,
-  });
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-    decoration: BoxDecoration(
-      color: bg,
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Text(
-      label,
-      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fg),
-    ),
-  );
-}
-
-void _showSnack(BuildContext context, String msg) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: _cInk,
-      ),
-    );
 }

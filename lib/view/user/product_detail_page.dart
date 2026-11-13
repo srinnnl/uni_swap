@@ -1,6 +1,6 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
+import 'package:uni_swap/controller/api_client.dart';
+import 'package:uni_swap/controller/app_controllers.dart';
 import 'package:uni_swap/model/format.dart';
 import 'package:uni_swap/model/order_status.dart';
 import 'package:uni_swap/model/product.dart';
@@ -29,17 +29,32 @@ class ProductDetailPage extends StatefulWidget {
 class _ProductDetailPageState extends State<ProductDetailPage> {
   final _pageCtrl = PageController();
   int _imageIndex = 0;
+  ProductDetail? _loadedProduct;
   bool _ordered = false;
+  bool _isOrdering = false;
 
-  ProductDetail get _p => widget.product;
+  ProductDetail get _p => _loadedProduct ?? widget.product;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.product.product != null &&
+        widget.product.imageUrls.length <= 1) {
+      _loadFullProduct();
+    }
+  }
 
   // ซื้อได้เฉพาะสินค้า available ที่ไม่ใช่ของตัวเอง และยังไม่ได้สั่งในหน้านี้
   bool get _canBuy =>
-      _p.status == ProductStatus.available && !_p.isOwnItem && !_ordered;
+      _p.status == ProductStatus.available &&
+      !_p.isOwnItem &&
+      !_ordered &&
+      !_isOrdering;
 
   String get _buttonLabel {
     if (_p.isOwnItem) return 'Your item';
     if (_ordered) return 'Order placed';
+    if (_isOrdering) return 'Placing order…';
     return switch (_p.status) {
       ProductStatus.available => 'Buy now',
       ProductStatus.reserved => 'Reserved',
@@ -63,8 +78,27 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  // Buy now: เลือกจุดนัด/เวลา แล้วสร้างออเดอร์ (pending_payment) ทันที
-  // ไม่มีขั้นรอผู้ขายตอบรับ (ตรงกับ DB ที่ orders เริ่มที่ pending_payment)
+  Future<void> _loadFullProduct() async {
+    try {
+      final response = await productController.detail(widget.product.id);
+      if (response['success'] != true || response['data'] is! Map) {
+        throw const ApiException(
+          'The server returned invalid product details.',
+        );
+      }
+
+      final product = ProductDetail.fromJson(
+        Map<String, dynamic>.from(response['data'] as Map),
+      );
+      if (mounted) setState(() => _loadedProduct = product);
+    } on ApiException catch (error) {
+      if (mounted) {
+        _toast('Could not load all product photos: ${error.message}');
+      }
+    }
+  }
+
+  // Buy now: use the seller's listed location and selected time to create an order.
   Future<void> _buyNow() async {
     final sellerName = _p.seller?.name ?? 'the seller';
     final confirmed = await Navigator.push<MeetupChoice>(
@@ -81,18 +115,36 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
     if (confirmed == null || !mounted) return;
 
-    // TODO: เรียก API สร้างออเดอร์
-    //   POST orders { product_id: _p.id,
-    //                 meetup_location: confirmed.spot,
-    //                 meetup_datetime: confirmed.when.toUtc().toIso8601String() }
-    //   backend: orders.status='pending_payment', payment_deadline = now + 30 นาที,
-    //            products.status 'available' -> 'reserved'
-    //            (ต้องกันกรณีผู้ซื้อ 2 คนสั่งของชิ้นเดียวกันพร้อมกัน และ buyer_id == seller_id)
-    //   ถ้า API ตอบ error (สินค้าถูกจองไปแล้ว) ให้แสดงข้อความและไม่ตั้ง _ordered
-    setState(() => _ordered = true);
-    _toast(
-      'Order placed with $sellerName · pay within 30 minutes in My orders',
-    );
+    setState(() => _isOrdering = true);
+    try {
+      final response = await orderController.create(
+        productId: _p.id,
+        meetupLocation: _p.place,
+        meetupDateTime: confirmed.when,
+      );
+      if (response['success'] != true) {
+        throw ApiException(
+          response['message']?.toString() ?? 'Could not place the order.',
+        );
+      }
+
+      final orderId = int.tryParse(response['order_id']?.toString() ?? '');
+      if (orderId == null) {
+        throw const ApiException('The server did not return an order ID.');
+      }
+      if (!mounted) return;
+
+      setState(() => _ordered = true);
+      _toast('Order #US-$orderId placed with $sellerName');
+    } on ApiException catch (error) {
+      if (mounted) _toast(error.message);
+    } catch (_) {
+      if (mounted) {
+        _toast('Could not place the order. Please try again.');
+      }
+    } finally {
+      if (mounted) setState(() => _isOrdering = false);
+    }
   }
 
   void _openSeller() {
@@ -101,12 +153,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => SellerProfilePage(
-          name: s.name,
-          location: _p.place,
-          rating: s.rating,
-          sales: s.sales,
-        ),
+        builder: (_) =>
+            SellerProfilePage(name: s.name, location: _p.place, sales: s.sales),
       ),
     );
   }
@@ -366,10 +414,14 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    const Icon(Icons.star_border, size: 16, color: _C.muted),
+                    const Icon(
+                      Icons.shopping_bag_outlined,
+                      size: 16,
+                      color: _C.muted,
+                    ),
                     const SizedBox(width: 4),
                     Text(
-                      '${s.rating} ·${s.sales} sales',
+                      '${s.sales} sales',
                       style: const TextStyle(fontSize: 12, color: _C.muted),
                     ),
                   ],

@@ -34,13 +34,13 @@ class _MainScreenState extends State<MainScreen> {
 
   final int _ordersBadge = 0;
 
-  final List<Widget> _pages = const [
-    HomePage(),
-    SearchPage(),
+  List<Widget> get _pages => [
+    const HomePage(),
+    const SearchPage(),
     // SellPage(),
-    MyItemsPage(),
-    OrdersPage(),
-    ProfilePage(),
+    const MyItemsPage(),
+    OrdersPage(isActive: _selectedIndex == 3),
+    const ProfilePage(),
   ];
 
   void _onTap(int index) {

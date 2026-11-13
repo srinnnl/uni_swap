@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'admin_categories_page.dart';
 import 'admin_items_page.dart';
 import 'admin_locations_page.dart';
-import 'admin_refunds_page.dart';
-import 'admin_reports_page.dart';
 import 'admin_users_page.dart';
 import 'package:uni_swap/controller/app_controllers.dart';
 import 'package:uni_swap/view/login.dart';
@@ -21,7 +19,6 @@ const _cBlueBg = Color(0xFFE3ECF7);
 const _cBlueFg = Color(0xFF3B5E8C);
 const _cAmberBg = Color(0xFFFBEBC2);
 const _cAmberFg = Color(0xFF8A6410);
-const _cRedBg = Color(0xFFF8DADA);
 const _cRedFg = Color(0xFFB3402F);
 
 class AdminPage extends StatelessWidget {
@@ -112,7 +109,7 @@ class AdminPage extends StatelessWidget {
             const SizedBox(height: 16),
 
             // Statistics
-            // TODO: ตัวเลขทั้งหมดในหน้านี้เป็นข้อมูลจำลอง ให้เพื่อนทำ API สรุปตัวเลข (users, items, reports ที่ pending)
+            // TODO: ตัวเลขทั้งหมดในหน้านี้เป็นข้อมูลจำลอง ให้เพื่อนทำ API สรุปตัวเลข (users, items)
             GridView(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -215,88 +212,6 @@ class AdminPage extends StatelessWidget {
             ),
 
             const SizedBox(height: 12),
-
-            _AppCard(
-              onTap: () => _open(context, const AdminReportsPage()),
-              child: const Row(
-                children: [
-                  CircleAvatar(
-                    radius: 23,
-                    backgroundColor: _cRedBg,
-                    child: Icon(Icons.flag_outlined, color: _cRedFg, size: 22),
-                  ),
-                  SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Reports to review',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: _cInk,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Check problems reported by buyers and sellers',
-                          style: TextStyle(fontSize: 11, color: _cMuted),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.chevron_right, color: _cMuted),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            _AppCard(
-              onTap: () => _open(context, const AdminRefundsPage()),
-              child: Row(
-                children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: const BoxDecoration(
-                      color: _cBlueBg,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.currency_exchange,
-                      color: _cBlueFg,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Refund requests',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: _cInk,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Approve or reject refunds requested by buyers',
-                          style: TextStyle(fontSize: 11, color: _cMuted),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right, color: _cMuted),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 30),
 
             // Recent activity
             // ไม่มีตาราง log ใน DB: ดึงจาก timestamp ที่มี (users.created_at, products.reviewed_at, location_requests.resolved_at) หรือตัดส่วนนี้

@@ -93,31 +93,6 @@ void main() {
     wire: (e) => e.apiValue,
     parse: SellerTransferStatus.tryParse,
   );
-  _checkEnum<RefundStatus>(
-    name: 'RefundStatus',
-    values: RefundStatus.values,
-    wire: (e) => e.apiValue,
-    parse: RefundStatus.tryParse,
-  );
-  _checkEnum<ReportType>(
-    name: 'ReportType',
-    values: ReportType.values,
-    wire: (e) => e.apiValue,
-    parse: ReportType.tryParse,
-  );
-  _checkEnum<ReportStatus>(
-    name: 'ReportStatus',
-    values: ReportStatus.values,
-    wire: (e) => e.apiValue,
-    parse: ReportStatus.tryParse,
-  );
-  _checkEnum<BankAccountStatus>(
-    name: 'BankAccountStatus',
-    values: BankAccountStatus.values,
-    wire: (e) => e.apiValue,
-    parse: BankAccountStatus.tryParse,
-  );
-
   group('ค่า apiValue ที่ต้องตรงกับ backend', () {
     test('ItemCondition.brandNew ส่งเป็น "new"', () {
       expect(ItemCondition.brandNew.apiValue, 'new');
@@ -132,18 +107,11 @@ void main() {
     });
 
     test('RejectReason ตรงกับที่ app.js รับ', () {
-      expect(
-        RejectReason.values.map((r) => r.apiValue).toSet(),
-        {'prohibited_item', 'misleading', 'poor_photos', 'duplicate', 'other'},
-      );
-    });
-
-    test('ReportType ตรงกับที่ app.js รับ', () {
-      expect(ReportType.values.map((r) => r.apiValue).toSet(), {
-        'product_problem',
-        'payment_problem',
-        'refund_problem',
-        'seller_problem',
+      expect(RejectReason.values.map((r) => r.apiValue).toSet(), {
+        'prohibited_item',
+        'misleading',
+        'poor_photos',
+        'duplicate',
         'other',
       });
     });
@@ -159,10 +127,6 @@ void main() {
       expect(PaymentMethod.fromApi('x'), PaymentMethod.gateway);
       expect(PaymentStatus.fromApi('x'), PaymentStatus.pending);
       expect(SellerTransferStatus.fromApi('x'), SellerTransferStatus.notReady);
-      expect(RefundStatus.fromApi('x'), RefundStatus.pending);
-      expect(ReportType.fromApi('x'), ReportType.other);
-      expect(ReportStatus.fromApi('x'), ReportStatus.pending);
-      expect(BankAccountStatus.fromApi('x'), BankAccountStatus.pending);
     });
 
     test('enum ที่ fromApi คืน null เมื่อไม่รู้จักค่า', () {

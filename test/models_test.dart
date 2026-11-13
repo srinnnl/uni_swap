@@ -291,7 +291,7 @@ void main() {
     });
   });
 
-  group('Payment, Refund, Report, Review และ BankAccount', () {
+  group('Payment', () {
     test('parse Payment', () {
       final payment = Payment.fromJson({
         'payment_id': '8',
@@ -313,81 +313,6 @@ void main() {
       expect(payment.status, PaymentStatus.paid);
       expect(payment.sellerTransferStatus, SellerTransferStatus.held);
       expect(payment.amount, 472.50);
-    });
-
-    test('parse Refund', () {
-      final refund = Refund.fromJson({
-        'refund_id': '3',
-        'order_id': '5',
-        'requested_by': '2',
-        'handled_by': null,
-        'refund_amount': '472.50',
-        'reason': 'Item not as described',
-        'refund_status': 'pending',
-        'gateway_refund_ref': null,
-        'refund_proof_url': null,
-        'requested_at': '2026-11-06T10:00:00.000Z',
-      });
-
-      expect(refund.id, 3);
-      expect(refund.status, RefundStatus.pending);
-      expect(refund.isOpen, isTrue);
-      expect(refund.amount, 472.50);
-    });
-
-    test('parse Report พร้อม join จาก admin', () {
-      final report = Report.fromJson({
-        'report_id': '9',
-        'reporter_id': '2',
-        'reporter_name': 'Maya Demo',
-        'order_id': '5',
-        'product_id': '10',
-        'product_title': 'Oak study desk',
-        'report_type': 'product_problem',
-        'reason': 'Broken leg',
-        'evidence_url': 'https://example.com/evidence.jpg',
-        'status': 'reviewing',
-        'reviewed_by': '1',
-        'admin_note': 'Checking with seller',
-        'created_at': '2026-11-06T10:00:00.000Z',
-        'resolved_at': null,
-      });
-
-      expect(report.type, ReportType.productProblem);
-      expect(report.status, ReportStatus.reviewing);
-      expect(report.productTitle, 'Oak study desk');
-      expect(report.isOpen, isTrue);
-    });
-
-    test('parse Review', () {
-      final review = Review.fromJson({
-        'review_id': '1',
-        'order_id': '5',
-        'reviewer_id': '2',
-        'seller_id': '3',
-        'rating': '5',
-        'comment': 'Great seller',
-        'created_at': '2026-11-07T10:00:00.000Z',
-      });
-
-      expect(review.rating, 5);
-      expect(review.comment, 'Great seller');
-    });
-
-    test('parse BankAccount และปิดเลขบัญชี', () {
-      final account = BankAccount.fromJson({
-        'bank_account_id': '1',
-        'user_id': '3',
-        'bank_name': 'Kasikorn Bank',
-        'account_last4': '1234',
-        'account_name': 'Niran Demo',
-        'status': 'verified',
-        'verified_by': '1',
-        'verified_at': '2026-11-01T10:00:00.000Z',
-      });
-
-      expect(account.status, BankAccountStatus.verified);
-      expect(account.maskedNumber, '•••• 1234');
     });
   });
 
@@ -426,7 +351,6 @@ void main() {
           'listings_to_fix': '0',
           'buying_active': '1',
           'selling_active': '0',
-          'refunds_pending': '0',
         },
         'recent_listings': [productJson()],
         'recent_orders': [orderJson()],
@@ -456,23 +380,10 @@ void main() {
           'users_pending': '1',
           'items_live': '2',
           'items_pending': '1',
-          'reports_open': '1',
           'locations_pending': '1',
           'categories_active': '4',
-          'refunds_pending': '0',
         },
         'pending_listings': [productJson()],
-        'open_reports': [
-          {
-            'report_id': '9',
-            'reporter_id': '2',
-            'report_type': 'product_problem',
-            'reason': 'Broken leg',
-            'status': 'pending',
-            'title': 'Oak study desk',
-            'order_id': '5',
-          },
-        ],
         'pending_location_requests': [
           {
             'request_id': '4',
@@ -487,7 +398,6 @@ void main() {
       expect(dashboard.overview.usersTotal, 3);
       expect(dashboard.overview.itemsPending, 1);
       expect(dashboard.pendingListings.single.id, 10);
-      expect(dashboard.openReports.single.productTitle, 'Oak study desk');
       expect(
         dashboard.pendingLocationRequests.single.requesterName,
         'Maya Demo',

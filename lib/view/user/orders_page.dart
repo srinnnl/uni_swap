@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/controller/api_client.dart';
+import 'package:uni_swap/controller/app_controllers.dart';
 import 'package:uni_swap/model/format.dart';
+import 'package:uni_swap/model/json_utils.dart';
+import 'package:uni_swap/model/order.dart' as order_model;
 import 'package:uni_swap/model/order_status.dart';
 import 'package:uni_swap/view/user/order_details_page.dart';
 
@@ -19,8 +23,7 @@ const _cRedBg = Color(0xFFF8DADA);
 const _cRedFg = Color(0xFFB3402F);
 const _cLink = Color(0xFF4A5C8F);
 
-// ออเดอร์ 1 รายการ ตรงกับแถวใน orders (ใช้ OrderStatus กลางใน models/order_status.dart)
-// TODO: แทนด้วย class Order กลาง + Order.fromJson เมื่อต่อ API
+// Order-row view model adapted from the shared Order API model.
 class _Order {
   final int id; // orders.order_id
   final String title;
@@ -31,6 +34,7 @@ class _Order {
   createdAt; // orders.created_at (API ส่ง UTC ให้แปลงด้วย toLocal())
   final Color thumbColor;
   final IconData thumbIcon;
+  final String? imageUrl;
   final String productLocation; // products.location_name
   final double commissionRate; // orders.commission_rate
   final double commissionAmount; // orders.commission_amount
@@ -39,8 +43,6 @@ class _Order {
   String meetupPlace; // orders.meetup_location (NOT NULL)
   DateTime? meetupAt; // orders.meetup_datetime
   DateTime? paymentDeadline; // orders.payment_deadline
-  int? rating;
-  String? reviewComment; // reviews.comment (ไม่เกิน 500 ตัวอักษร ไม่บังคับ)
 
   _Order({
     required this.id,
@@ -54,15 +56,41 @@ class _Order {
     required this.productLocation,
     required this.meetupPlace,
     required this.status,
+    this.imageUrl,
     this.meetupAt,
     this.paymentDeadline,
     this.commissionRate = 5,
-  }) : commissionAmount = double.parse(
-         (price * commissionRate / 100).toStringAsFixed(2),
-       ),
+    double? commissionAmount,
+    double? sellerPayout,
+  }) : commissionAmount =
+           commissionAmount ??
+           double.parse((price * commissionRate / 100).toStringAsFixed(2)),
        sellerPayout =
+           sellerPayout ??
            price -
-           double.parse((price * commissionRate / 100).toStringAsFixed(2));
+               double.parse((price * commissionRate / 100).toStringAsFixed(2));
+
+  factory _Order.fromModel(order_model.Order order) => _Order(
+    id: order.id,
+    title: order.productTitle ?? 'Item',
+    price: order.sellerPrice,
+    person: order.isBuying
+        ? order.sellerName ?? 'Seller'
+        : order.buyerName ?? 'Buyer',
+    isBuying: order.isBuying,
+    createdAt: order.createdAt ?? order.updatedAt ?? DateTime.now(),
+    thumbColor: const Color(0xFFD9DEE3),
+    thumbIcon: Icons.shopping_bag_outlined,
+    imageUrl: order.imageUrl,
+    productLocation: order.productLocationName ?? 'Seller pickup location',
+    commissionRate: order.commissionRate,
+    commissionAmount: order.commissionAmount,
+    sellerPayout: order.sellerPayout,
+    status: order.status,
+    meetupPlace: order.meetupLocation,
+    meetupAt: order.meetupDatetime,
+    paymentDeadline: order.paymentDeadline,
+  );
 
   // เลย payment_deadline แล้วยังไม่จ่าย แสดงเป็น expired (backend เป็นคนเปลี่ยนจริง)
   OrderStatus get shown {
@@ -81,146 +109,67 @@ class _Order {
   bool get needsPayment => price > 0;
 }
 
-// เวลาจำลองสำหรับข้อมูลตัวอย่าง: วันนี้ + [days] วัน ที่ [hour]:[minute]
-DateTime _soon(int days, int hour, [int minute = 0]) {
-  final n = DateTime.now();
-  return DateTime(n.year, n.month, n.day + days, hour, minute);
-}
-
-DateTime _ago({int minutes = 0, int days = 0}) =>
-    DateTime.now().subtract(Duration(days: days, minutes: minutes));
-
 class OrdersPage extends StatefulWidget {
-  const OrdersPage({super.key});
+  const OrdersPage({super.key, this.isActive = false});
+
+  final bool isActive;
 
   @override
   State<OrdersPage> createState() => _OrdersPageState();
 }
 
 class _OrdersPageState extends State<OrdersPage> {
-  // Mock data (UI only)
-  // TODO: โหลดจาก API (orders JOIN products JOIN users) แล้วแปลงเป็น _Order
-  // ทุกออเดอร์มีจุดนัดตั้งแต่ตอนกด Buy now และเริ่มที่ pending_payment
-  // (payment_deadline = created_at + 30 นาที) ไม่มีขั้นผู้ขายตอบรับ
-  late final List<_Order> _orders = [
-    _Order(
-      id: 101,
-      title: 'Oak study desk',
-      price: 45,
-      person: 'Jamie',
-      isBuying: true,
-      createdAt: _ago(minutes: 8),
-      paymentDeadline: _ago(minutes: 8).add(kPaymentWindow),
-      thumbColor: const Color(0xFFD9DEE3),
-      thumbIcon: Icons.desk_outlined,
-      productLocation: 'On-campus dorms · Lamduan 1 Dormitory',
-      status: OrderStatus.pendingPayment,
-      meetupPlace: 'Lamduan 1 Dormitory lobby',
-      meetupAt: _soon(1, 17, 30),
-    ),
-    _Order(
-      id: 102,
-      title: 'Acoustic guitar',
-      price: 80,
-      person: 'Noah',
-      isBuying: true,
-      createdAt: _ago(days: 1),
-      thumbColor: const Color(0xFF4A4036),
-      thumbIcon: Icons.music_note,
-      productLocation: 'On-campus dorms · Sakthong 2 Dormitory',
-      status: OrderStatus.paid,
-      meetupPlace: 'Main library',
-      meetupAt: _soon(2, 18),
-    ),
-    _Order(
-      id: 103,
-      title: 'City bike',
-      price: 0,
-      person: 'Alex',
-      isBuying: true,
-      createdAt: _ago(days: 20),
-      thumbColor: const Color(0xFFB9B2A6),
-      thumbIcon: Icons.pedal_bike,
-      productLocation: 'Off-campus dorms · Kittiya Dormitory',
-      status: OrderStatus.completed,
-      meetupPlace: 'Student union entrance',
-      meetupAt: _ago(days: 18),
-    ),
-    _Order(
-      id: 104,
-      title: 'Desk fan',
-      price: 12.5,
-      person: 'Pim',
-      isBuying: true,
-      createdAt: _ago(days: 3),
-      paymentDeadline: _ago(days: 3).add(kPaymentWindow),
-      thumbColor: const Color(0xFFD3DDE8),
-      thumbIcon: Icons.air,
-      productLocation: 'Off-campus dorms · Rattana Dormitory',
-      status: OrderStatus.pendingPayment, // เลย deadline -> แสดงเป็น Expired
-      meetupPlace: 'Main library',
-      meetupAt: _soon(-2, 16),
-    ),
-    _Order(
-      id: 201,
-      title: 'Desk lamp',
-      price: 12,
-      person: 'Sam',
-      isBuying: false,
-      createdAt: _ago(minutes: 5),
-      paymentDeadline: _ago(minutes: 5).add(kPaymentWindow),
-      thumbColor: const Color(0xFFE9D9B0),
-      thumbIcon: Icons.light_outlined,
-      productLocation: 'On-campus dorms · Lamduan 2 Dormitory',
-      status: OrderStatus.pendingPayment,
-      meetupPlace: 'Main library',
-      meetupAt: _soon(1, 12),
-    ),
-    _Order(
-      id: 202,
-      title: 'Calculus textbook',
-      price: 20,
-      person: 'Priya',
-      isBuying: false,
-      createdAt: _ago(days: 1),
-      thumbColor: const Color(0xFFC9D6CB),
-      thumbIcon: Icons.menu_book,
-      productLocation: 'On-campus dorms · Lamduan 2 Dormitory',
-      status: OrderStatus.readyForMeetup,
-      meetupPlace: 'Lamduan 2 Dormitory lobby',
-      meetupAt: _soon(1, 15),
-    ),
-    _Order(
-      id: 203,
-      title: 'Mini fridge',
-      price: 60,
-      person: 'Lee',
-      isBuying: false,
-      createdAt: _ago(days: 2),
-      thumbColor: const Color(0xFFD3DDE8),
-      thumbIcon: Icons.kitchen,
-      productLocation: 'Off-campus dorms · PHUTARA APARTMENT MFU',
-      status: OrderStatus.refundRequested,
-      meetupPlace: 'Student union entrance',
-      meetupAt: _soon(3, 11),
-    ),
-    _Order(
-      id: 204,
-      title: 'Bean bag chair',
-      price: 15,
-      person: 'Mika',
-      isBuying: false,
-      createdAt: _ago(days: 25),
-      thumbColor: const Color(0xFFE3C9C9),
-      thumbIcon: Icons.chair,
-      productLocation: 'On-campus dorms · Lamduan 1 Dormitory',
-      status: OrderStatus.completed,
-      meetupPlace: 'Main library',
-      meetupAt: _ago(days: 23),
-    ),
-  ];
+  final List<_Order> _orders = [];
 
   bool _showBuying = true;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isActive) _loadOrders();
+  }
+
+  @override
+  void didUpdateWidget(covariant OrdersPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) _loadOrders();
+  }
+
+  Future<void> _loadOrders() async {
+    if (_loading) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final response = await orderController.list(limit: 100);
+      if (response['success'] != true) {
+        throw const ApiException('The server could not load your orders.');
+      }
+      if (response['data'] is! List) {
+        throw const ApiException('The server returned invalid order data.');
+      }
+      final parsed = jsonParseList(
+        response['data'],
+        order_model.Order.fromJson,
+      );
+      if (parsed.any((order) => order.id <= 0 || order.perspective == null)) {
+        throw const ApiException('The server returned invalid order data.');
+      }
+      if (!mounted) return;
+      setState(() {
+        _orders
+          ..clear()
+          ..addAll(parsed.map(_Order.fromModel));
+      });
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   List<_Order> get _current =>
       _orders.where((o) => o.isBuying == _showBuying).toList();
@@ -234,12 +183,16 @@ class _OrdersPageState extends State<OrdersPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _cBg,
-      body: SafeArea(bottom: false, child: _buildList()),
+      body: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(onRefresh: _loadOrders, child: _buildList()),
+      ),
     );
   }
 
   Widget _buildList() {
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
       children: [
         const _PageHeader(title: 'My orders'),
@@ -261,12 +214,36 @@ class _OrdersPageState extends State<OrdersPage> {
           ],
         ),
         const SizedBox(height: 24),
-        if (_active.isEmpty && _past.isEmpty)
+        if (_loading && _orders.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 60),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (_error != null && _orders.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 40),
+            child: Column(
+              children: [
+                Text(_error!, textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: _loadOrders,
+                  child: const Text('Try again'),
+                ),
+              ],
+            ),
+          )
+        else if (_active.isEmpty && _past.isEmpty)
           const Padding(
             padding: EdgeInsets.only(top: 60),
             child: Center(
               child: Text('No orders yet', style: TextStyle(color: _cMuted)),
             ),
+          ),
+        if (_error != null && _orders.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(_error!, style: const TextStyle(color: _cRedFg)),
           ),
         for (final o in _active) _tile(o),
         if (_past.isNotEmpty) ...[
@@ -381,7 +358,6 @@ class _OrdersPageState extends State<OrdersPage> {
         decoration: BoxDecoration(
           color: Colors.white, // ✨ 2. สีพื้นหลังของการ์ด
           borderRadius: BorderRadius.circular(16),
-
         ),
         child: Opacity(
           opacity: dimmed ? 0.75 : 1,
@@ -395,7 +371,20 @@ class _OrdersPageState extends State<OrdersPage> {
                   color: o.thumbColor,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(o.thumbIcon, color: Colors.white70, size: 30),
+                child: o.imageUrl == null
+                    ? Icon(o.thumbIcon, color: Colors.white70, size: 30)
+                    : ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.network(
+                          o.imageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => Icon(
+                            o.thumbIcon,
+                            color: Colors.white70,
+                            size: 30,
+                          ),
+                        ),
+                      ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -465,15 +454,19 @@ class _OrdersPageState extends State<OrdersPage> {
           commissionRate: o.commissionRate,
           commissionAmount: o.commissionAmount,
           sellerPayout: o.sellerPayout,
+          imageUrl: o.imageUrl,
         ),
       ),
     );
-    if (result == null || !mounted) return;
-    setState(() {
-      o.status = result.status;
-      o.meetupPlace = result.meetupPlace;
-      o.meetupAt = result.meetupAt;
-    });
+    if (!mounted) return;
+    if (result != null) {
+      setState(() {
+        o.status = result.status;
+        o.meetupPlace = result.meetupPlace;
+        o.meetupAt = result.meetupAt;
+      });
+    }
+    await _loadOrders();
   }
 
   Widget _link(String text, VoidCallback? onTap, {bool arrow = false}) {
@@ -525,107 +518,12 @@ class _OrdersPageState extends State<OrdersPage> {
           style: const TextStyle(fontSize: 12, color: _cMuted),
         );
 
-      case OrderStatus.refundRequested:
-        return const Text(
-          'Refund under review by UniSwap',
-          style: TextStyle(fontSize: 12, color: _cMuted),
-        );
-
       case OrderStatus.completed:
-        if (!o.isBuying) return const SizedBox.shrink();
-        if (o.rating != null) {
-          return Text(
-            'Reviewed · ${'★' * o.rating!}',
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: _cAmberFg,
-            ),
-          );
-        }
-        // reviews: ผู้ซื้อรีวิวผู้ขายได้หลังออเดอร์ completed (1 ออเดอร์ = 1 รีวิว)
-        return _link('Leave a review', () => _reviewDialog(o));
+        return const SizedBox.shrink();
 
-      case OrderStatus.cancelled ||
-          OrderStatus.expired ||
-          OrderStatus.partiallyRefunded ||
-          OrderStatus.refunded:
+      case OrderStatus.cancelled || OrderStatus.expired:
         return const SizedBox.shrink();
     }
-  }
-
-  void _reviewDialog(_Order o) {
-    int stars = 5;
-    final commentCtrl = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialog) => AlertDialog(
-          backgroundColor: _cBg,
-          surfaceTintColor: Colors.transparent,
-          scrollable: true,
-          title: Text('Review ${o.person}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  for (var i = 1; i <= 5; i++)
-                    IconButton(
-                      onPressed: () => setDialog(() => stars = i),
-                      icon: Icon(
-                        i <= stars ? Icons.star : Icons.star_border,
-                        color: _cAmberFg,
-                        size: 36,
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'How was your experience?',
-                style: TextStyle(color: _cMuted, fontSize: 14),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: commentCtrl,
-                maxLength: 500,
-                minLines: 3,
-                maxLines: 4,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  hintText: 'Add a comment (optional)',
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: _cInk),
-              onPressed: () {
-                // TODO: API -> reviews: order_id, reviewer_id, seller_id, rating, comment (ว่างส่ง null)
-                final text = commentCtrl.text.trim();
-                setState(() {
-                  o.rating = stars;
-                  o.reviewComment = text.isEmpty ? null : text;
-                });
-                Navigator.pop(ctx);
-              },
-              child: const Text('Submit'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 

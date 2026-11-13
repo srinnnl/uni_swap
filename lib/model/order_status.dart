@@ -11,10 +11,7 @@ enum OrderStatus {
   readyForMeetup('ready_for_meetup'),
   completed('completed'),
   cancelled('cancelled'),
-  expired('expired'),
-  refundRequested('refund_requested'),
-  partiallyRefunded('partially_refunded'),
-  refunded('refunded');
+  expired('expired');
 
   const OrderStatus(this.apiValue);
 
@@ -33,19 +30,11 @@ enum OrderStatus {
 
   /// ออเดอร์ที่ยังดำเนินอยู่ (แสดงในส่วนบนของหน้า Orders)
   bool get isActive =>
-      this == pendingPayment ||
-      this == paid ||
-      this == readyForMeetup ||
-      this == refundRequested;
+      this == pendingPayment || this == paid || this == readyForMeetup;
 
   /// จ่ายเงินเข้า UniSwap แล้ว (เงินถูกพักไว้หรือจ่ายต่อให้ผู้ขายแล้ว)
   bool get isPaid =>
-      this == paid ||
-      this == readyForMeetup ||
-      this == completed ||
-      this == refundRequested ||
-      this == partiallyRefunded ||
-      this == refunded;
+      this == paid || this == readyForMeetup || this == completed;
 
   /// ผู้ซื้อกด Confirm received ได้ในสถานะนี้
   bool get canConfirmReceived => this == paid || this == readyForMeetup;
@@ -58,14 +47,11 @@ enum OrderStatus {
     completed => 'Completed',
     cancelled => 'Cancelled',
     expired => 'Expired',
-    refundRequested => 'Refund requested',
-    partiallyRefunded => 'Partially refunded',
-    refunded => 'Refunded',
   };
 
   StatusTone get tone => switch (this) {
-    pendingPayment || refundRequested => StatusTone.amber,
-    paid || readyForMeetup || partiallyRefunded || refunded => StatusTone.blue,
+    pendingPayment => StatusTone.amber,
+    paid || readyForMeetup => StatusTone.blue,
     completed => StatusTone.green,
     cancelled || expired => StatusTone.red,
   };

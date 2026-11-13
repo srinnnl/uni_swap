@@ -42,19 +42,6 @@ class AdminController {
     },
   );
 
-  Future<Map<String, dynamic>> reports({int page = 1, int limit = 20}) =>
-      _api.get('admin/reports', query: {'page': page, 'limit': limit});
-
-  Future<Map<String, dynamic>> resolveReport(
-    int reportId, {
-    required String status,
-    String? note,
-    bool hideProduct = false,
-  }) => _api.put(
-    'admin/reports/$reportId',
-    body: {'status': status, 'admin_note': note, 'hide_product': hideProduct},
-  );
-
   Future<Map<String, dynamic>> categories() => _api.get('admin/categories');
   Future<Map<String, dynamic>> createCategory({
     required String name,
@@ -106,20 +93,4 @@ class AdminController {
     'admin/location-requests/$requestId/review',
     body: {'action': action, 'merge_into_location_id': mergeIntoLocationId},
   );
-
-  /// รายการคำขอคืนเงิน (ค่าเริ่มต้น: เฉพาะที่รอ admin ตัดสิน)
-  Future<Map<String, dynamic>> refunds({
-    String status = 'pending',
-    int page = 1,
-    int limit = 20,
-  }) => _api.get(
-    'admin/refunds',
-    query: {'status': status, 'page': page, 'limit': limit},
-  );
-
-  /// ตัดสินคำขอคืนเงิน: action = 'approve' | 'reject'
-  Future<Map<String, dynamic>> decideRefund(
-    int refundId, {
-    required String action,
-  }) => _api.put('admin/refunds/$refundId', body: {'action': action});
 }

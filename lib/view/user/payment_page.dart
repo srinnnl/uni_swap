@@ -1,9 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:uni_swap/controller/api_client.dart';
+import 'package:uni_swap/controller/app_controllers.dart';
+import 'package:uni_swap/model/format.dart';
 
 // ไฟล์นี้ใช้งานได้ด้วยตัวเอง: หน้าชำระเงิน (จำลอง ไม่มีการโอนเงินจริง)
-// กด "Mark as paid" แล้วยืนยัน จะ pop กลับพร้อมค่า true
+// กด "Simulate payment" แล้วยืนยัน จะบันทึกสถานะ paid ที่ server
 
 class _C {
   static const bg = Color(0xFFFAF9F6);
@@ -33,7 +36,7 @@ class PaymentPage extends StatelessWidget {
     this.paymentDeadline,
   });
 
-  final String orderId; // เช่น '#US-12' (จาก orders.order_id)
+  final int orderId; // orders.order_id
   final String title;
   final double price; // orders.total_amount (DECIMAL ใช้ double ทั้งแอป)
   final String sellerName;
@@ -42,16 +45,17 @@ class PaymentPage extends StatelessWidget {
   final DateTime? paymentDeadline;
 
   String get _amount => '${price.toStringAsFixed(2)} THB';
+  String get _orderLabel => orderLabel(orderId);
 
-  // ===== จุดเชื่อมต่อ API: ให้เพื่อนแก้ฟังก์ชันนี้ =====
   Future<void> _markPaid(BuildContext context) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: _C.bg,
-        title: const Text('Confirm payment'),
+        title: const Text('Simulate payment?'),
         content: Text(
-          'Pay $_amount now? UniSwap holds the money until you confirm the item.',
+          'Demo only: mark $_amount as paid for this order? '
+          'No real money is charged, held, or transferred.',
         ),
         actions: [
           TextButton(
@@ -61,20 +65,26 @@ class PaymentPage extends StatelessWidget {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: _C.ink),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Pay now'),
+            child: const Text('Simulate payment'),
           ),
         ],
       ),
     );
     if (ok != true || !context.mounted) return;
 
-    // TODO: เรียก API จ่ายเงิน (orderId) -- จำลองการพักเงิน ไม่มีเงินจริง
-    //   backend (ตาม project_mobile_app.sql):
-    //     payments: payment_method='gateway', payment_status='paid', paid_at=now,
-    //               seller_transfer_status='held'
-    //     orders:   status='paid'  (commission_* / seller_payout คำนวณไว้แล้วตอนสร้างออเดอร์)
-    //   ถ้าเลย orders.payment_deadline แล้ว backend ต้องปฏิเสธ (orders.status = 'expired')
-    Navigator.pop(context, true);
+    try {
+      final response = await orderController.pay(orderId);
+      if (response['success'] != true ||
+          response['status'] != 'ready_for_meetup') {
+        throw const ApiException('The server could not record the payment.');
+      }
+      if (context.mounted) Navigator.pop(context, true);
+    } on ApiException catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    }
   }
 
   @override
@@ -96,7 +106,6 @@ class PaymentPage extends StatelessWidget {
             _PaySection(
               paid: paid,
               dueAt: paymentDeadline,
-              amount: _amount,
               onPay: () => _markPaid(context),
             ),
           ],
@@ -125,7 +134,7 @@ class PaymentPage extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                'Order $orderId',
+                'Order $_orderLabel',
                 style: const TextStyle(fontSize: 13, color: _C.muted),
               ),
             ],
@@ -163,7 +172,7 @@ class PaymentPage extends StatelessWidget {
                   : Image.network(
                       imageUrl!,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
+                      errorBuilder: (_, _, _) => Container(
                         color: _C.surface,
                         child: const Icon(
                           Icons.image_outlined,
@@ -208,7 +217,7 @@ class PaymentPage extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              paid ? 'Paid' : 'Unpaid',
+              paid ? 'Demo paid' : 'Unpaid',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
@@ -234,7 +243,7 @@ class PaymentPage extends StatelessWidget {
                   color: _C.surface,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.apartment, color: _C.ink, size: 22),
+                child: const Icon(Icons.qr_code_2, color: _C.ink, size: 26),
               ),
               const SizedBox(width: 14),
               const Expanded(
@@ -242,12 +251,12 @@ class PaymentPage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Pay to',
+                      'Payment method',
                       style: TextStyle(fontSize: 11, color: _C.muted),
                     ),
                     SizedBox(height: 3),
                     Text(
-                      'UniSwap (held until you confirm)',
+                      'Demo QR · not scannable',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -263,9 +272,9 @@ class PaymentPage extends StatelessWidget {
           const Divider(height: 1, color: _C.border),
           _row('Item price', _amount),
           const Divider(height: 1, color: _C.border),
-          _row('Reference', orderId),
+          _row('Reference', _orderLabel),
           const Divider(height: 1, color: _C.border),
-          _row('Total to pay', _amount, valueColor: _C.sage, large: true),
+          _row('Demo order total', _amount, valueColor: _C.sage, large: true),
         ],
       ),
     );
@@ -324,8 +333,9 @@ class PaymentPage extends StatelessWidget {
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'UniSwap holds your payment and releases it to the seller '
-                  'after you confirm the item. No real money moves in this demo.',
+                  'This demo saves a paid status to the server, but no real '
+                  'money is collected, held, or transferred. Real payments '
+                  'and seller payouts need a payment provider.',
                   style: TextStyle(fontSize: 12, height: 1.4, color: _C.muted),
                 ),
               ],
@@ -337,18 +347,16 @@ class PaymentPage extends StatelessWidget {
   }
 }
 
-/// ส่วนล่างของหน้า: ตัวนับเวลาถึง payment_deadline + ปุ่มจ่ายเงิน (จำลอง)
+/// Timer and simulated-payment action for the demo.
 class _PaySection extends StatefulWidget {
   const _PaySection({
     required this.paid,
     required this.dueAt,
-    required this.amount,
     required this.onPay,
   });
 
   final bool paid;
   final DateTime? dueAt;
-  final String amount;
   final Future<void> Function() onPay;
 
   @override
@@ -358,6 +366,7 @@ class _PaySection extends StatefulWidget {
 class _PaySectionState extends State<_PaySection> {
   Timer? _timer;
   Duration? _left;
+  bool _isPaying = false;
 
   bool get _expired => _left != null && _left! <= Duration.zero;
 
@@ -387,9 +396,19 @@ class _PaySectionState extends State<_PaySection> {
     return '$m:$r';
   }
 
+  Future<void> _submitPayment() async {
+    if (_isPaying) return;
+    setState(() => _isPaying = true);
+    try {
+      await widget.onPay();
+    } finally {
+      if (mounted) setState(() => _isPaying = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final canPay = !widget.paid && !_expired;
+    final canPay = !widget.paid && !_expired && !_isPaying;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -428,7 +447,7 @@ class _PaySectionState extends State<_PaySection> {
         SizedBox(
           height: 54,
           child: FilledButton(
-            onPressed: canPay ? () => widget.onPay() : null,
+            onPressed: canPay ? _submitPayment : null,
             style: FilledButton.styleFrom(
               backgroundColor: _C.ink,
               foregroundColor: Colors.white,
@@ -439,9 +458,11 @@ class _PaySectionState extends State<_PaySection> {
               ),
             ),
             child: Text(
-              widget.paid
+              _isPaying
+                  ? 'Saving payment…'
+                  : widget.paid
                   ? 'Paid'
-                  : (_expired ? 'Time expired' : 'Pay ${widget.amount}'),
+                  : (_expired ? 'Time expired' : 'Simulate payment'),
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
             ),
           ),

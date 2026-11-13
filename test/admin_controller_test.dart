@@ -77,33 +77,6 @@ void main() {
     });
   });
 
-  group('reports', () {
-    test('reports ใช้ paging ตั้งต้น', () async {
-      await admin.reports();
-      expect(calls.single.label, 'GET /api/admin/reports');
-      expect(calls.single.query, {'page': '1', 'limit': '20'});
-    });
-
-    test('resolveReport ไม่ซ่อนสินค้าเป็นค่าตั้งต้น', () async {
-      await admin.resolveReport(9, status: 'resolved');
-      expect(calls.single.label, 'PUT /api/admin/reports/9');
-      expect(calls.single.body!['status'], 'resolved');
-      expect(calls.single.body!['hide_product'], false);
-      expect(calls.single.body!['admin_note'], isNull);
-    });
-
-    test('resolveReport ส่ง hide_product และ admin_note ได้', () async {
-      await admin.resolveReport(
-        9,
-        status: 'resolved',
-        note: 'Item removed',
-        hideProduct: true,
-      );
-      expect(calls.single.body!['hide_product'], true);
-      expect(calls.single.body!['admin_note'], 'Item removed');
-    });
-  });
-
   group('categories', () {
     test('categories เรียก GET /api/admin/categories', () async {
       await admin.categories();

@@ -45,7 +45,6 @@ class SellerInfo {
     required this.id,
     required this.name,
     this.username,
-    this.rating = 0,
     this.sales = 0,
     this.location = '',
   });
@@ -55,7 +54,6 @@ class SellerInfo {
       id: jsonInt(json['user_id'] ?? json['seller_id'] ?? json['id']) ?? 0,
       name: jsonString(json['display_name'] ?? json['name']) ?? '',
       username: jsonString(json['username']),
-      rating: jsonDouble(json['rating']) ?? 0,
       sales: jsonInt(json['sales']) ?? 0,
       location: jsonString(json['location'] ?? json['location_name']) ?? '',
     );
@@ -64,7 +62,6 @@ class SellerInfo {
   final int id; // users.user_id
   final String name; // users.display_name
   final String? username; // users.username
-  final double rating; // reviews (ยังไม่มีใน schema ปัจจุบัน)
   final int sales; // นับจาก orders ที่ completed
   final String location;
 
@@ -81,7 +78,6 @@ class SellerInfo {
       'user_id': id,
       'display_name': name,
       'username': username,
-      'rating': rating,
       'sales': sales,
       'location': location,
     };
@@ -385,7 +381,6 @@ class ProductDetail {
       seller: SellerInfo(
         id: 0,
         name: 'Jamie Lee',
-        rating: 4.9,
         sales: 18,
         location: place.split(' · ').last,
       ),

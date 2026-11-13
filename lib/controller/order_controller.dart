@@ -49,22 +49,4 @@ class OrderController {
       'payment_slip_url': slipUrl,
     },
   );
-
-  Future<Map<String, dynamic>> requestRefund(int orderId, String reason) =>
-      _api.post('orders/$orderId/refunds', body: {'reason': reason});
-
-  Future<Map<String, dynamic>> report({
-    required int orderId,
-    required String type,
-    required String reason,
-    String? evidenceUrl,
-  }) => _api.post(
-    'reports',
-    body: {
-      'order_id': orderId,
-      'report_type': type,
-      'reason': reason,
-      'evidence_url': evidenceUrl,
-    },
-  );
 }

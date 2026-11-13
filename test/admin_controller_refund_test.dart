@@ -42,36 +42,46 @@ void main() {
   }
 
   group('refunds()', () {
-    test('GET admin/refunds พร้อมค่าเริ่มต้น status=pending page=1 limit=20',
-        () async {
-      final controller = build(body: {
-        'data': [
-          {'refund_id': 1},
-        ],
-        'page': 1,
-        'limit': 20,
-        'has_more': false,
-      });
+    test(
+      'GET admin/refunds พร้อมค่าเริ่มต้น status=pending page=1 limit=20',
+      () async {
+        final controller = build(
+          body: {
+            'data': [
+              {'refund_id': 1},
+            ],
+            'page': 1,
+            'limit': 20,
+            'has_more': false,
+          },
+        );
 
-      final result = await controller.refunds();
+        final result = await controller.refunds();
 
-      expect(captured!.method, 'GET');
-      expect(captured!.url.path, '/api/admin/refunds');
-      expect(captured!.url.queryParameters,
-          {'status': 'pending', 'page': '1', 'limit': '20'});
-      expect(captured!.body, isEmpty);
-      expect(captured!.headers['accept'], 'application/json');
-      expect(result['data'], hasLength(1));
-      expect(result['has_more'], false);
-    });
+        expect(captured!.method, 'GET');
+        expect(captured!.url.path, '/api/admin/refunds');
+        expect(captured!.url.queryParameters, {
+          'status': 'pending',
+          'page': '1',
+          'limit': '20',
+        });
+        expect(captured!.body, isEmpty);
+        expect(captured!.headers['accept'], 'application/json');
+        expect(result['data'], hasLength(1));
+        expect(result['has_more'], false);
+      },
+    );
 
     test('ส่ง status, page, limit ตามที่กำหนด', () async {
       final controller = build();
 
       await controller.refunds(status: 'completed', page: 3, limit: 50);
 
-      expect(captured!.url.queryParameters,
-          {'status': 'completed', 'page': '3', 'limit': '50'});
+      expect(captured!.url.queryParameters, {
+        'status': 'completed',
+        'page': '3',
+        'limit': '50',
+      });
     });
 
     test('แนบ Authorization: Bearer เมื่อมี token', () async {
@@ -108,19 +118,21 @@ void main() {
   });
 
   group('decideRefund()', () {
-    test('approve: PUT admin/refunds/:id พร้อม body {action: approve}',
-        () async {
-      final controller = build();
+    test(
+      'approve: PUT admin/refunds/:id พร้อม body {action: approve}',
+      () async {
+        final controller = build();
 
-      final result = await controller.decideRefund(7, action: 'approve');
+        final result = await controller.decideRefund(7, action: 'approve');
 
-      expect(captured!.method, 'PUT');
-      expect(captured!.url.path, '/api/admin/refunds/7');
-      expect(captured!.url.hasQuery, isFalse);
-      expect(captured!.headers['content-type'], contains('application/json'));
-      expect(jsonDecode(captured!.body), {'action': 'approve'});
-      expect(result['success'], true);
-    });
+        expect(captured!.method, 'PUT');
+        expect(captured!.url.path, '/api/admin/refunds/7');
+        expect(captured!.url.queryParameters, isEmpty);
+        expect(captured!.headers['content-type'], contains('application/json'));
+        expect(jsonDecode(captured!.body), {'action': 'approve'});
+        expect(result['success'], true);
+      },
+    );
 
     test('reject: ส่ง action เป็น reject', () async {
       final controller = build();
@@ -161,20 +173,31 @@ void main() {
       expect(
         controller.decideRefund(7, action: 'reject'),
         throwsA(
-          isA<ApiException>()
-              .having((e) => e.message, 'message', 'Request failed (500).'),
+          isA<ApiException>().having(
+            (e) => e.message,
+            'message',
+            'Request failed (500).',
+          ),
         ),
       );
     });
 
     test('โยน ApiException เมื่อ response ไม่ใช่ JSON', () async {
-      final controller =
-          build(status: 200, body: '<html>oops</html>', rawBody: true);
+      final controller = build(
+        status: 200,
+        body: '<html>oops</html>',
+        rawBody: true,
+      );
 
       expect(
         controller.decideRefund(7, action: 'approve'),
-        throwsA(isA<ApiException>().having(
-            (e) => e.message, 'message', 'The server returned an invalid response.')),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.message,
+            'message',
+            'The server returned an invalid response.',
+          ),
+        ),
       );
     });
 
@@ -187,8 +210,13 @@ void main() {
 
       expect(
         controller.refunds(),
-        throwsA(isA<ApiException>().having(
-            (e) => e.message, 'message', contains('Could not reach the server'))),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.message,
+            'message',
+            contains('Could not reach the server'),
+          ),
+        ),
       );
     });
   });

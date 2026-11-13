@@ -42,6 +42,8 @@ void main() {
   }
 
   group('refunds()', () {
+    // ทดสอบที่ 1: ตรวจสอบว่าการเรียก refunds() โดยไม่ส่งพารามิเตอร์ จะส่งคำขอ GET
+    // พร้อมค่าเริ่มต้น (status=pending, page=1, limit=20) และแปลงข้อมูลผลลัพธ์ได้ถูกต้อง
     test(
       'GET admin/refunds พร้อมค่าเริ่มต้น status=pending page=1 limit=20',
       () async {
@@ -72,6 +74,8 @@ void main() {
       },
     );
 
+    // ทดสอบที่ 2: ตรวจสอบว่าการส่งค่า status, page และ limit แบบกำหนดเอง
+    // จะถูกส่งไปเป็น query parameters ใน URL อย่างถูกต้อง
     test('ส่ง status, page, limit ตามที่กำหนด', () async {
       final controller = build();
 
@@ -84,6 +88,7 @@ void main() {
       });
     });
 
+    // ทดสอบที่ 3: ตรวจสอบว่าจะมีการแนบ Header 'Authorization: Bearer' ไปกับคำขอเมื่อมี token
     test('แนบ Authorization: Bearer เมื่อมี token', () async {
       final controller = build(token: 'abc123');
 
@@ -92,6 +97,7 @@ void main() {
       expect(captured!.headers['authorization'], 'Bearer abc123');
     });
 
+    // ทดสอบที่ 4: ตรวจสอบว่าจะไม่มีการส่ง Header 'Authorization' เมื่อไม่มี token (เป็น null)
     test('ไม่ส่ง Authorization เมื่อไม่มี token', () async {
       final controller = build(token: null);
 
@@ -100,6 +106,8 @@ void main() {
       expect(captured!.headers.containsKey('authorization'), isFalse);
     });
 
+    // ทดสอบที่ 5: ตรวจสอบว่าเมื่อเซิร์ฟเวอร์ตอบกลับด้วยสถานะ 403 Forbidden
+    // จะโยน ApiException พร้อมข้อความแจ้งเตือนจากเซิร์ฟเวอร์และรหัสสถานะ 403
     test('โยน ApiException พร้อมข้อความจาก server เมื่อ 403', () async {
       final controller = build(
         status: 403,
@@ -118,6 +126,8 @@ void main() {
   });
 
   group('decideRefund()', () {
+    // ทดสอบที่ 6: ตรวจสอบว่าการอนุมัติคำขอคืนเงิน (approve) จะส่งคำขอ PUT ไปที่ /api/admin/refunds/:id
+    // พร้อม JSON body {"action": "approve"} และคืนค่าผลลัพธ์สำเร็จ
     test(
       'approve: PUT admin/refunds/:id พร้อม body {action: approve}',
       () async {
@@ -134,6 +144,8 @@ void main() {
       },
     );
 
+    // ทดสอบที่ 7: ตรวจสอบว่าการปฏิเสธคำขอคืนเงิน (reject) จะส่งคำขอ PUT ไปยัง ID เป้าหมาย
+    // พร้อม JSON body {"action": "reject"}
     test('reject: ส่ง action เป็น reject', () async {
       final controller = build();
 
@@ -143,6 +155,7 @@ void main() {
       expect(jsonDecode(captured!.body), {'action': 'reject'});
     });
 
+    // ทดสอบที่ 8: ตรวจสอบว่า decideRefund() จะแนบ Header 'Authorization: Bearer' เมื่อมี token
     test('แนบ Authorization: Bearer เมื่อมี token', () async {
       final controller = build(token: 'tok');
 
@@ -151,6 +164,8 @@ void main() {
       expect(captured!.headers['authorization'], 'Bearer tok');
     });
 
+    // ทดสอบที่ 9: ตรวจสอบว่าเมื่อเซิร์ฟเวอร์ตอบกลับด้วยสถานะ 409 Conflict (รายการคืนเงินถูกตัดสินไปแล้ว)
+    // จะโยน ApiException พร้อมข้อความแจ้งเตือนและรหัสสถานะ 409
     test('โยน ApiException เมื่อ refund ถูกตัดสินไปแล้ว (409)', () async {
       final controller = build(
         status: 409,
@@ -167,6 +182,8 @@ void main() {
       );
     });
 
+    // ทดสอบที่ 10: ตรวจสอบว่าเมื่อการตอบกลับผิดพลาดไม่มีฟิลด์ 'message' (เช่น Error 500)
+    // ApiClient จะใช้ข้อความสำรอง 'Request failed (500).' ในการโยน ApiException
     test('ใช้ข้อความสำรองเมื่อ error ไม่มี message', () async {
       final controller = build(status: 500, body: {'success': false});
 
@@ -182,6 +199,8 @@ void main() {
       );
     });
 
+    // ทดสอบที่ 11: ตรวจสอบว่าเมื่อได้รับข้อมูลตอบกลับที่ไม่ใช่รูปแบบ JSON (เช่น โค้ด HTML)
+    // จะโยน ApiException แจ้งว่าเซิร์ฟเวอร์ส่งข้อมูลกลับมาไม่ถูกต้อง
     test('โยน ApiException เมื่อ response ไม่ใช่ JSON', () async {
       final controller = build(
         status: 200,
@@ -201,6 +220,8 @@ void main() {
       );
     });
 
+    // ทดสอบที่ 12: ตรวจสอบว่าเมื่อเกิดข้อผิดพลาดในการเชื่อมต่อเครือข่าย (ClientException)
+    // ระบบจะจับข้อผิดพลาดและโยน ApiException แจ้งว่าไม่สามารถติดต่อเซิร์ฟเวอร์ได้
     test('โยน ApiException เมื่อเชื่อมต่อ server ไม่ได้', () async {
       final api = ApiClient(
         client: MockClient((_) async => throw http.ClientException('refused')),

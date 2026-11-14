@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:uni_swap/view/user/campus_locations.dart';
+import 'package:uni_swap/controller/api_client.dart';
+import 'package:uni_swap/controller/app_controllers.dart';
+import 'package:uni_swap/model/enums.dart';
+import 'package:uni_swap/view/user/location_picker.dart';
 
 const _cBg = Color(0xFFFAF9F6);
 const _cInk = Color(0xFF2B2B26);
@@ -8,18 +11,15 @@ const _cBorder = Color(0xFFE6E4DE);
 const _cRedFg = Color(0xFFB3402F);
 
 // หน้าขอเพิ่มที่พัก (หอ) ที่ยังไม่มีในรายการ
-// กด Submit แล้วจะ pop กลับพร้อมค่า true (ตอนนี้ยังเป็นข้อมูลจำลอง)
+// กด Submit แล้วส่งคำขอไป POST /api/location-requests และ pop กลับพร้อมค่า true เมื่อสำเร็จ
 //
 // zone = หอใน/หอนอก (ตรงกับ location_requests.zone: on_campus / off_campus)
 // สถานะเริ่มต้นของคำขอใน DB = pending (แอดมินเปลี่ยนเป็น reviewing / approved / merged / rejected)
 class RequestLocationPage extends StatefulWidget {
-  const RequestLocationPage({
-    super.key,
-    // TODO: ดึงที่พักปัจจุบันของผู้ใช้จาก API
-    this.currentLocation = 'On-campus dorms · Lamduan 1 Dormitory',
-  });
+  const RequestLocationPage({super.key, this.currentLocation});
 
-  final String currentLocation;
+  /// ที่พักปัจจุบันของผู้ใช้ (profile_page ส่งเข้ามา) null = ยังไม่ได้ตั้ง
+  final String? currentLocation;
 
   @override
   State<RequestLocationPage> createState() => _RequestLocationPageState();
@@ -30,9 +30,10 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
   final _addressCtrl = TextEditingController();
   final _reasonCtrl = TextEditingController();
 
-  CampusZone? _zone;
+  ResidenceZone? _zone;
   String? _nameError;
   String? _zoneError;
+  bool _submitting = false;
 
   @override
   void dispose() {
@@ -86,12 +87,12 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
   }
 
   Future<void> _pickZone() async {
-    final v = await _pick<CampusZone>(
+    final v = await _pick<ResidenceZone>(
       title: 'Where is it?',
-      options: [for (final z in CampusZone.values) (z, z.label)],
+      options: [for (final z in ResidenceZone.values) (z, locationZoneLabel(z))],
       selected: _zone,
     );
-    if (v != null) {
+    if (v != null && mounted) {
       setState(() {
         _zone = v;
         _zoneError = null;
@@ -99,8 +100,8 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
     }
   }
 
-  // ===== จุดเชื่อมต่อ API: ให้เพื่อนแก้ฟังก์ชันนี้ =====
-  void _submit() {
+  Future<void> _submit() async {
+    if (_submitting) return;
     final name = _nameCtrl.text.trim();
     setState(() {
       _nameError = name.length < 3 ? 'Please enter the location name' : null;
@@ -108,20 +109,46 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
     });
     if (_nameError != null || _zoneError != null) return;
 
-    // TODO: ส่งไป API (location_requests)
-    //   name: name, zone: _zone!.code,
-    //   address: _addressCtrl.text.trim(), reason: _reasonCtrl.text.trim()
-    //   status เริ่มต้น = pending
+    setState(() => _submitting = true);
+    try {
+      final response = await productController.requestLocation(
+        name: name,
+        zone: _zone!.apiValue,
+        address: _addressCtrl.text.trim(),
+        reason: _reasonCtrl.text.trim(),
+      );
+      if (response['success'] != true) {
+        throw ApiException(
+          response['message']?.toString() ?? 'Could not send your request.',
+        );
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              "Request sent. Your place shows as pending until an admin reviews it.",
+            ),
+          ),
+        );
+      Navigator.pop(context, true);
+    } on ApiException catch (error) {
+      _showError(error.message);
+    } catch (_) {
+      _showError('Could not send your request. Please try again.');
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        const SnackBar(
-          content: Text(
-            "Request sent. Your place shows as pending until an admin reviews it.",
-          ),
-        ),
+        SnackBar(content: Text(message), backgroundColor: _cRedFg),
       );
-    Navigator.pop(context, true);
   }
 
   @override
@@ -183,9 +210,11 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
                         color: _cInk,
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        widget.currentLocation,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      Expanded(
+                        child: Text(
+                          widget.currentLocation ?? 'Not set yet',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
                       ),
                     ],
                   ),
@@ -198,6 +227,7 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
               'Location name',
               'e.g. Riverside Residence',
               controller: _nameCtrl,
+              maxLength: 150,
               errorText: _nameError,
               onChanged: (_) {
                 if (_nameError != null) setState(() => _nameError = null);
@@ -205,7 +235,7 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
             ),
             _buildSelector(
               'On / off campus',
-              _zone?.label ?? 'Choose a zone',
+              _zone == null ? 'Choose a zone' : locationZoneLabel(_zone!),
               onTap: _pickZone,
               placeholder: _zone == null,
               errorText: _zoneError,
@@ -215,12 +245,14 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
               'Street address or nearby landmark',
               controller: _addressCtrl,
               maxLines: 3,
+              maxLength: 255,
             ),
             _buildFieldGroup(
               'Why should we add it? (optional)',
               'Tell us how many students live here...',
               controller: _reasonCtrl,
               maxLines: 3,
+              maxLength: 5000,
             ),
 
             const Padding(
@@ -235,17 +267,29 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
               width: double.infinity,
               height: 52,
               child: FilledButton(
-                onPressed: _submit,
+                onPressed: _submitting ? null : _submit,
                 style: FilledButton.styleFrom(
                   backgroundColor: _cInk,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Text(
-                  'Submit request',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
+                child: _submitting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text(
+                        'Submit request',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
               ),
             ),
           ],
@@ -259,6 +303,7 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
     String hint, {
     required TextEditingController controller,
     int maxLines = 1,
+    int? maxLength,
     String? errorText,
     ValueChanged<String>? onChanged,
   }) {
@@ -284,12 +329,15 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
           TextField(
             controller: controller,
             maxLines: maxLines,
+            maxLength: maxLength,
+            enabled: !_submitting,
             onChanged: onChanged,
             textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
               hintText: hint,
               hintStyle: const TextStyle(color: _cMuted, fontSize: 13),
               errorText: errorText,
+              counterText: '',
               filled: true,
               fillColor: Colors.white,
               border: border(_cBorder),

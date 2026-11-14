@@ -84,6 +84,56 @@ class SellerInfo {
   }
 }
 
+/// โปรไฟล์ผู้ขายจาก `/api/sellers/:user_id` (`data.seller`)
+class SellerProfile {
+  const SellerProfile({
+    required this.id,
+    required this.name,
+    this.username,
+    this.memberSince,
+    this.completedSales = 0,
+    this.locationName = '',
+  });
+
+  factory SellerProfile.fromJson(Map<String, dynamic> json) {
+    return SellerProfile(
+      id: jsonInt(json['user_id'] ?? json['id']) ?? 0,
+      name: jsonString(json['display_name']) ?? '',
+      username: jsonString(json['username']),
+      memberSince: jsonDateTime(json['member_since'] ?? json['created_at']),
+      completedSales: jsonInt(json['completed_sales']) ?? 0,
+      locationName: jsonString(json['location_name']) ?? '',
+    );
+  }
+
+  final int id; // users.user_id
+  final String name; // users.display_name
+  final String? username; // users.username
+  final DateTime? memberSince; // users.created_at
+  final int completedSales; // orders ของผู้ขายที่ status = 'completed'
+  final String locationName; // locations.name (ที่พักของผู้ขาย)
+
+  String get initials {
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty);
+    final text = parts.take(2).map((part) => part[0].toUpperCase()).join();
+    return text.isEmpty ? '?' : text;
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'user_id': id,
+      'display_name': name,
+      'username': username,
+      'member_since': memberSince?.toUtc().toIso8601String(),
+      'completed_sales': completedSales,
+      'location_name': locationName,
+    };
+  }
+}
+
 /// แถวในตาราง `products`
 ///
 /// ใช้ได้ทั้ง listing (`/api/products`, `/api/my/listings`) และ detail
@@ -98,6 +148,7 @@ class Product {
     required this.category,
     this.sellerName,
     this.sellerUsername,
+    this.sellerSales = 0,
     this.description,
     this.categoryId,
     this.categoryName,
@@ -128,6 +179,7 @@ class Product {
       sellerId: jsonInt(json['seller_id']) ?? 0,
       sellerName: jsonString(json['seller_name']),
       sellerUsername: jsonString(json['seller_username'] ?? json['username']),
+      sellerSales: jsonInt(json['sales'] ?? json['seller_sales']) ?? 0,
       title: jsonString(json['title']) ?? '',
       description: jsonString(json['description']),
       // products.category เป็น NOT NULL ใน schema (project_mobile_app.sql)
@@ -164,6 +216,7 @@ class Product {
   final int sellerId; // products.seller_id
   final String? sellerName; // users.display_name (join)
   final String? sellerUsername; // users.username (join)
+  final int sellerSales; // orders ของผู้ขายที่ completed (detail endpoint: sales)
   final String title; // products.title
   final String? description; // products.description
   final String category; // products.category (NOT NULL ใน schema)
@@ -216,6 +269,7 @@ class Product {
     int? sellerId,
     String? sellerName,
     String? sellerUsername,
+    int? sellerSales,
     String? title,
     String? description,
     String? category,
@@ -247,6 +301,7 @@ class Product {
       sellerId: sellerId ?? this.sellerId,
       sellerName: sellerName ?? this.sellerName,
       sellerUsername: sellerUsername ?? this.sellerUsername,
+      sellerSales: sellerSales ?? this.sellerSales,
       title: title ?? this.title,
       description: description ?? this.description,
       category: category ?? this.category,
@@ -281,6 +336,7 @@ class Product {
       'seller_id': sellerId,
       'seller_name': sellerName,
       'seller_username': sellerUsername,
+      'sales': sellerSales,
       'title': title,
       'description': description,
       'category': category,
@@ -357,6 +413,7 @@ class ProductDetail {
               id: product.sellerId,
               name: product.sellerName!,
               username: product.sellerUsername,
+              sales: product.sellerSales,
               location: product.locationName,
             )
           : null,

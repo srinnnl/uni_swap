@@ -321,6 +321,11 @@ class _MyItemsPageState extends State<MyItemsPage> {
               for (final product in _products)
                 _ItemCard(
                   product: product,
+                  residenceLocationId: int.tryParse(
+                    authController.user?['residence_location_id']
+                            ?.toString() ??
+                        '',
+                  ),
                   onEdit:
                       _busyProductIds.contains(product.id) ||
                           _draft(product) == null
@@ -386,12 +391,14 @@ class _MyItemsPageState extends State<MyItemsPage> {
 class _ItemCard extends StatelessWidget {
   const _ItemCard({
     required this.product,
+    required this.residenceLocationId,
     required this.onEdit,
     required this.onDelete,
     required this.onHide,
   });
 
   final Product product;
+  final int? residenceLocationId;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
   final VoidCallback? onHide;
@@ -413,6 +420,16 @@ class _ItemCard extends StatelessWidget {
       ProductStatus.hidden => ('Hidden', const Color(0xFFF0EEE9), _cMuted),
     };
     final price = product.price == 0 ? 'Free' : '${product.price} THB';
+    // นัดรับอยู่หอเดิม ไม่ตรงกับที่พักปัจจุบัน (ย้ายหอหลังลงขาย)
+    final pickupDiffers =
+        residenceLocationId != null &&
+        product.locationId != null &&
+        product.locationId != residenceLocationId &&
+        const {
+          ProductStatus.available,
+          ProductStatus.pendingReview,
+          ProductStatus.changesRequested,
+        }.contains(product.status);
     final placeholder = Container(
       width: 80,
       height: 94,
@@ -479,6 +496,14 @@ class _ItemCard extends StatelessWidget {
                   '$price · ${product.locationName}',
                   style: const TextStyle(fontSize: 12, color: _cMuted),
                 ),
+                if (pickupDiffers) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Pickup differs from your current residence. Edit the '
+                    'item to move it (it will be reviewed again).',
+                    style: TextStyle(fontSize: 12, color: _cAmberFg),
+                  ),
+                ],
                 if (product.reviewNote?.isNotEmpty == true) ...[
                   const SizedBox(height: 8),
                   Text(

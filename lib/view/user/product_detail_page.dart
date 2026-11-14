@@ -44,15 +44,23 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     }
   }
 
+  // server ไม่ส่ง is_own_item มา จึงเทียบ seller_id กับ user ที่ login เอง
+  bool get _isOwn {
+    if (_p.isOwnItem) return true;
+    final me = int.tryParse(authController.user?['user_id']?.toString() ?? '');
+    final sellerId = _p.product?.sellerId ?? _p.seller?.id;
+    return me != null && sellerId != null && sellerId > 0 && me == sellerId;
+  }
+
   // ซื้อได้เฉพาะสินค้า available ที่ไม่ใช่ของตัวเอง และยังไม่ได้สั่งในหน้านี้
   bool get _canBuy =>
       _p.status == ProductStatus.available &&
-      !_p.isOwnItem &&
+      !_isOwn &&
       !_ordered &&
       !_isOrdering;
 
   String get _buttonLabel {
-    if (_p.isOwnItem) return 'Your item';
+    if (_isOwn) return 'Your item';
     if (_ordered) return 'Order placed';
     if (_isOrdering) return 'Placing order…';
     return switch (_p.status) {
@@ -152,10 +160,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     if (s == null) return;
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) =>
-            SellerProfilePage(name: s.name, location: _p.place, sales: s.sales),
-      ),
+      MaterialPageRoute(builder: (_) => SellerProfilePage(sellerId: s.id)),
     );
   }
 
@@ -439,24 +444,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     Text(
                       '${s.sales} sales',
                       style: const TextStyle(fontSize: 12, color: _C.muted),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on_outlined,
-                      size: 16,
-                      color: _C.muted,
-                    ),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        s.location,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, color: _C.muted),
-                      ),
                     ),
                   ],
                 ),

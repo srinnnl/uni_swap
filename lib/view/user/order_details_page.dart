@@ -64,6 +64,7 @@ class OrderDetailsPage extends StatefulWidget {
     this.meetupAt,
     this.paymentDeadline, // orders.payment_deadline (null = ไม่แสดงตัวนับเวลา)
     this.imageUrl,
+    this.startPayment = false,
   });
 
   final int orderId; // orders.order_id
@@ -85,6 +86,9 @@ class OrderDetailsPage extends StatefulWidget {
   final double sellerPayout; // orders.seller_payout
   final String? imageUrl;
 
+  /// true = เปิดหน้านี้แล้วไปหน้าจ่ายเงินทันที (ปุ่ม Pay now ในรายการออเดอร์)
+  final bool startPayment;
+
   @override
   State<OrderDetailsPage> createState() => _OrderDetailsPageState();
 }
@@ -94,6 +98,16 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   late final String _meetupPlace = widget.meetupPlace;
   late DateTime? _meetupAt = widget.meetupAt;
   bool _isSavingAction = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.startPayment && widget.isBuying && widget.price > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _status == OrderStatus.pendingPayment) _pay();
+      });
+    }
+  }
 
   // เลย payment_deadline แล้วยังไม่จ่าย ถือว่า expired (backend เป็นคนเปลี่ยนจริง)
   OrderStatus get _status {

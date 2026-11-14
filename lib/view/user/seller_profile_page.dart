@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:uni_swap/controller/api_client.dart';
+import 'package:uni_swap/controller/app_controllers.dart';
 import 'package:uni_swap/model/format.dart';
+import 'package:uni_swap/model/json_utils.dart';
+import 'package:uni_swap/model/product.dart';
 
 class _C {
   static const bg = Color(0xFFFAF9F6);
@@ -9,40 +13,110 @@ class _C {
   static const surface = Color(0xFFF3F2EE);
 }
 
-class _Item {
-  const _Item(this.title, this.price, {this.imageUrl});
-  final String title;
-  final double price;
-  final String? imageUrl;
+class SellerProfilePage extends StatefulWidget {
+  const SellerProfilePage({super.key, required this.sellerId});
+
+  /// users.user_id ของผู้ขาย (SellerInfo.id)
+  final int sellerId;
+
+  @override
+  State<SellerProfilePage> createState() => _SellerProfilePageState();
 }
 
-class SellerProfilePage extends StatelessWidget {
-  const SellerProfilePage({
-    super.key,
-    required this.name,
-    required this.location,
-    required this.sales,
-    this.memberSince = 2024,
-  });
+class _SellerProfilePageState extends State<SellerProfilePage> {
+  static const _pageSize = 20;
 
-  final String name;
-  final String location;
-  final int sales;
-  final int memberSince;
+  SellerProfile? _seller;
+  List<Product> _items = [];
+  int _page = 1;
+  bool _hasMore = false;
+  bool _loading = true;
+  bool _loadingMore = false;
+  String? _error;
 
-  static const _items = [
-    _Item('Oak study desk', 45),
-    _Item('Desk lamp', 12),
-    _Item('Bookshelf', 30),
-    _Item('Mini fridge', 60),
-  ];
-
-  String get _initials {
-    final parts = name.trim().split(RegExp(r'\s+'));
-    return parts.take(2).map((p) => p[0].toUpperCase()).join();
+  @override
+  void initState() {
+    super.initState();
+    _load();
   }
 
-  String get _building => location.split(' · ').last;
+  ({SellerProfile seller, List<Product> items, bool hasMore}) _parse(
+    Map<String, dynamic> response,
+  ) {
+    if (response['success'] != true || response['data'] is! Map) {
+      throw const ApiException('The server returned an invalid seller profile.');
+    }
+    final data = jsonObject(response['data']);
+    final seller = SellerProfile.fromJson(jsonObject(data['seller']));
+    if (seller.id <= 0) {
+      throw const ApiException('The server returned an invalid seller profile.');
+    }
+    return (
+      seller: seller,
+      items: jsonParseList(data['items'], Product.fromJson),
+      hasMore: jsonBool(response['has_more']) ?? false,
+    );
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final result = _parse(
+        await productController.seller(widget.sellerId, limit: _pageSize),
+      );
+      if (mounted) {
+        setState(() {
+          _seller = result.seller;
+          _items = result.items;
+          _page = 1;
+          _hasMore = result.hasMore;
+        });
+      }
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not load this seller.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final result = _parse(
+        await productController.seller(
+          widget.sellerId,
+          page: _page + 1,
+          limit: _pageSize,
+        ),
+      );
+      if (mounted) {
+        setState(() {
+          _items = [..._items, ...result.items];
+          _page += 1;
+          _hasMore = result.hasMore;
+        });
+      }
+    } on ApiException catch (error) {
+      _toast(error.message);
+    } catch (_) {
+      _toast('Could not load more items.');
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,18 +128,54 @@ class SellerProfilePage extends StatelessWidget {
           children: [
             _buildHeader(context),
             const SizedBox(height: 12),
-            _buildIdentity(),
-            const SizedBox(height: 24),
-            const Text(
-              'Items',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: _C.ink,
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 64),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 48),
+                child: Column(
+                  children: [
+                    Text(_error!, textAlign: TextAlign.center),
+                    TextButton(
+                      onPressed: _load,
+                      child: const Text('Try again'),
+                    ),
+                  ],
+                ),
+              )
+            else ...[
+              _buildIdentity(_seller!),
+              const SizedBox(height: 24),
+              const Text(
+                'Items',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: _C.ink,
+                ),
               ),
-            ),
-            const SizedBox(height: 18),
-            _buildItems(),
+              const SizedBox(height: 18),
+              _buildItems(),
+              if (_hasMore)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Center(
+                    child: _loadingMore
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : TextButton(
+                            onPressed: _loadMore,
+                            child: const Text('Load more'),
+                          ),
+                  ),
+                ),
+            ],
           ],
         ),
       ),
@@ -98,14 +208,37 @@ class SellerProfilePage extends StatelessWidget {
     );
   }
 
-  Widget _buildIdentity() {
+  String _memberSince(DateTime? date) {
+    if (date == null) return 'Member since —';
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return 'Member since ${months[date.month - 1]} ${date.year}';
+  }
+
+  Widget _buildIdentity(SellerProfile seller) {
+    final info = [
+      if (seller.locationName.trim().isNotEmpty) seller.locationName.trim(),
+      _memberSince(seller.memberSince),
+    ].join(' · ');
     return Column(
       children: [
         CircleAvatar(
           radius: 38,
           backgroundColor: const Color(0xFFE9E1D9),
           child: Text(
-            _initials,
+            seller.initials,
             style: const TextStyle(
               fontFamily: 'serif',
               fontSize: 26,
@@ -115,7 +248,7 @@ class SellerProfilePage extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         Text(
-          name,
+          seller.name,
           style: const TextStyle(
             fontFamily: 'serif',
             fontSize: 24,
@@ -128,15 +261,18 @@ class SellerProfilePage extends StatelessWidget {
           children: [
             const Icon(Icons.location_on_outlined, size: 14, color: _C.muted),
             const SizedBox(width: 4),
-            Text(
-              '$_building · Member since $memberSince',
-              style: const TextStyle(fontSize: 12, color: _C.muted),
+            Flexible(
+              child: Text(
+                info,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: _C.muted),
+              ),
             ),
           ],
         ),
         const SizedBox(height: 6),
         Text(
-          '$sales completed sales',
+          '${seller.completedSales} completed sales',
           style: const TextStyle(fontSize: 12, color: _C.muted),
         ),
       ],
@@ -157,7 +293,8 @@ class SellerProfilePage extends StatelessWidget {
         childAspectRatio: 0.78,
       ),
       itemBuilder: (_, i) {
-        final l = _items[i];
+        final item = _items[i];
+        final imageUrl = item.primaryImageUrl;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -165,7 +302,7 @@ class SellerProfilePage extends StatelessWidget {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(14),
                 child: SizedBox.expand(
-                  child: l.imageUrl == null
+                  child: imageUrl == null
                       ? Container(
                           color: _C.surface,
                           child: const Icon(
@@ -175,7 +312,7 @@ class SellerProfilePage extends StatelessWidget {
                           ),
                         )
                       : Image.network(
-                          l.imageUrl!,
+                          imageUrl,
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => Container(
                             color: _C.surface,
@@ -191,7 +328,7 @@ class SellerProfilePage extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              l.title,
+              item.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
@@ -202,7 +339,7 @@ class SellerProfilePage extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              formatPriceTHB(l.price),
+              formatPriceTHB(item.price),
               style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,

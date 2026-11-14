@@ -40,7 +40,7 @@ class _MainScreenState extends State<MainScreen> {
     // SellPage(),
     const MyItemsPage(),
     OrdersPage(isActive: _selectedIndex == 3),
-    const ProfilePage(),
+    ProfilePage(isActive: _selectedIndex == 4, onOpenTab: _onTap),
   ];
 
   void _onTap(int index) {

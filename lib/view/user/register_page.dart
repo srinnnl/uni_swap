@@ -109,7 +109,7 @@ class _RegisterPageState extends State<RegisterPage> {
       'password': _passwordCtrl.text,
       // ถ้าเลือก Other: residence เป็น null และส่งชื่อที่พิมพ์เองให้ admin ตรวจ
       // backend ควรเก็บเป็นสถานะ pending (approved / merged / rejected ภายหลัง)
-      // users.residence_zone / residence_location_id (ต้องรอเพื่อน ALTER ตาม alter_request.sql)
+      // เก็บลง users.residence_zone / residence_location_id
       // ส่ง zone เป็น code ('on_campus' / 'off_campus') ตรงกับ enum ใน DB
       'residenceZone': _zone!.apiValue,
       'residenceLocationId': _location?.id,

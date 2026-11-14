@@ -235,9 +235,9 @@ app.get('/api/dashboard', auth, async (req, res) => {
     const userId = req.user.user_id;
     try {
         const [counts, listings, orders, requests] = await Promise.all([
-            db(`SELECT (SELECT COUNT(*) FROM products WHERE seller_id=?) AS my_listings,(SELECT COUNT(*) FROM products WHERE seller_id=? AND status='pending_review') AS listings_to_review,(SELECT COUNT(*) FROM products WHERE seller_id=? AND status='changes_requested') AS listings_to_fix,(SELECT COUNT(*) FROM orders WHERE buyer_id=? AND status IN ('pending_payment','paid','ready_for_meetup')) AS buying_active,(SELECT COUNT(*) FROM orders WHERE seller_id=? AND status IN ('pending_payment','paid','ready_for_meetup')) AS selling_active`, [userId, userId, userId, userId, userId]),
+            db(`SELECT (SELECT COUNT(*) FROM products WHERE seller_id=?) AS my_listings,(SELECT COUNT(*) FROM products WHERE seller_id=? AND status='sold') AS sold_listings,(SELECT COUNT(*) FROM products WHERE seller_id=? AND status='pending_review') AS listings_to_review,(SELECT COUNT(*) FROM products WHERE seller_id=? AND status='changes_requested') AS listings_to_fix,(SELECT COUNT(*) FROM orders WHERE buyer_id=? AND status IN ('pending_payment','paid','ready_for_meetup')) AS buying_active,(SELECT COUNT(*) FROM orders WHERE seller_id=? AND status IN ('pending_payment','paid','ready_for_meetup')) AS selling_active`, [userId, userId, userId, userId, userId, userId]),
             db("SELECT product_id,title,price,status,review_note,created_at FROM products WHERE seller_id=? ORDER BY updated_at DESC,product_id DESC LIMIT 5", [userId]),
-            db(`SELECT o.order_id,o.status,o.total_amount,o.meetup_location,o.meetup_datetime,o.created_at,p.title,CASE WHEN o.buyer_id=? THEN 'buying' ELSE 'selling' END AS perspective FROM orders o JOIN products p ON p.product_id=o.product_id WHERE o.buyer_id=? OR o.seller_id=? ORDER BY o.updated_at DESC,o.order_id DESC LIMIT 5`, [userId, userId, userId]),
+            db(`SELECT o.order_id,o.status,o.total_amount,o.meetup_location,o.meetup_datetime,o.payment_deadline,o.created_at,p.title,CASE WHEN o.buyer_id=? THEN 'buying' ELSE 'selling' END AS perspective FROM orders o JOIN products p ON p.product_id=o.product_id WHERE o.buyer_id=? OR o.seller_id=? ORDER BY o.updated_at DESC,o.order_id DESC LIMIT 5`, [userId, userId, userId]),
             db("SELECT request_id,status,name,zone FROM location_requests WHERE requested_by=? AND status IN ('pending','reviewing') ORDER BY created_at DESC LIMIT 1", [userId])
         ]);
         res.json({ success: true, data: { user: req.user, counts: counts[0], recent_listings: listings, recent_orders: orders, pending_location_request: requests[0] || null } });
@@ -256,7 +256,19 @@ app.get('/api/products', async (req, res) => {
 });
 app.get('/api/products/:product_id', async (req, res) => {
     if (!validId(req.params.product_id)) return bad(res, 'Invalid product_id');
-    try { const rows = await db(`SELECT p.*,u.display_name AS seller_name,u.username,c.name AS category_name,l.name AS location_name FROM products p JOIN users u ON u.user_id=p.seller_id LEFT JOIN categories c ON c.category_id=p.category_id LEFT JOIN locations l ON l.location_id=p.location_id WHERE p.product_id=? AND p.status='available'`, [req.params.product_id]); if (!rows.length) return notFound(res, 'Product not found'); const images = await db('SELECT image_id,image_url,display_order FROM product_images WHERE product_id=? ORDER BY display_order,image_id', [req.params.product_id]); await db('UPDATE products SET view_count=view_count+1 WHERE product_id=?', [req.params.product_id]); res.json({ success: true, data: { ...rows[0], view_count: Number(rows[0].view_count) + 1, images } }); } catch (err) { dbError(res, err); }
+    try { const rows = await db(`SELECT p.*,u.display_name AS seller_name,u.username,c.name AS category_name,l.name AS location_name,(SELECT COUNT(*) FROM orders o WHERE o.seller_id=p.seller_id AND o.status='completed') AS sales FROM products p JOIN users u ON u.user_id=p.seller_id LEFT JOIN categories c ON c.category_id=p.category_id LEFT JOIN locations l ON l.location_id=p.location_id WHERE p.product_id=? AND p.status IN ('available','reserved')`, [req.params.product_id]); if (!rows.length) return notFound(res, 'Product not found'); const images = await db('SELECT image_id,image_url,display_order FROM product_images WHERE product_id=? ORDER BY display_order,image_id', [req.params.product_id]); await db('UPDATE products SET view_count=view_count+1 WHERE product_id=?', [req.params.product_id]); res.json({ success: true, data: { ...rows[0], view_count: Number(rows[0].view_count) + 1, images } }); } catch (err) { dbError(res, err); }
+});
+// Public seller profile: seller summary + their available listings (paged).
+app.get('/api/sellers/:user_id', async (req, res) => {
+    if (!validId(req.params.user_id)) return bad(res, 'Invalid user_id');
+    const paging = getPaging(req, res); if (!paging) return;
+    try {
+        const sellers = await db(`SELECT u.user_id,u.display_name,u.username,u.created_at AS member_since,l.name AS location_name,(SELECT COUNT(*) FROM orders o WHERE o.seller_id=u.user_id AND o.status='completed') AS completed_sales FROM users u LEFT JOIN locations l ON l.location_id=u.residence_location_id WHERE u.user_id=? AND u.status='active'`, [req.params.user_id]);
+        if (!sellers.length) return notFound(res, 'Seller not found');
+        const rows = await db(`SELECT p.product_id,p.title,p.description,p.price,p.item_condition,p.urgency_level,p.zone,l.name AS location_name,p.location_id,p.location_detail,p.clearance_deadline,p.created_at,p.category_id,c.name AS category_name,u.user_id AS seller_id,u.display_name AS seller_name,(SELECT image_url FROM product_images WHERE product_id=p.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url,(SELECT COUNT(*) FROM product_images WHERE product_id=p.product_id) AS image_count FROM products p JOIN users u ON u.user_id=p.seller_id LEFT JOIN categories c ON c.category_id=p.category_id LEFT JOIN locations l ON l.location_id=p.location_id WHERE p.seller_id=? AND p.status='available' ORDER BY p.created_at DESC,p.product_id DESC LIMIT ? OFFSET ?`, [req.params.user_id, paging.limit + 1, paging.offset]);
+        const seller = { ...sellers[0], completed_sales: Number(sellers[0].completed_sales) };
+        res.json({ success: true, data: { seller, items: rows.slice(0, paging.limit) }, page: paging.page, limit: paging.limit, has_more: rows.length > paging.limit });
+    } catch (err) { dbError(res, err); }
 });
 function getProductInput(b) {
     const x = b || {}; const locationId = x.location_id ?? x.locationId;
@@ -569,7 +581,7 @@ app.get('/api/admin/listings', auth, adminOnly, async (req, res) => {
 app.put('/api/admin/listings/:product_id/review', auth, adminOnly, async (req, res) => { const b = req.body || {}; const map = { approve: 'available', changes_requested: 'changes_requested', reject: 'rejected' }; if (!validId(req.params.product_id) || !map[b.action] || !validText(b.review_note ?? b.reviewNote, 5000, b.action !== 'approve') || (b.action === 'reject' && !['prohibited_item', 'misleading', 'poor_photos', 'duplicate', 'other'].includes(b.reject_reason ?? b.rejectReason))) return bad(res, 'Invalid review'); try { const result = await db("UPDATE products SET status=?,review_note=?,reject_reason=?,reviewed_by=?,reviewed_at=UTC_TIMESTAMP() WHERE product_id=? AND status='pending_review'", [map[b.action], (b.review_note ?? b.reviewNote)?.trim() || null, b.action === 'reject' ? (b.reject_reason ?? b.rejectReason) : null, req.user.user_id, req.params.product_id]); if (!result.affectedRows) return res.status(409).json({ success: false, message: 'Listing is not awaiting review' }); res.json({ success: true, status: map[b.action] }); } catch (err) { dbError(res, err); } });
 app.get('/api/admin/categories', auth, adminOnly, async (_req, res) => {
     try {
-        const rows = await db(`SELECT c.category_id,c.name,c.emoji,c.is_active,c.created_at,
+        const rows = await db(`SELECT c.category_id,c.name,c.emoji,c.is_active,
             COUNT(p.product_id) AS product_count FROM categories c
             LEFT JOIN products p ON p.category_id=c.category_id GROUP BY c.category_id ORDER BY c.name`);
         res.json({ success: true, data: rows });
@@ -588,7 +600,7 @@ app.put('/api/admin/categories/:category_id', auth, adminOnly, async (req, res) 
 
 app.get('/api/admin/locations', auth, adminOnly, async (req, res) => {
     if (req.query.zone && !zones.includes(req.query.zone)) return bad(res, 'Invalid zone');
-    try { const rows = await db(`SELECT location_id,zone,name,is_active,created_at FROM locations${req.query.zone ? ' WHERE zone=?' : ''} ORDER BY zone,name`, req.query.zone ? [req.query.zone] : []); res.json({ success: true, data: rows }); } catch (err) { dbError(res, err); }
+    try { const rows = await db(`SELECT location_id,zone,name,is_active FROM locations${req.query.zone ? ' WHERE zone=?' : ''} ORDER BY zone,name`, req.query.zone ? [req.query.zone] : []); res.json({ success: true, data: rows }); } catch (err) { dbError(res, err); }
 });
 app.post('/api/admin/locations', auth, adminOnly, async (req, res) => {
     const { name, zone } = req.body || {}; if (!validText(name, 150, true) || !zones.includes(zone)) return bad(res, 'Invalid location');
@@ -698,4 +710,4 @@ function startOrderExpiryWorker(server) {
 }
 
 if (require.main === module) startServer();
-module.exports = app;
+module.exports = app;

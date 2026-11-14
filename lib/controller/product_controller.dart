@@ -32,6 +32,34 @@ class ProductController {
   Future<List<Map<String, dynamic>>> locations({String? zone}) async =>
       _rows(await _api.get('locations', query: {'zone': zone}));
 
+  /// ขอเพิ่มที่พักที่ยังไม่มีในรายการ (ต้อง login) -> POST /api/location-requests
+  /// server ตอบ 201 { success, request_id, status: 'pending' }
+  Future<Map<String, dynamic>> requestLocation({
+    required String name,
+    required String zone,
+    String? address,
+    String? reason,
+  }) => _api.post(
+    'location-requests',
+    body: {
+      'name': name,
+      'zone': zone,
+      if (address != null && address.isNotEmpty) 'address': address,
+      if (reason != null && reason.isNotEmpty) 'reason': reason,
+    },
+  );
+
+  /// โปรไฟล์ผู้ขาย + สินค้า available ของเขา -> GET /api/sellers/:user_id
+  /// ตอบ { success, data: { seller, items }, page, limit, has_more }
+  Future<Map<String, dynamic>> seller(
+    int userId, {
+    int page = 1,
+    int limit = 20,
+  }) => _api.get('sellers/$userId', query: {'page': page, 'limit': limit});
+
+  /// สรุปของฉัน (counts: my_listings, sold_listings, ...) -> GET /api/dashboard
+  Future<Map<String, dynamic>> myDashboard() => _api.get('dashboard');
+
   Future<Map<String, dynamic>> detail(int productId) =>
       _api.get('products/$productId');
 

@@ -40,7 +40,7 @@ class _HomePageState extends State<HomePage> {
   ResidenceZone get _zone => _place?.zone ?? ResidenceZone.onCampus;
   String get _building => _place?.name ?? 'your location';
   String get _placeLabel => _place == null
-      ? 'Choose your residence'
+      ? 'Set your residence in Profile'
       : '${locationZoneLabel(_place!.zone)} · ${_place!.name}';
 
   @override
@@ -170,24 +170,6 @@ class _HomePageState extends State<HomePage> {
     final h = DateTime.now().hour;
     final part = h < 12 ? 'morning' : (h < 17 ? 'afternoon' : 'evening');
     return 'Good $part';
-  }
-
-  // ===== Location picker =====
-
-  Future<void> _pickPlace() async {
-    final picked = await showLocationPicker(
-      context,
-      locations: _locations,
-      zone: _place?.zone,
-      selectedLocationId: _place?.id,
-    );
-
-    if (picked?.location != null && mounted) {
-      setState(() {
-        _place = picked!.location!;
-        _tab = 0;
-      });
-    }
   }
 
   @override
@@ -322,37 +304,33 @@ class _HomePageState extends State<HomePage> {
   }
 
   // ===== Location bar =====
+  // แสดงที่พักของผู้ใช้เท่านั้น (เปลี่ยนได้ที่หน้า Profile)
 
   Widget _buildLocationBar() {
-    return InkWell(
-      onTap: _pickPlace,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: _C.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _C.border),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.location_on_outlined, size: 20, color: _C.ink),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                _placeLabel,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: _C.ink,
-                ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: _C.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _C.border),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.location_on_outlined, size: 20, color: _C.ink),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _placeLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: _C.ink,
               ),
             ),
-            const Icon(Icons.chevron_right, color: _C.muted),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

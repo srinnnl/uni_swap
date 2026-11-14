@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:uni_swap/controller/api_client.dart';
 import 'package:uni_swap/controller/app_controllers.dart';
+import 'package:uni_swap/model/dashboard.dart';
 import 'package:uni_swap/model/enums.dart';
+import 'package:uni_swap/model/format.dart';
+import 'package:uni_swap/model/json_utils.dart';
 import 'package:uni_swap/model/location.dart';
+import 'package:uni_swap/model/order.dart';
+import 'package:uni_swap/model/order_status.dart';
+import 'package:uni_swap/model/product.dart';
 import 'package:uni_swap/view/user/location_picker.dart';
 import 'package:uni_swap/view/login.dart';
 import 'package:uni_swap/view/user/request_location_page.dart';
@@ -22,7 +28,18 @@ class ProfilePage extends StatefulWidget {
   /// Show the "Admin dashboard" menu item (role = admin).
   final bool isAdmin;
 
-  const ProfilePage({super.key, this.isAdmin = false});
+  /// true เมื่อกำลังอยู่แท็บ Profile (MainScreen ใช้ IndexedStack จึงต้องสั่งโหลดใหม่เอง)
+  final bool isActive;
+
+  /// ให้แถบ "Needs your attention" สลับไปแท็บอื่นของ MainScreen (2 = My items, 3 = Orders)
+  final ValueChanged<int>? onOpenTab;
+
+  const ProfilePage({
+    super.key,
+    this.isAdmin = false,
+    this.isActive = false,
+    this.onOpenTab,
+  });
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -36,10 +53,22 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _savingLocation = false;
   String? _loadError;
 
+  // ข้อมูลจาก GET /api/dashboard — null = ยังไม่รู้/โหลดไม่ได้ -> สถิติแสดง "–" และซ่อนแถบ
+  DashboardCounts? _counts;
+  List<Order> _orders = [];
+  PendingLocationRequest? _pendingRequest;
+
   @override
   void initState() {
     super.initState();
     _loadProfile();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfilePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // กลับมาที่แท็บ Profile -> รีเฟรชสถิติและแถบ (ข้อมูลอาจเปลี่ยนจากแท็บอื่น)
+    if (widget.isActive && !oldWidget.isActive) _loadStats();
   }
 
   // ---- Profile data from AuthController ----
@@ -108,6 +137,7 @@ class _ProfilePageState extends State<ProfilePage> {
       _isLoading = true;
       _loadError = null;
     });
+    _loadStats(); // แยกจากโปรไฟล์ ถ้าพังก็แค่โชว์ "–"
 
     try {
       await authController.loadProfile();
@@ -133,6 +163,109 @@ class _ProfilePageState extends State<ProfilePage> {
         _loadError = 'Unable to load profile. Please try again.';
       });
     }
+  }
+
+  Future<void> _loadStats() async {
+    try {
+      final response = await productController.myDashboard();
+      final data = jsonObject(response['data']);
+      if (response['success'] != true || data['counts'] is! Map) {
+        throw const ApiException('The server returned invalid statistics.');
+      }
+      final counts = DashboardCounts.fromJson(jsonObject(data['counts']));
+      final orders = jsonParseList(data['recent_orders'], Order.fromJson);
+      final pending = data['pending_location_request'];
+      if (mounted) {
+        setState(() {
+          _counts = counts;
+          _orders = orders;
+          _pendingRequest = pending is Map
+              ? PendingLocationRequest.fromJson(
+                  Map<String, dynamic>.from(pending),
+                )
+              : null;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _counts = null;
+          _orders = [];
+          _pendingRequest = null;
+        });
+      }
+    }
+  }
+
+  /// แถบ "Needs your attention": (icon, title, subtitle, onTap) เฉพาะเรื่องที่มีจริง
+  List<(IconData, String, String, VoidCallback?)> _attentionItems() {
+    final counts = _counts;
+    if (counts == null) return const [];
+    void openTab(int index) => widget.onOpenTab?.call(index);
+    final items = <(IconData, String, String, VoidCallback?)>[];
+
+    if (counts.listingsToFix > 0) {
+      final n = counts.listingsToFix;
+      items.add((
+        Icons.error_outline,
+        n == 1 ? '1 item needs changes' : '$n items need changes',
+        'Fix it and send it for review again',
+        () => openTab(2),
+      ));
+    }
+
+    for (final order in _orders.where((o) => o.isActive)) {
+      final buying = order.isBuying;
+      final title =
+          '${buying ? 'Buying' : 'Selling'} · ${order.productTitle ?? 'Item'}';
+      final String subtitle;
+      if (order.shownStatus == OrderStatus.pendingPayment) {
+        final due = order.paymentDeadline;
+        subtitle = buying
+            ? (due != null
+                  ? 'Pay before ${formatClock(due)}'
+                  : 'Waiting for your payment')
+            : 'Waiting for the buyer to pay';
+      } else {
+        final place = order.meetupLocation.trim().isEmpty
+            ? 'the pickup place'
+            : order.meetupLocation.trim();
+        final at = order.meetupDatetime;
+        subtitle =
+            'Meet at $place · ${at == null ? 'time not set yet' : formatWhen(at)}';
+      }
+      items.add((
+        buying ? Icons.shopping_bag_outlined : Icons.sell_outlined,
+        title,
+        subtitle,
+        () => openTab(3),
+      ));
+    }
+
+    if (counts.listingsToReview > 0) {
+      final n = counts.listingsToReview;
+      items.add((
+        Icons.hourglass_empty,
+        n == 1
+            ? '1 item is waiting for review'
+            : '$n items are waiting for review',
+        'An admin will check it soon',
+        () => openTab(2),
+      ));
+    }
+
+    final request = _pendingRequest;
+    if (request != null) {
+      items.add((
+        Icons.location_on_outlined,
+        'Residence request: ${request.name}',
+        request.status == LocationRequestStatus.reviewing
+            ? 'An admin is reviewing it'
+            : 'Waiting for an admin to review',
+        null,
+      ));
+    }
+    return items;
   }
 
   @override
@@ -227,19 +360,45 @@ class _ProfilePageState extends State<ProfilePage> {
 
         const SizedBox(height: 22),
 
-        // Mock statistics - unchanged for now
+        // Statistics (Items = ทุกสินค้าที่ลง, Sold = ขายแล้ว)
         _AppCard(
           child: IntrinsicHeight(
             child: Row(
               children: [
-                _stat('12', 'Items'),
+                _stat(_counts?.myListings.toString() ?? '–', 'Items'),
                 const VerticalDivider(color: _cBorder, width: 1),
-                _stat('8', 'Sold'),
+                _stat(_counts?.soldListings.toString() ?? '–', 'Sold'),
               ],
             ),
           ),
         ),
         const SizedBox(height: 24),
+
+        // Needs your attention (ซ่อนทั้งแถบถ้าไม่มีอะไรรอ)
+        ...(() {
+          final attention = _attentionItems();
+          if (attention.isEmpty) return <Widget>[];
+          return <Widget>[
+            const Text(
+              'Needs your attention',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: _cInk,
+              ),
+            ),
+            const SizedBox(height: 8),
+            for (var i = 0; i < attention.length; i++)
+              _menuTile(
+                attention[i].$1,
+                attention[i].$2,
+                attention[i].$3,
+                attention[i].$4,
+                last: i == attention.length - 1,
+              ),
+            const SizedBox(height: 24),
+          ];
+        })(),
 
         const Text(
           'My account',
@@ -251,7 +410,7 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         const SizedBox(height: 8),
 
-        // Mock location - unchanged for now
+        // Residence (เปลี่ยนได้ / ขอเพิ่มที่พักใหม่)
         _menuTile(
           Icons.location_on_outlined,
           'My location',
@@ -303,7 +462,7 @@ class _ProfilePageState extends State<ProfilePage> {
     IconData icon,
     String title,
     String subtitle,
-    VoidCallback onTap, {
+    VoidCallback? onTap, {
     bool last = false,
   }) {
     return InkWell(
@@ -338,7 +497,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, size: 20),
+            if (onTap != null) const Icon(Icons.chevron_right, size: 20),
           ],
         ),
       ),
@@ -361,15 +520,30 @@ class _ProfilePageState extends State<ProfilePage> {
 
     // Request a location
     if (result.location == null) {
+      final hasResidence =
+          _selectedLocation != null ||
+          (authController.user?['residence_name']?.toString().isNotEmpty ??
+              false);
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const RequestLocationPage()),
+        MaterialPageRoute(
+          builder: (_) => RequestLocationPage(
+            currentLocation: hasResidence ? _residenceLabel : null,
+          ),
+        ),
       );
       return;
     }
 
     setState(() => _savingLocation = true);
     try {
+      // ย้ายที่พัก: เตือนถ้ายังมีสินค้าที่นัดรับอยู่ที่หอเดิม
+      if (_selectedLocation?.id != result.location!.id) {
+        final stale = await _listingsAtOtherPlace(result.location!.id);
+        if (!mounted) return;
+        if (stale > 0 && !await _confirmMove(stale)) return;
+        if (!mounted) return;
+      }
       await authController.updateProfile({
         'residence_zone': result.zone.apiValue,
         'residence_location_id': result.location!.id,
@@ -388,6 +562,60 @@ class _ProfilePageState extends State<ProfilePage> {
     } finally {
       if (mounted) setState(() => _savingLocation = false);
     }
+  }
+
+  /// จำนวนสินค้าที่ยังขายอยู่/รอตรวจ แต่นัดรับที่หออื่นที่ไม่ใช่ [newLocationId]
+  /// (reserved ไม่นับ เพราะมีออเดอร์ค้างอยู่) ถ้าโหลดไม่ได้ให้คืน 0 แล้วไปต่อ
+  Future<int> _listingsAtOtherPlace(int newLocationId) async {
+    try {
+      final response = await productController.myListings(limit: 100);
+      final rows = jsonParseList(response['data'], Product.fromJson);
+      const active = {
+        ProductStatus.available,
+        ProductStatus.pendingReview,
+        ProductStatus.changesRequested,
+      };
+      return rows
+          .where(
+            (p) =>
+                active.contains(p.status) &&
+                p.locationId != null &&
+                p.locationId != newLocationId,
+          )
+          .length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<bool> _confirmMove(int count) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _cBg,
+        title: const Text('Change residence?'),
+        content: Text(
+          count == 1
+              ? 'You have 1 item still listed for pickup at your current '
+                    'place. It will stay there until you edit it, and an '
+                    'edited item goes back to admin review.'
+              : 'You have $count items still listed for pickup at your '
+                    'current place. They will stay there until you edit '
+                    'them, and edited items go back to admin review.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Change anyway'),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
   }
 
   void _confirmLogout() {

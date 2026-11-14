@@ -64,7 +64,7 @@ class LocationRequest {
   factory LocationRequest.fromJson(Map<String, dynamic> json) {
     return LocationRequest(
       id: jsonInt(json['request_id'] ?? json['id']) ?? 0,
-      userId: jsonInt(json['user_id']) ?? 0,
+      userId: jsonInt(json['requested_by'] ?? json['user_id']) ?? 0,
       name: jsonString(json['name']) ?? '',
       zone: ResidenceZone.fromApi(json['zone']),
       address: jsonString(json['address']),
@@ -81,7 +81,7 @@ class LocationRequest {
   }
 
   final int id; // location_requests.request_id
-  final int userId; // location_requests.user_id
+  final int userId; // location_requests.requested_by
   final String name; // location_requests.name
   final ResidenceZone zone; // location_requests.zone
   final String? address; // location_requests.address
@@ -102,7 +102,7 @@ class LocationRequest {
   Map<String, dynamic> toJson() {
     return {
       'request_id': id,
-      'user_id': userId,
+      'requested_by': userId,
       'name': name,
       'zone': zone.apiValue,
       'address': address,

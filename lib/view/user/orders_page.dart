@@ -350,6 +350,13 @@ class _OrdersPageState extends State<OrdersPage> {
   Widget _tile(_Order o, {bool dimmed = false}) {
     final (label, bg, fg) = _statusStyle(o.shown);
     final priceText = formatPriceTHB(o.price);
+    // ผู้ซื้อที่ยังไม่จ่าย: โชว์ปุ่ม Pay now ใหญ่ใต้การ์ด + เวลาที่ต้องจ่ายก่อน
+    final showPay =
+        o.shown == OrderStatus.pendingPayment && o.isBuying && o.needsPayment;
+    final due = o.paymentDeadline;
+    final payBefore = o.shown == OrderStatus.pendingPayment && due != null
+        ? 'Pay before ${_formatTime(TimeOfDay.fromDateTime(due))}'
+        : null;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -364,7 +371,9 @@ class _OrdersPageState extends State<OrdersPage> {
         ),
         child: Opacity(
           opacity: dimmed ? 0.75 : 1,
-          child: Row(
+          child: Column(
+            children: [
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
@@ -398,9 +407,27 @@ class _OrdersPageState extends State<OrdersPage> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         _StatusBadge(label: label, bg: bg, fg: fg),
-                        Text(
-                          _createdLabel(o.createdAt),
-                          style: const TextStyle(fontSize: 11, color: _cMuted),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              payBefore ?? _createdLabel(o.createdAt),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: payBefore != null
+                                    ? FontWeight.w700
+                                    : FontWeight.w400,
+                                color: payBefore != null
+                                    ? _cAmberFg
+                                    : _cMuted,
+                              ),
+                            ),
+                            const Icon(
+                              Icons.chevron_right,
+                              size: 16,
+                              color: _cMuted,
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -424,11 +451,38 @@ class _OrdersPageState extends State<OrdersPage> {
                         style: const TextStyle(fontSize: 12, color: _cSageDark),
                       ),
                     ],
-                    const SizedBox(height: 10),
-                    _actions(o),
+                    if (!showPay) ...[
+                      const SizedBox(height: 10),
+                      _actions(o),
+                    ],
                   ],
                 ),
               ),
+            ],
+          ),
+          if (showPay) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => _openDetails(o, pay: true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: _cInk,
+                  minimumSize: const Size.fromHeight(46),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(
+                  'Pay ${formatPriceTHB(o.price)}',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
             ],
           ),
         ),
@@ -438,7 +492,7 @@ class _OrdersPageState extends State<OrdersPage> {
 
   // เปิดหน้ารายละเอียด แล้วรับผลล่าสุด (สถานะ + จุดนัด) กลับมาอัปเดตรายการ
   // ใช้ OrderStatus ตัวเดียวกันทั้งสองหน้า ไม่ต้องแปลงด้วย index อีกต่อไป
-  Future<void> _openDetails(_Order o) async {
+  Future<void> _openDetails(_Order o, {bool pay = false}) async {
     final result = await Navigator.push<OrderResult>(
       context,
       MaterialPageRoute(
@@ -459,6 +513,7 @@ class _OrdersPageState extends State<OrdersPage> {
           commissionAmount: o.commissionAmount,
           sellerPayout: o.sellerPayout,
           imageUrl: o.imageUrl,
+          startPayment: pay,
         ),
       ),
     );

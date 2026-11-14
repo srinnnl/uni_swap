@@ -9,6 +9,7 @@ import 'user.dart';
 class DashboardCounts {
   const DashboardCounts({
     this.myListings = 0,
+    this.soldListings = 0,
     this.listingsToReview = 0,
     this.listingsToFix = 0,
     this.buyingActive = 0,
@@ -18,6 +19,7 @@ class DashboardCounts {
   factory DashboardCounts.fromJson(Map<String, dynamic> json) {
     return DashboardCounts(
       myListings: jsonInt(json['my_listings']) ?? 0,
+      soldListings: jsonInt(json['sold_listings']) ?? 0,
       listingsToReview: jsonInt(json['listings_to_review']) ?? 0,
       listingsToFix: jsonInt(json['listings_to_fix']) ?? 0,
       buyingActive: jsonInt(json['buying_active']) ?? 0,
@@ -26,6 +28,7 @@ class DashboardCounts {
   }
 
   final int myListings;
+  final int soldListings; // products ของผู้ขายที่ status = 'sold'
   final int listingsToReview;
   final int listingsToFix;
   final int buyingActive;
@@ -34,6 +37,7 @@ class DashboardCounts {
   Map<String, dynamic> toJson() {
     return {
       'my_listings': myListings,
+      'sold_listings': soldListings,
       'listings_to_review': listingsToReview,
       'listings_to_fix': listingsToFix,
       'buying_active': buyingActive,

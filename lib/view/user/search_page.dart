@@ -72,7 +72,8 @@ class _SearchPageState extends State<SearchPage> {
 
     try {
       final responses = await Future.wait<Object>([
-        productController.browse(),
+        // server อนุญาตสูงสุด 100 ต่อหน้า (ค้นหา/กรองทำในเครื่อง)
+        productController.browse(page: 1, limit: 100),
         productController.categories(),
         productController.locations(),
       ]);

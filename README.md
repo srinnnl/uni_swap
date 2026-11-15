@@ -1,72 +1,102 @@
-# 🛒 UniSwap Campus Marketplace
+# UniSwap Campus Marketplace
 
----
+UniSwap is a Flutter marketplace prototype for students to buy and sell second-hand items near their residence. It focuses on making local exchanges easier, especially when students need to find nearby items or sell belongings before moving.
 
-## 🛠️ สิ่งที่ต้องเตรียมพร้อม (Prerequisites)
-ก่อนเริ่มทำงานกับโปรเจกต์ ตรวจสอบให้แน่ใจว่าในเครื่องติดตั้งเครื่องมือเหล่านี้เรียบร้อยแล้ว:
-* [Flutter SDK](https://docs.flutter.dev/get-started/install)
-* [Git](https://git-scm.com/downloads)
-* Editor เช่น VS Code หรือ Android Studio
+## Project scope
 
----
+UniSwap connects student members and administrators through a reviewed marketplace.
 
-## 🚀 วิธีเริ่มต้นการใช้งาน (Getting Started)
+### Student members
 
-**1. Clone โปรเจกต์ลงเครื่อง**
-เปิด Terminal แล้วพิมพ์คำสั่งนี้เพื่อดึงโปรเจกต์:
+- Register with student details and a campus or nearby residence. New accounts wait for administrator approval before they can sign in.
+- Browse and search available listings, with category, price, and location filters.
+- Create listings with a title, description, category, price, condition, urgency, pickup details, and multiple photos.
+- Use their registered residence as the listing's pickup location. They can add a note such as which entrance to meet at.
+- Edit their listings, check review feedback, and manage items they have listed.
+- Place orders, view order and payment status, arrange a meetup time, and mark an order received.
+- Update their profile or residence, and request a residence that is not already in the list.
+
+### Administrators
+
+- View an overview of registered users, live listings, and items or residence requests needing attention.
+- Approve, reject, suspend, or restore member accounts.
+- Review listings by approving them, requesting changes, or rejecting them with a reason.
+- Manage marketplace categories and residences.
+- Review requests to add or merge a residence.
+
+## Main marketplace flow
+
+1. A student registers. An administrator approves the account before the student can sign in.
+2. A seller creates a listing using their registered residence and adds any helpful pickup instructions.
+3. The listing waits for administrator review. Once approved, it becomes visible to buyers.
+4. A buyer places an order for an available item. The item is reserved while payment is pending.
+5. The buyer confirms the demo payment within 30 minutes. The app records the payment status and the order moves to meetup.
+6. The buyer and seller meet at the seller's listed residence. The buyer marks the item received to complete the order.
+
+## Important prototype limits
+
+- Payment is simulated: the app records a paid status, but it does not charge a card, transfer money, or pay out sellers.
+- A 5% seller commission is recorded for demonstration; no real commission is collected.
+- There is no in-app chat, map-based pickup, courier, or delivery service.
+- Pickup uses the seller's registered residence, with an optional text note for meetup details.
+
+## Presentation notes
+
+> UniSwap is a campus-focused second-hand marketplace for students. Sellers can post items with photos and pickup details at their registered residence. Administrators review student accounts and listings, and manage the marketplace's categories and residences. Buyers can search for nearby items, place an order, confirm a simulated payment, and arrange a meetup. The goal is to make local buying and selling easier; real payments, chat, and delivery are outside this prototype's scope.
+
+## Technology
+
+- **Mobile app:** Flutter and Dart
+- **Backend API:** Node.js and Express
+- **Database:** MySQL
+- **Connection:** The Flutter app calls the Express API, which reads and updates the MySQL database.
+
+## Run locally
+
+### Requirements
+
+- Flutter SDK
+- Node.js and npm
+- MySQL
+- An editor such as VS Code or Android Studio
+
+### 1. Set up the database
+
+Create a MySQL database named `project_mobile_app`, select it, and import [`project_mobile_app.sql`](./project_mobile_app.sql). Update the local connection settings in `db_config.js` to match your MySQL installation.
+
+### 2. Start the backend
+
+From the project root, install the Node.js packages and start the API:
+
 ```bash
-git clone [https://github.com/srinnnl/uni_swap.git](https://github.com/srinnnl/uni_swap.git)
-cd uni_swap
+npm install
+npm start
 ```
 
-**2. ติดตั้งแพ็กเกจที่จำเป็น**
+The API listens on port `3000` by default.
+
+### 3. Start the Flutter app
+
+In another terminal:
+
 ```bash
 flutter pub get
-```
-
-**3. ทดสอบรันแอปพลิเคชัน**
-```bash
 flutter run
 ```
 
----
+By default, the app connects to `http://localhost:3000/api`. For an Android emulator, use the host machine address:
 
-## 🔄 คู่มือการใช้ Git สำหรับทีม (Git Workflow)
-
-เพื่อป้องกันปัญหาโค้ดตีกัน (Conflict) และไฟล์หาย ขอให้เพื่อนๆ ทุกคนทำตามสเต็ปนี้อย่างเคร่งครัดนะคะ ✌️
-
-### สเต็ปที่ 1: อัปเดตโค้ดให้ใหม่ล่าสุดเสมอ (สำคัญมาก!)
-ก่อนเริ่มเขียนโค้ดทุกครั้ง (หรือก่อนเริ่มงานในแต่ละวัน) ต้องดึงโค้ดล่าสุดจากกิ่ง `main` มาอัปเดตในเครื่องเสมอ:
 ```bash
-git checkout main
-git pull origin main
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3000/api
 ```
 
-### สเต็ปที่ 2: สร้างกิ่ง (Branch) ของตัวเอง
-**ห้ามเขียนโค้ดลงในกิ่ง `main` หรือกิ่งคนอื่นโดยตรงเด็ดขาด!** ให้สร้างกิ่งใหม่สำหรับงานของตัวเอง:
+For a physical device, set `API_BASE_URL` to an address the device can reach on your local network.
+
+## Tests
+
 ```bash
-git checkout -b <ชื่อเรา>-<ชื่อฟีเจอร์>
-# ตัวอย่าง: git checkout -b serene-payment-ui
+flutter test
+npm test
 ```
 
-### สเต็ปที่ 3: เซฟและยืนยันโค้ด (Add & Commit)
-เมื่อเขียนโค้ดเสร็จหรือหมดวัน ให้บันทึกการเปลี่ยนแปลง:
-```bash
-git add .
-git commit -m "อธิบายสั้นๆ ว่าวันนี้ทำอะไรไปบ้าง"
-# ตัวอย่าง: git commit -m "feat: เพิ่มหน้า Payment และปุ่มกดยืนยัน"
-```
-
-### สเต็ปที่ 4: ดันโค้ดขึ้น GitHub (Push)
-เมื่อพร้อมส่งงาน ให้ดันกิ่งของเราขึ้นไปบน Server:
-```bash
-git push -u origin <ชื่อกิ่งของเรา>
-# ตัวอย่าง: git push -u origin serene-payment-ui
-```
-*(หมายเหตุ: ถ้าเคย push กิ่งนี้ขึ้นไปแล้ว ครั้งต่อไปพิมพ์แค่ `git push` เฉยๆ ก็พอ)*
-
-### สเต็ปที่ 5: ขอรวมโค้ด (Pull Request)
-1. เข้าไปที่หน้าเว็บ GitHub ของโปรเจกต์
-2. จะเห็นแถบแจ้งเตือนกิ่งของเราเด้งขึ้นมา ให้กดปุ่ม **Compare & pull request**
-3. เช็คให้ชัวร์ว่ากำลังขอรวมกิ่งของเรา ➡️ ไปที่ `main`
-4. พิมพ์รายละเอียดว่าฟีเจอร์นี้ทำอะไร แล้วกด **Create pull request** เพื่อให้เพื่อนช่วยรีวิวและรวมร่าง (Merge) 🚀
+The Node.js `npm test` script currently checks the syntax of `app.js`. Flutter tests cover app models and controllers; update the older image-upload test calls to the current bytes-based API before expecting the full Flutter suite to pass.

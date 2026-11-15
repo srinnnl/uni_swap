@@ -51,6 +51,7 @@ class OrderDetailsPage extends StatefulWidget {
     required this.orderId,
     required this.title,
     required this.price,
+    required this.totalAmount,
     required this.person,
     required this.isBuying,
     required this.status,
@@ -63,6 +64,10 @@ class OrderDetailsPage extends StatefulWidget {
     this.pickupDetail,
     this.meetupAt,
     this.paymentDeadline, // orders.payment_deadline (null = ไม่แสดงตัวนับเวลา)
+    this.paymentMethod,
+    this.paymentStatus,
+    this.transactionRef,
+    this.paymentPaidAt,
     this.imageUrl,
     this.startPayment = false,
   });
@@ -70,6 +75,7 @@ class OrderDetailsPage extends StatefulWidget {
   final int orderId; // orders.order_id
   final String title;
   final double price; // orders.seller_price (ผู้ซื้อจ่ายเท่านี้)
+  final double totalAmount; // orders.total_amount (ยอดที่ผู้ซื้อจ่าย)
   final String person; // ผู้ขาย (ถ้าเรากำลังซื้อ) หรือ ผู้ซื้อ (ถ้าเรากำลังขาย)
   final bool isBuying;
   final OrderStatus status;
@@ -77,6 +83,10 @@ class OrderDetailsPage extends StatefulWidget {
   final String meetupPlace; // orders.meetup_location (NOT NULL ใน DB)
   final DateTime? meetupAt; // orders.meetup_datetime
   final DateTime? paymentDeadline;
+  final String? paymentMethod;
+  final String? paymentStatus;
+  final String? transactionRef;
+  final DateTime? paymentPaidAt;
   final String productLocation; // products.location_name ใช้แนะนำจุดนัด
   final String? pickupDetail;
   // ตัวเลขคิดโดย backend ตอนสร้างออเดอร์ แอปแสดงอย่างเดียว ไม่คำนวณเอง
@@ -291,6 +301,10 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
               _buildHeader(),
               const SizedBox(height: 20),
               _buildOrderCard(),
+              if (widget.isBuying) ...[
+                const SizedBox(height: 16),
+                _buildBuyerPaymentSummary(),
+              ],
               const SizedBox(height: 16),
               _buildStatusCard(),
               if (!widget.isBuying && _completed && _needsPayment) ...[
@@ -440,6 +454,101 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
       ),
     );
   }
+
+  Widget _buildBuyerPaymentSummary() {
+    final paymentRecorded = widget.paymentStatus == 'paid' || _paid;
+    final paymentState = !_needsPayment
+        ? 'No payment required'
+        : paymentRecorded
+        ? 'Demo payment recorded'
+        : _status == OrderStatus.expired
+        ? 'Payment window expired'
+        : _status == OrderStatus.cancelled
+        ? 'Order cancelled before payment'
+        : 'Awaiting payment';
+    final method = switch (widget.paymentMethod) {
+      'free' => 'Free item',
+      'gateway' => 'Demo QR',
+      'bank_transfer' => 'Bank transfer (demo)',
+      'cash' => 'Cash (demo)',
+      _ => _needsPayment ? 'Demo QR' : 'Free item',
+    };
+    final reference = widget.transactionRef?.trim();
+
+    return _box(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Payment summary',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          _summaryRow('Item price', formatPriceTHB(widget.price)),
+          const Divider(height: 1, color: _C.border),
+          _summaryRow(
+            _needsPayment ? 'Total due / paid' : 'Total',
+            _needsPayment ? formatPriceTHB(widget.totalAmount) : 'Free',
+            strong: true,
+          ),
+          const Divider(height: 1, color: _C.border),
+          _summaryRow('Payment status', paymentState),
+          const Divider(height: 1, color: _C.border),
+          _summaryRow('Payment method', method),
+          const Divider(height: 1, color: _C.border),
+          _summaryRow(
+            'Reference',
+            reference == null || reference.isEmpty ? _orderLabel : reference,
+          ),
+          if (widget.paymentPaidAt != null) ...[
+            const Divider(height: 1, color: _C.border),
+            _summaryRow(
+              'Recorded',
+              '${_formatDay(widget.paymentPaidAt!)} · '
+                  '${_formatTime(TimeOfDay.fromDateTime(widget.paymentPaidAt!))}',
+            ),
+          ],
+          const SizedBox(height: 8),
+          const Text(
+            'Demo only. Payment status is saved in the app; no real money is transferred.',
+            style: TextStyle(fontSize: 11, height: 1.4, color: _C.muted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryRow(String label, String value, {bool strong = false}) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: strong ? 13 : 12,
+                  fontWeight: strong ? FontWeight.w700 : FontWeight.w400,
+                  color: strong ? _C.ink : _C.muted,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(
+                value,
+                textAlign: TextAlign.end,
+                style: TextStyle(
+                  fontSize: strong ? 14 : 12,
+                  fontWeight: FontWeight.w700,
+                  color: strong ? _C.ink : _C.muted,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 
   // ใบเสร็จผู้ขาย: ราคาสินค้า - ค่าธรรมเนียม UniSwap = ยอดที่ได้รับ
   // ตัวเลขทั้งหมดมาจาก orders (commission_*, seller_payout) ไม่คำนวณในแอป

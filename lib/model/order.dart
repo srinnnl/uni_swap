@@ -25,6 +25,10 @@ class Order {
     this.meetupDatetime,
     this.receivedAt,
     this.paymentDeadline,
+    this.paymentMethod,
+    this.paymentStatus,
+    this.transactionRef,
+    this.paymentPaidAt,
     this.createdAt,
     this.updatedAt,
     this.perspective,
@@ -55,6 +59,10 @@ class Order {
       meetupDatetime: jsonDateTime(json['meetup_datetime']),
       receivedAt: jsonDateTime(json['received_at']),
       paymentDeadline: jsonDateTime(json['payment_deadline']),
+      paymentMethod: jsonString(json['payment_method']),
+      paymentStatus: jsonString(json['payment_status']),
+      transactionRef: jsonString(json['transaction_ref']),
+      paymentPaidAt: jsonDateTime(json['payment_paid_at'] ?? json['paid_at']),
       createdAt: jsonDateTime(json['created_at']),
       updatedAt: jsonDateTime(json['updated_at']),
       perspective: OrderPerspective.tryParse(json['perspective']),
@@ -82,6 +90,10 @@ class Order {
   final DateTime? meetupDatetime; // orders.meetup_datetime
   final DateTime? receivedAt; // orders.received_at
   final DateTime? paymentDeadline; // orders.payment_deadline
+  final String? paymentMethod; // payments.payment_method
+  final String? paymentStatus; // payments.payment_status
+  final String? transactionRef; // payments.transaction_ref
+  final DateTime? paymentPaidAt; // payments.paid_at
   final DateTime? createdAt; // orders.created_at
   final DateTime? updatedAt; // orders.updated_at
   final OrderPerspective? perspective; // 'buying' / 'selling' จาก API
@@ -127,6 +139,10 @@ class Order {
     DateTime? meetupDatetime,
     DateTime? receivedAt,
     DateTime? paymentDeadline,
+    String? paymentMethod,
+    String? paymentStatus,
+    String? transactionRef,
+    DateTime? paymentPaidAt,
     DateTime? createdAt,
     DateTime? updatedAt,
     OrderPerspective? perspective,
@@ -152,6 +168,10 @@ class Order {
       meetupDatetime: meetupDatetime ?? this.meetupDatetime,
       receivedAt: receivedAt ?? this.receivedAt,
       paymentDeadline: paymentDeadline ?? this.paymentDeadline,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      paymentStatus: paymentStatus ?? this.paymentStatus,
+      transactionRef: transactionRef ?? this.transactionRef,
+      paymentPaidAt: paymentPaidAt ?? this.paymentPaidAt,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       perspective: perspective ?? this.perspective,
@@ -180,6 +200,10 @@ class Order {
       'meetup_datetime': meetupDatetime?.toUtc().toIso8601String(),
       'received_at': receivedAt?.toUtc().toIso8601String(),
       'payment_deadline': paymentDeadline?.toUtc().toIso8601String(),
+      'payment_method': paymentMethod,
+      'payment_status': paymentStatus,
+      'transaction_ref': transactionRef,
+      'payment_paid_at': paymentPaidAt?.toUtc().toIso8601String(),
       'created_at': createdAt?.toUtc().toIso8601String(),
       'updated_at': updatedAt?.toUtc().toIso8601String(),
       'perspective': perspective?.apiValue,

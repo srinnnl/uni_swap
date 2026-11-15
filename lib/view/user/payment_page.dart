@@ -45,6 +45,8 @@ class PaymentPage extends StatelessWidget {
   final DateTime? paymentDeadline;
 
   String get _amount => '${price.toStringAsFixed(2)} THB';
+  // สินค้าฟรี (ราคา 0) บันทึกเป็น payment_method = 'free'
+  bool get _isFree => price <= 0;
   String get _orderLabel => orderLabel(orderId);
 
   Future<void> _markPaid(BuildContext context) async {
@@ -52,10 +54,13 @@ class PaymentPage extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: _C.bg,
-        title: const Text('Simulate payment?'),
+        title: Text(_isFree ? 'Confirm free order?' : 'Simulate payment?'),
         content: Text(
-          'Demo only: mark $_amount as paid for this order? '
-          'No real money is charged, held, or transferred.',
+          _isFree
+              ? 'This item is free, so nothing is charged. '
+                    'Confirm the order to arrange the pickup.'
+              : 'Demo only: mark $_amount as paid for this order? '
+                    'No real money is charged, held, or transferred.',
         ),
         actions: [
           TextButton(
@@ -65,7 +70,7 @@ class PaymentPage extends StatelessWidget {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: _C.ink),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Simulate payment'),
+            child: Text(_isFree ? 'Confirm order' : 'Simulate payment'),
           ),
         ],
       ),
@@ -73,7 +78,10 @@ class PaymentPage extends StatelessWidget {
     if (ok != true || !context.mounted) return;
 
     try {
-      final response = await orderController.pay(orderId);
+      final response = await orderController.pay(
+        orderId,
+        method: _isFree ? 'free' : 'gateway',
+      );
       if (response['success'] != true ||
           response['status'] != 'ready_for_meetup') {
         throw const ApiException('The server could not record the payment.');
@@ -106,6 +114,7 @@ class PaymentPage extends StatelessWidget {
             _PaySection(
               paid: paid,
               dueAt: paymentDeadline,
+              isFree: _isFree,
               onPay: () => _markPaid(context),
             ),
           ],
@@ -353,8 +362,10 @@ class _PaySection extends StatefulWidget {
     required this.paid,
     required this.dueAt,
     required this.onPay,
+    this.isFree = false,
   });
 
+  final bool isFree;
   final bool paid;
   final DateTime? dueAt;
   final Future<void> Function() onPay;
@@ -462,7 +473,11 @@ class _PaySectionState extends State<_PaySection> {
                   ? 'Saving payment…'
                   : widget.paid
                   ? 'Paid'
-                  : (_expired ? 'Time expired' : 'Simulate payment'),
+                  : (_expired
+                        ? 'Time expired'
+                        : (widget.isFree
+                              ? 'Confirm free order'
+                              : 'Simulate payment')),
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
             ),
           ),

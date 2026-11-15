@@ -14,6 +14,7 @@ const PORT = Number(process.env.PORT || 3000);
 const JWT_KEY = process.env.JWT_KEY || 'uni-swap-local-development-key-change-me';
 const zones = ['on_campus', 'off_campus'];
 const ORDER_PAYMENT_WINDOW_MINUTES = 30;
+const COMMISSION_RATE = 5; // % หักจากผู้ขาย (ผู้ซื้อจ่ายเท่าราคาสินค้า)
 const FAILED_RESERVATION_LIMIT = 2;
 const FAILED_RESERVATION_WINDOW_HOURS = 24;
 const ORDER_EXPIRY_BATCH_SIZE = 100;
@@ -308,14 +309,22 @@ app.put('/api/products/:product_id', auth, async (req, res) => {
 app.delete('/api/products/:product_id', auth, async (req, res) => {
     if (!validId(req.params.product_id)) return bad(res, 'Invalid product_id');
     try {
-        const imageUrls = await transaction(async query => {
-            const products = await query(`SELECT p.product_id FROM products p
+        const result = await transaction(async query => {
+            const products = await query(`SELECT p.product_id,
+                    EXISTS (SELECT 1 FROM orders o WHERE o.product_id=p.product_id) AS has_order_history
+                FROM products p
                 WHERE p.product_id=? AND p.seller_id=?
                   AND p.status IN ('pending_review','changes_requested','rejected')
-                  AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.product_id=p.product_id)
                 FOR UPDATE`, [req.params.product_id, req.user.user_id]);
             if (!products.length) {
-                throw Object.assign(new Error('Only unreviewed listings without orders can be deleted'), { status: 409 });
+                throw Object.assign(new Error('Listing can no longer be removed'), { status: 409 });
+            }
+            if (Number(products[0].has_order_history)) {
+                await query(`UPDATE products SET status='hidden'
+                    WHERE product_id=? AND seller_id=?
+                      AND status IN ('pending_review','changes_requested','rejected')`,
+                [req.params.product_id, req.user.user_id]);
+                return { status: 'hidden', imageUrls: [] };
             }
             const images = await query(
                 'SELECT image_url FROM product_images WHERE product_id=?',
@@ -329,13 +338,16 @@ app.delete('/api/products/:product_id', auth, async (req, res) => {
             if (!result.affectedRows) {
                 throw Object.assign(new Error('Listing can no longer be deleted'), { status: 409 });
             }
-            return images.map(image => image.image_url);
+            return {
+                status: 'deleted',
+                imageUrls: images.map(image => image.image_url)
+            };
         });
-        await Promise.all(imageUrls.map(imageUrl => {
+        await Promise.all(result.imageUrls.map(imageUrl => {
             const filePath = uploadedFilePath(imageUrl);
             return filePath ? removeUploadedFile(filePath) : Promise.resolve();
         }));
-        res.json({ success: true, status: 'deleted' });
+        res.json({ success: true, status: result.status });
     } catch (err) {
         if (err.status) return res.status(err.status).json({ success: false, message: err.message });
         dbError(res, err);
@@ -432,10 +444,12 @@ app.post('/api/orders', auth, async (req, res) => {
                 throw Object.assign(new Error('You have reached the limit of two expired or cancelled reservations for this item in 24 hours.'), { status: 429 });
             }
             const price = Number(product.price);
+            const commissionAmount = Math.round(price * COMMISSION_RATE) / 100;
+            const sellerPayout = Math.round((price - commissionAmount) * 100) / 100;
             const order = await query(`INSERT INTO orders
-                (product_id,buyer_id,seller_id,seller_price,total_amount,seller_payout,meetup_location,meetup_datetime,payment_deadline)
-                VALUES (?,?,?,?,?,?,?,?,DATE_ADD(UTC_TIMESTAMP(),INTERVAL ${ORDER_PAYMENT_WINDOW_MINUTES} MINUTE))`,
-                [product_id, req.user.user_id, product.seller_id, price, price, price,
+                (product_id,buyer_id,seller_id,seller_price,commission_rate,commission_amount,total_amount,seller_payout,meetup_location,meetup_datetime,payment_deadline)
+                VALUES (?,?,?,?,?,?,?,?,?,?,DATE_ADD(UTC_TIMESTAMP(),INTERVAL ${ORDER_PAYMENT_WINDOW_MINUTES} MINUTE))`,
+                [product_id, req.user.user_id, product.seller_id, price, COMMISSION_RATE, commissionAmount, price, sellerPayout,
                     product.seller_location, meetup_datetime ? new Date(meetup_datetime) : null]);
             await query("UPDATE products SET status='reserved' WHERE product_id=?", [product_id]);
             return order;
@@ -445,7 +459,32 @@ app.post('/api/orders', auth, async (req, res) => {
         err.status ? res.status(err.status).json({ success: false, message: err.message }) : dbError(res, err);
     }
 });
-app.get('/api/orders', auth, async (req, res) => { const paging = getPaging(req, res); if (!paging) return; try { await expirePendingOrders(); const rows = await db(`SELECT o.*,p.title,l.name AS location_name,p.location_detail AS pickup_detail,b.display_name AS buyer_name,s.display_name AS seller_name,(SELECT image_url FROM product_images WHERE product_id=o.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url,CASE WHEN o.buyer_id=? THEN 'buying' ELSE 'selling' END AS perspective FROM orders o JOIN products p ON p.product_id=o.product_id LEFT JOIN locations l ON l.location_id=p.location_id JOIN users b ON b.user_id=o.buyer_id JOIN users s ON s.user_id=o.seller_id WHERE o.buyer_id=? OR o.seller_id=? ORDER BY o.updated_at DESC,o.order_id DESC LIMIT ? OFFSET ?`, [req.user.user_id, req.user.user_id, req.user.user_id, paging.limit + 1, paging.offset]); sendPage(res, rows, paging); } catch (err) { dbError(res, err); } });
+app.get('/api/orders', auth, async (req, res) => {
+    const paging = getPaging(req, res);
+    if (!paging) return;
+    try {
+        await expirePendingOrders();
+        const rows = await db(`SELECT o.*,p.title,l.name AS location_name,
+            p.location_detail AS pickup_detail,b.display_name AS buyer_name,
+            s.display_name AS seller_name,pay.payment_method,pay.payment_status,
+            pay.transaction_ref,pay.paid_at AS payment_paid_at,
+            (SELECT image_url FROM product_images
+             WHERE product_id=o.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url,
+            CASE WHEN o.buyer_id=? THEN 'buying' ELSE 'selling' END AS perspective
+            FROM orders o
+            JOIN products p ON p.product_id=o.product_id
+            LEFT JOIN locations l ON l.location_id=p.location_id
+            LEFT JOIN payments pay ON pay.order_id=o.order_id
+            JOIN users b ON b.user_id=o.buyer_id
+            JOIN users s ON s.user_id=o.seller_id
+            WHERE o.buyer_id=? OR o.seller_id=?
+            ORDER BY o.updated_at DESC,o.order_id DESC LIMIT ? OFFSET ?`,
+        [req.user.user_id, req.user.user_id, req.user.user_id, paging.limit + 1, paging.offset]);
+        sendPage(res, rows, paging);
+    } catch (err) {
+        dbError(res, err);
+    }
+});
 app.put('/api/orders/:order_id/meetup', auth, async (req, res) => {
     const { meetup_location, meetup_datetime } = req.body || {};
     if (!validId(req.params.order_id) ||
@@ -710,4 +749,4 @@ function startOrderExpiryWorker(server) {
 }
 
 if (require.main === module) startServer();
-module.exports = app;
+module.exports = app;

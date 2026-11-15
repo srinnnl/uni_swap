@@ -129,10 +129,10 @@ class _MyItemsPageState extends State<MyItemsPage> {
   Future<void> _deleteUnreviewed(Product product) async {
     if (_busyProductIds.contains(product.id)) return;
     final confirmed = await _confirmItemAction(
-      title: 'Delete listing?',
+      title: 'Remove listing?',
       message:
-          'This unreviewed listing and its photos will be permanently deleted.',
-      confirmLabel: 'Delete',
+          'If this listing has no order history, it and its photos will be permanently deleted. Otherwise, it will be hidden and its history will be kept.',
+      confirmLabel: 'Remove listing',
     );
     if (!confirmed || !mounted) return;
 
@@ -145,7 +145,13 @@ class _MyItemsPageState extends State<MyItemsPage> {
         );
       }
       await _loadItems();
-      if (mounted) _showActionMessage('Listing deleted.');
+      if (mounted) {
+        _showActionMessage(
+          response['status'] == 'hidden'
+              ? 'Listing hidden to preserve its order history.'
+              : 'Listing deleted.',
+        );
+      }
     } on ApiException catch (error) {
       if (mounted) _showActionMessage(error.message, isError: true);
     } catch (_) {
@@ -322,8 +328,7 @@ class _MyItemsPageState extends State<MyItemsPage> {
                 _ItemCard(
                   product: product,
                   residenceLocationId: int.tryParse(
-                    authController.user?['residence_location_id']
-                            ?.toString() ??
+                    authController.user?['residence_location_id']?.toString() ??
                         '',
                   ),
                   onEdit:

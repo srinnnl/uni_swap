@@ -28,6 +28,7 @@ class _Order {
   final int id; // orders.order_id
   final String title;
   final double price; // orders.seller_price
+  final double totalAmount; // orders.total_amount (buyer charge)
   final String person; // seller (Buying tab) / buyer (Selling tab)
   final bool isBuying;
   final DateTime
@@ -40,6 +41,10 @@ class _Order {
   final double commissionRate; // orders.commission_rate
   final double commissionAmount; // orders.commission_amount
   final double sellerPayout; // orders.seller_payout
+  final String? paymentMethod;
+  final String? paymentStatus;
+  final String? transactionRef;
+  final DateTime? paymentPaidAt;
   OrderStatus status;
   String meetupPlace; // orders.meetup_location (NOT NULL)
   DateTime? meetupAt; // orders.meetup_datetime
@@ -49,6 +54,7 @@ class _Order {
     required this.id,
     required this.title,
     required this.price,
+    required this.totalAmount,
     required this.person,
     required this.isBuying,
     required this.createdAt,
@@ -64,6 +70,10 @@ class _Order {
     this.commissionRate = 5,
     double? commissionAmount,
     double? sellerPayout,
+    this.paymentMethod,
+    this.paymentStatus,
+    this.transactionRef,
+    this.paymentPaidAt,
   }) : commissionAmount =
            commissionAmount ??
            double.parse((price * commissionRate / 100).toStringAsFixed(2)),
@@ -76,6 +86,7 @@ class _Order {
     id: order.id,
     title: order.productTitle ?? 'Item',
     price: order.sellerPrice,
+    totalAmount: order.totalAmount,
     person: order.isBuying
         ? order.sellerName ?? 'Seller'
         : order.buyerName ?? 'Buyer',
@@ -89,6 +100,10 @@ class _Order {
     commissionRate: order.commissionRate,
     commissionAmount: order.commissionAmount,
     sellerPayout: order.sellerPayout,
+    paymentMethod: order.paymentMethod,
+    paymentStatus: order.paymentStatus,
+    transactionRef: order.transactionRef,
+    paymentPaidAt: order.paymentPaidAt,
     status: order.status,
     meetupPlace: order.meetupLocation,
     meetupAt: order.meetupDatetime,
@@ -373,116 +388,119 @@ class _OrdersPageState extends State<OrdersPage> {
           opacity: dimmed ? 0.75 : 1,
           child: Column(
             children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 80,
-                height: 94,
-                decoration: BoxDecoration(
-                  color: o.thumbColor,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: o.imageUrl == null
-                    ? Icon(o.thumbIcon, color: Colors.white70, size: 30)
-                    : ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.network(
-                          o.imageUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => Icon(
-                            o.thumbIcon,
-                            color: Colors.white70,
-                            size: 30,
-                          ),
-                        ),
-                      ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _StatusBadge(label: label, bg: bg, fg: fg),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              payBefore ?? _createdLabel(o.createdAt),
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: payBefore != null
-                                    ? FontWeight.w700
-                                    : FontWeight.w400,
-                                color: payBefore != null
-                                    ? _cAmberFg
-                                    : _cMuted,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 80,
+                    height: 94,
+                    decoration: BoxDecoration(
+                      color: o.thumbColor,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: o.imageUrl == null
+                        ? Icon(o.thumbIcon, color: Colors.white70, size: 30)
+                        : ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Image.network(
+                              o.imageUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => Icon(
+                                o.thumbIcon,
+                                color: Colors.white70,
+                                size: 30,
                               ),
                             ),
-                            const Icon(
-                              Icons.chevron_right,
-                              size: 16,
-                              color: _cMuted,
+                          ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            _StatusBadge(label: label, bg: bg, fg: fg),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  payBefore ?? _createdLabel(o.createdAt),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: payBefore != null
+                                        ? FontWeight.w700
+                                        : FontWeight.w400,
+                                    color: payBefore != null
+                                        ? _cAmberFg
+                                        : _cMuted,
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.chevron_right,
+                                  size: 16,
+                                  color: _cMuted,
+                                ),
+                              ],
                             ),
                           ],
                         ),
+                        const SizedBox(height: 10),
+                        Text(
+                          o.title,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '$priceText · ${o.isBuying ? 'Seller' : 'Buyer'}: ${o.person}',
+                          style: const TextStyle(fontSize: 12, color: _cMuted),
+                        ),
+                        if (o.meetupAt != null && o.isActive) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'Meet: ${o.meetupPlace} · ${_formatDate(o.meetupAt!)} ${_formatTime(TimeOfDay.fromDateTime(o.meetupAt!))}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: _cSageDark,
+                            ),
+                          ),
+                        ],
+                        if (!showPay) ...[
+                          const SizedBox(height: 10),
+                          _actions(o),
+                        ],
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      o.title,
+                  ),
+                ],
+              ),
+              if (showPay) ...[
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => _openDetails(o, pay: true),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _cInk,
+                      minimumSize: const Size.fromHeight(46),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      'Pay ${formatPriceTHB(o.price)}',
                       style: const TextStyle(
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '$priceText · ${o.isBuying ? 'Seller' : 'Buyer'}: ${o.person}',
-                      style: const TextStyle(fontSize: 12, color: _cMuted),
-                    ),
-                    if (o.meetupAt != null && o.isActive) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'Meet: ${o.meetupPlace} · ${_formatDate(o.meetupAt!)} ${_formatTime(TimeOfDay.fromDateTime(o.meetupAt!))}',
-                        style: const TextStyle(fontSize: 12, color: _cSageDark),
-                      ),
-                    ],
-                    if (!showPay) ...[
-                      const SizedBox(height: 10),
-                      _actions(o),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-          if (showPay) ...[
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () => _openDetails(o, pay: true),
-                style: FilledButton.styleFrom(
-                  backgroundColor: _cInk,
-                  minimumSize: const Size.fromHeight(46),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: Text(
-                  'Pay ${formatPriceTHB(o.price)}',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-          ],
+              ],
             ],
           ),
         ),
@@ -500,6 +518,7 @@ class _OrdersPageState extends State<OrdersPage> {
           orderId: o.id,
           title: o.title,
           price: o.price,
+          totalAmount: o.totalAmount,
           person: o.person,
           isBuying: o.isBuying,
           status: o.status,
@@ -512,6 +531,10 @@ class _OrdersPageState extends State<OrdersPage> {
           commissionRate: o.commissionRate,
           commissionAmount: o.commissionAmount,
           sellerPayout: o.sellerPayout,
+          paymentMethod: o.paymentMethod,
+          paymentStatus: o.paymentStatus,
+          transactionRef: o.transactionRef,
+          paymentPaidAt: o.paymentPaidAt,
           imageUrl: o.imageUrl,
           startPayment: pay,
         ),

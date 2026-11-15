@@ -80,8 +80,8 @@ Map<String, dynamic> orderJson() {
     'seller_price': '450.00',
     'commission_rate': '5.00',
     'commission_amount': '22.50',
-    'total_amount': '472.50',
-    'seller_payout': '450.00',
+    'total_amount': '450.00',
+    'seller_payout': '427.50',
     'status': 'pending_payment',
     'meetup_location': 'Lamduan 1 lobby',
     'meetup_datetime': '2026-11-10T10:00:00.000Z',
@@ -270,7 +270,8 @@ void main() {
       expect(order.sellerName, 'Niran Demo');
       expect(order.sellerPrice, 450.0);
       expect(order.commissionAmount, 22.50);
-      expect(order.totalAmount, 472.50);
+      expect(order.totalAmount, 450.0);
+      expect(order.sellerPayout, 427.50);
       expect(order.status, OrderStatus.pendingPayment);
       expect(order.perspective, OrderPerspective.buying);
       expect(order.isBuying, isTrue);
@@ -278,6 +279,21 @@ void main() {
       expect(order.shownStatus, OrderStatus.expired);
       expect(order.isActive, isFalse);
       expect(order.needsPayment, isTrue);
+    });
+
+    test('parse joined payment summary fields', () {
+      final order = Order.fromJson({
+        ...orderJson(),
+        'payment_method': 'gateway',
+        'payment_status': 'paid',
+        'transaction_ref': 'US-5',
+        'payment_paid_at': '2026-11-05T10:30:00.000Z',
+      });
+
+      expect(order.paymentMethod, 'gateway');
+      expect(order.paymentStatus, 'paid');
+      expect(order.transactionRef, 'US-5');
+      expect(order.paymentPaidAt?.toUtc(), DateTime.utc(2026, 11, 5, 10, 30));
     });
 
     test('copyWith เปลี่ยนสถานะได้โดยไม่กระทบ field อื่น', () {

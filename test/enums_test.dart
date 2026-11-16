@@ -27,6 +27,7 @@ void _checkEnum<T extends Enum>({
 }
 
 void main() {
+  // /Shared/Models — wire values must match the ENUM values in project_mobile_app.sql.
   _checkEnum<ResidenceZone>(
     name: 'ResidenceZone',
     values: ResidenceZone.values,

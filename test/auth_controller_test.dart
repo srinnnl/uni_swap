@@ -15,7 +15,8 @@ void main() {
     'user': {'user_id': 3, 'role': 'member'},
   };
 
-  group('สถานะเริ่มต้น', () {
+  // /User and /Admin — auth controller starts with an empty in-memory session.
+  group('Auth / Initial state', () {
     test('ยังไม่ล็อกอิน ไม่มี token และไม่มี user', () {
       final auth = AuthController(fakeApi(calls));
       expect(auth.isAuthenticated, false);
@@ -25,7 +26,8 @@ void main() {
     });
   });
 
-  group('login', () {
+  // /User/Login and /Admin/Login — POST /api/login.
+  group('Auth / Login', () {
     test('ตัดช่องว่างของอีเมลก่อนส่ง แต่ไม่แตะรหัสผ่าน', () async {
       final auth = AuthController(fakeApi(calls, response: loginResponse()));
 
@@ -43,6 +45,24 @@ void main() {
       expect(auth.isAuthenticated, true);
       expect(auth.token, 'session-token');
       expect(auth.user?['user_id'], 3);
+    });
+
+    test('เก็บ role admin จาก response สำหรับ routing ไปหน้า Admin', () async {
+      final auth = AuthController(
+        fakeApi(
+          calls,
+          response: {
+            'success': true,
+            'token': 'admin-session',
+            'user': {'user_id': 2, 'role': 'admin'},
+          },
+        ),
+      );
+
+      await auth.login(email: 'admin@example.com', password: 'secret123');
+
+      expect(auth.user?['role'], 'admin');
+      expect(auth.token, 'admin-session');
     });
 
     test(
@@ -110,19 +130,27 @@ void main() {
     });
   });
 
-  group('register', () {
+  // /User/Register — POST /api/register; newly registered accounts stay logged out.
+  group('User / Register', () {
     test('ส่งข้อมูลไป /api/register และไม่ล็อกอินให้อัตโนมัติ', () async {
+      final details = {
+        'fullName': 'Maya Demo',
+        'studentId': '6501000002',
+        'email': 'maya@example.com',
+        'username': 'maya',
+        'password': 'secret123',
+        'residenceZone': 'on_campus',
+        'residenceLocationId': 12,
+        'customResidence': null,
+      };
       final auth = AuthController(
         fakeApi(calls, response: {'success': true, 'user_id': 9}),
       );
 
-      final result = await auth.register({
-        'username': 'maya',
-        'email': 'maya@example.com',
-      });
+      final result = await auth.register(details);
 
       expect(calls.single.label, 'POST /api/register');
-      expect(calls.single.body!['username'], 'maya');
+      expect(calls.single.body, details);
       expect(result['user_id'], 9);
       expect(auth.isAuthenticated, false);
       expect(auth.isBusy, false);
@@ -153,7 +181,8 @@ void main() {
     );
   });
 
-  group('profile', () {
+  // /User/Profile — GET and PUT /api/profile.
+  group('User / Profile', () {
     test('loadProfile เก็บ user จาก data และแจ้ง listener', () async {
       final auth = AuthController(
         fakeApi(
@@ -241,7 +270,8 @@ void main() {
     });
   });
 
-  group('signOut', () {
+  // /User/SignOut and /Admin/SignOut — clears the in-memory session.
+  group('Auth / Sign out', () {
     test('ล้าง token และ user แล้วแจ้ง listener', () async {
       final auth = AuthController(fakeApi(calls, response: loginResponse()));
       await auth.login(email: 'a@b.com', password: 'secret123');

@@ -13,7 +13,8 @@ void main() {
     admin = AdminController(fakeApi(calls));
   });
 
-  group('dashboard และ users', () {
+  // /Admin/Dashboard and /Admin/Users.
+  group('Admin / Dashboard and users', () {
     test('dashboard เรียก GET /api/admin/dashboard', () async {
       await admin.dashboard();
       expect(calls.single.label, 'GET /api/admin/dashboard');
@@ -39,9 +40,17 @@ void main() {
       expect(calls.single.label, 'PUT /api/admin/users/5/status');
       expect(calls.single.body, {'status': 'suspended'});
     });
+
+    test('setUserStatus รองรับ approve และ reject account statuses', () async {
+      await admin.setUserStatus(5, 'active');
+      await admin.setUserStatus(6, 'rejected');
+
+      expect(calls.map((call) => call.body?['status']), ['active', 'rejected']);
+    });
   });
 
-  group('listings', () {
+  // /Admin/Items — listing queue and moderation actions.
+  group('Admin / Listings', () {
     test('listings ค่าตั้งต้นคือ pending_review', () async {
       await admin.listings();
       expect(calls.single.label, 'GET /api/admin/listings');
@@ -75,9 +84,25 @@ void main() {
         'reject_reason': 'poor_photos',
       });
     });
+
+    test('reviewListing แบบ changes_requested ส่ง note', () async {
+      await admin.reviewListing(
+        7,
+        action: 'changes_requested',
+        note: 'Please add a clearer photo.',
+      );
+
+      expect(calls.single.label, 'PUT /api/admin/listings/7/review');
+      expect(calls.single.body, {
+        'action': 'changes_requested',
+        'review_note': 'Please add a clearer photo.',
+        'reject_reason': null,
+      });
+    });
   });
 
-  group('categories', () {
+  // /Admin/Categories — category management.
+  group('Admin / Categories', () {
     test('categories เรียก GET /api/admin/categories', () async {
       await admin.categories();
       expect(calls.single.label, 'GET /api/admin/categories');
@@ -111,7 +136,8 @@ void main() {
     });
   });
 
-  group('locations', () {
+  // /Admin/Locations — residence catalogue management.
+  group('Admin / Locations', () {
     test('locations ไม่ส่ง zone ถ้าไม่ระบุ', () async {
       await admin.locations();
       expect(calls.single.label, 'GET /api/admin/locations');
@@ -136,7 +162,8 @@ void main() {
     });
   });
 
-  group('location requests', () {
+  // /Admin/Locations — review member requests to add or merge a residence.
+  group('Admin / Location requests', () {
     test('locationRequests ใช้ paging ตั้งต้นและไม่ส่ง status', () async {
       await admin.locationRequests();
       expect(calls.single.label, 'GET /api/admin/location-requests');
@@ -166,8 +193,19 @@ void main() {
         'merge_into_location_id': 3,
       });
     });
+
+    test('reviewLocationRequest รองรับ reviewing และ reject', () async {
+      await admin.reviewLocationRequest(11, action: 'reviewing');
+      await admin.reviewLocationRequest(11, action: 'reject');
+
+      expect(calls.map((call) => call.body?['action']), [
+        'reviewing',
+        'reject',
+      ]);
+    });
   });
 
+  // /Admin/* — server authorization errors are returned through ApiException.
   group('การจัดการ error', () {
     test('403 Admin only ถูกโยนเป็น ApiException', () async {
       final denied = AdminController(

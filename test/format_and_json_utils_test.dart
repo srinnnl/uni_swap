@@ -3,6 +3,7 @@ import 'package:uni_swap/model/format.dart';
 import 'package:uni_swap/model/json_utils.dart';
 
 void main() {
+  // /User/Home, /User/Orders and /User/OrderDetails — display helpers.
   group('format.dart', () {
     group('formatPrice', () {
       test('ราคาไม่มีเศษแสดงเป็นจำนวนเต็ม', () {
@@ -38,6 +39,7 @@ void main() {
     });
   });
 
+  // /User and /Admin — tolerant parsing for MySQL JSON responses.
   group('json_utils.dart', () {
     group('jsonInt', () {
       test('null → null', () => expect(jsonInt(null), isNull));

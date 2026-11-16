@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uni_swap/model/order_status.dart';
 
 void main() {
+  // /User/Orders and /User/OrderDetails — order state labels and actions.
   group('OrderStatus', () {
     test('apiValue ตรงกับ ENUM ใน DB', () {
       expect(OrderStatus.pendingPayment.apiValue, 'pending_payment');
@@ -88,6 +89,7 @@ void main() {
     });
   });
 
+  // /User/MyItems and /Admin/Items — listing review and sale states.
   group('ProductStatus', () {
     test('apiValue ตรงกับ ENUM ใน DB', () {
       expect(ProductStatus.pendingReview.apiValue, 'pending_review');

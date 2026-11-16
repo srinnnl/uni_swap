@@ -1,6 +1,7 @@
 import 'dart:async';
-import 'dart:io';
 
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -13,6 +14,7 @@ void main() {
 
   setUp(() => calls = []);
 
+  // /Shared/ApiClient — common HTTP behavior used by User and Admin.
   group('การสร้าง URL', () {
     test('ตัด / ท้าย baseUrl ออก', () {
       final api = ApiClient(baseUrl: 'http://example.test/api///');
@@ -21,9 +23,15 @@ void main() {
     });
 
     test('baseUrl ตั้งต้นชี้ไปที่ localhost:3000', () {
-      final api = ApiClient();
-      expect(api.baseUrl, 'http://localhost:3000/api');
-      api.close();
+      // Flutter tests default to Android; force desktop to verify this branch.
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      try {
+        final api = ApiClient();
+        expect(api.baseUrl, 'http://localhost:3000/api');
+        api.close();
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
     });
 
     test('path ที่ขึ้นต้นด้วย / ยังต่อ URL ถูกต้อง', () async {
@@ -90,16 +98,10 @@ void main() {
       api.close();
     });
 
+    // /User/Sell — upload bytes so the same test works on Flutter web.
     test(
-      'multipart upload attaches the file, fields, and bearer token',
+      'multipart upload sends bytes, fields, MIME type, and Bearer token',
       () async {
-        final directory = await Directory.systemTemp.createTemp(
-          'uni-swap-upload-',
-        );
-        final file = File(
-          '${directory.path}${Platform.pathSeparator}photo.png',
-        );
-        await file.writeAsBytes([65, 66, 67]);
         http.Request? captured;
         final api = ApiClient(
           tokenProvider: () => 'seller-token',
@@ -113,8 +115,9 @@ void main() {
           await api.postMultipart(
             'products/12/images',
             fileField: 'image',
-            filePath: file.path,
+            bytes: [65, 66, 67],
             fileName: 'photo.png',
+            mimeType: 'image/png',
             fields: {'display_order': '2'},
           );
 
@@ -126,16 +129,17 @@ void main() {
           );
           expect(captured!.body, contains('name="display_order"'));
           expect(captured!.body, contains('filename="photo.png"'));
+          expect(captured!.body, contains('content-type: image/png'));
           expect(captured!.body, contains('name="image"'));
           expect(captured!.body, contains('ABC'));
         } finally {
           api.close();
-          await directory.delete(recursive: true);
         }
       },
     );
   });
 
+  // /Shared/ApiClient — response parsing and error handling for both roles.
   group('การอ่าน response', () {
     test('ถอดรหัส JSON object ของ response สำเร็จ', () async {
       final api = fakeApi(calls, response: {'success': true, 'id': 3});

@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -17,7 +15,8 @@ void main() {
     products = ProductController(fakeApi(calls));
   });
 
-  group('browse', () {
+  // /User/Home and /User/Search — GET /api/products.
+  group('User / Browse products', () {
     test('ค่าตั้งต้น: sort=newest page=1 limit=20 และไม่มีตัวกรอง', () async {
       await products.browse();
 
@@ -52,7 +51,8 @@ void main() {
     });
   });
 
-  group('categories และ locations', () {
+  // /User/Register, /User/Sell, /User/Search — public catalogue options.
+  group('User / Categories and locations', () {
     test('categories คืนรายการ map และข้ามสมาชิกที่ไม่ใช่ map', () async {
       products = ProductController(
         fakeApi(
@@ -92,7 +92,8 @@ void main() {
     });
   });
 
-  group('รายละเอียดและรายการของฉัน', () {
+  // /User/ProductDetail, /User/SellerProfile, /User/MyItems.
+  group('User / Product details and listings', () {
     test('detail เรียก GET /api/products/:id', () async {
       await products.detail(10);
       expect(calls.single.label, 'GET /api/products/10');
@@ -110,7 +111,61 @@ void main() {
     });
   });
 
-  group('สร้างและแก้ไขประกาศ', () {
+  // /User/RequestLocation — POST /api/location-requests.
+  group('User / Request location', () {
+    test('sends name, zone, and optional address/reason', () async {
+      await products.requestLocation(
+        name: 'Sunrise Apartment',
+        zone: 'off_campus',
+        address: '123 Campus Road',
+        reason: 'Not in the list',
+      );
+
+      expect(calls.single.label, 'POST /api/location-requests');
+      expect(calls.single.body, {
+        'name': 'Sunrise Apartment',
+        'zone': 'off_campus',
+        'address': '123 Campus Road',
+        'reason': 'Not in the list',
+      });
+    });
+
+    test('omits empty optional fields', () async {
+      await products.requestLocation(
+        name: 'Sunrise Apartment',
+        zone: 'off_campus',
+        address: '',
+        reason: '',
+      );
+
+      expect(calls.single.body, {
+        'name': 'Sunrise Apartment',
+        'zone': 'off_campus',
+      });
+    });
+  });
+
+  // /User/SellerProfile — GET /api/sellers/:user_id.
+  group('User / Seller profile', () {
+    test('uses default and custom pagination', () async {
+      await products.seller(8);
+      expect(calls.single.label, 'GET /api/sellers/8');
+      expect(calls.single.query, {'page': '1', 'limit': '20'});
+
+      calls.clear();
+      await products.seller(8, page: 2, limit: 5);
+      expect(calls.single.query, {'page': '2', 'limit': '5'});
+    });
+  });
+
+  // /User/Profile — GET /api/dashboard for member listing/order counts.
+  test('myDashboard calls GET /api/dashboard', () async {
+    await products.myDashboard();
+    expect(calls.single.label, 'GET /api/dashboard');
+  });
+
+  // /User/Sell and /User/MyItems — create, update, delete, and hide listings.
+  group('User / Manage listings', () {
     test('create ส่ง listing เป็น body ของ POST /api/products', () async {
       await products.create({'title': 'Oak desk', 'price': 450});
 
@@ -153,38 +208,34 @@ void main() {
       expect(calls.single.body!['display_order'], 3);
     });
 
-    test('uploadImage ส่งไฟล์ไปยัง endpoint พร้อมลำดับภาพ', () async {
-      final directory = await Directory.systemTemp.createTemp(
-        'uni-swap-product-',
-      );
-      final file = File('${directory.path}${Platform.pathSeparator}photo.png');
-      await file.writeAsBytes([65, 66, 67]);
+    test('uploadImage sends in-memory bytes and display order', () async {
       http.Request? captured;
       final api = ApiClient(
+        tokenProvider: () => 'seller-token',
         client: MockClient((request) async {
           captured = request;
           return http.Response('{"success":true}', 201);
         }),
       );
-      products = ProductController(api);
+      final multipartApi = ProductController(api);
 
-      try {
-        await products.uploadImage(
-          10,
-          filePath: file.path,
-          fileName: 'photo.png',
-          displayOrder: 3,
-        );
+      await multipartApi.uploadImage(
+        10,
+        bytes: [65, 66, 67],
+        fileName: 'photo.png',
+        mimeType: 'image/png',
+        displayOrder: 3,
+      );
 
-        expect(captured!.method, 'POST');
-        expect(captured!.url.path, '/api/products/10/images');
-        expect(captured!.body, contains('name="display_order"'));
-        expect(captured!.body, contains('3'));
-        expect(captured!.body, contains('filename="photo.png"'));
-      } finally {
-        api.close();
-        await directory.delete(recursive: true);
-      }
+      expect(captured!.method, 'POST');
+      expect(captured!.url.path, '/api/products/10/images');
+      expect(captured!.headers['authorization'], 'Bearer seller-token');
+      expect(captured!.body, contains('name="display_order"'));
+      expect(captured!.body, contains('3'));
+      expect(captured!.body, contains('filename="photo.png"'));
+      expect(captured!.body, contains('content-type: image/png'));
+      expect(captured!.body, contains('ABC'));
+      api.close();
     });
   });
 }

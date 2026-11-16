@@ -13,7 +13,8 @@ void main() {
     orders = OrderController(fakeApi(calls));
   });
 
-  test('list ใช้ page=1 limit=20 เป็นค่าตั้งต้น', () async {
+  // /User/Orders — GET /api/orders.
+  test('list uses the API default page and limit', () async {
     await orders.list();
     expect(calls.single.label, 'GET /api/orders');
     expect(calls.single.query, {'page': '1', 'limit': '20'});
@@ -25,6 +26,7 @@ void main() {
   });
 
   group('create', () {
+    // /User/ProductDetail — POST /api/orders reserves one available product.
     test('ไม่ระบุเวลานัด → meetup_datetime เป็น null', () async {
       await orders.create(productId: 5, meetupLocation: 'Library entrance');
 
@@ -66,17 +68,20 @@ void main() {
     });
   });
 
-  test('cancel ส่ง POST ไปที่ออเดอร์ที่ระบุ', () async {
+  // /User/OrderDetails — cancel a pending order and release its reservation.
+  test('cancel posts to the selected order', () async {
     await orders.cancel(12);
     expect(calls.single.label, 'POST /api/orders/12/cancel');
   });
 
-  test('received ส่ง POST ไปบันทึกการรับสินค้า', () async {
+  // /User/OrderDetails — confirm receipt and complete an order.
+  test('received posts to confirm item receipt', () async {
     await orders.received(12);
     expect(calls.single.label, 'POST /api/orders/12/received');
   });
 
-  test('updateMeetup ส่ง PUT พร้อมสถานที่และเวลา', () async {
+  // /User/ArrangeMeetup — PUT /api/orders/:id/meetup.
+  test('updateMeetup sends location and UTC time', () async {
     await orders.updateMeetup(
       orderId: 12,
       location: 'Canteen',
@@ -95,7 +100,8 @@ void main() {
     expect(calls.single.body!['meetup_datetime'], isNull);
   });
 
-  group('pay', () {
+  // /User/Payment — demo payment only; no real gateway is called.
+  group('User / Payment', () {
     test('ค่าตั้งต้นคือ gateway และไม่มี ref/slip', () async {
       await orders.pay(12);
 
@@ -119,6 +125,16 @@ void main() {
         'payment_method': 'bank_transfer',
         'transaction_ref': 'REF-1',
         'payment_slip_url': 'https://example.com/slip.jpg',
+      });
+    });
+
+    test('free listing sends the free payment method', () async {
+      await orders.pay(12, method: 'free');
+
+      expect(calls.single.body, {
+        'payment_method': 'free',
+        'transaction_ref': null,
+        'payment_slip_url': null,
       });
     });
   });

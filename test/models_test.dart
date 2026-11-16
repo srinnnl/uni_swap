@@ -94,6 +94,7 @@ Map<String, dynamic> orderJson() {
 }
 
 void main() {
+  // /Shared/JSON — database JSON uses numeric strings and UTC timestamps.
   group('JSON helpers', () {
     test('อ่านตัวเลขที่ MySQL ส่งมาเป็น string', () {
       expect(jsonInt('42'), 42);
@@ -111,7 +112,8 @@ void main() {
     });
   });
 
-  group('User', () {
+  // /User/Profile and /Admin/Users — users.role is member or admin.
+  group('User model', () {
     test('parse จาก /api/profile และคำนวณ initials', () {
       final user = User.fromJson(userJson());
 
@@ -124,6 +126,7 @@ void main() {
       expect(user.residenceName, 'Lamduan 1 Dormitory');
       expect(user.role, UserRole.member);
       expect(user.status, UserStatus.active);
+      expect(user.isAdmin, isFalse);
       expect(user.isActive, isTrue);
       expect(user.createdAt?.toUtc(), DateTime.utc(2026, 11, 1, 8));
     });
@@ -137,8 +140,16 @@ void main() {
       expect(json['status'], 'active');
       expect(json['created_at'], '2026-11-01T08:00:00.000Z');
     });
+
+    test('recognizes an admin account', () {
+      final admin = User.fromJson({...userJson(), 'role': 'admin'});
+
+      expect(admin.role, UserRole.admin);
+      expect(admin.isAdmin, isTrue);
+    });
   });
 
+  // /User/Register, /User/Sell, /Admin/Categories and /Admin/Locations.
   group('Category, Location และ LocationRequest', () {
     test('parse Category พร้อม product_count', () {
       final category = Category.fromJson({
@@ -196,7 +207,8 @@ void main() {
     });
   });
 
-  group('Product', () {
+  // /User/Home, /User/Search, /User/ProductDetail and /User/MyItems.
+  group('Product model', () {
     test('parse listing/detail ที่มี DECIMAL และ join fields', () {
       final product = Product.fromJson(productJson());
 
@@ -259,7 +271,8 @@ void main() {
     });
   });
 
-  group('Order', () {
+  // /User/Orders, /User/OrderDetails and /User/Payment.
+  group('Order model', () {
     test('parse order พร้อม join และตรวจ deadline ที่เลยแล้ว', () {
       final order = Order.fromJson(orderJson());
 
@@ -307,7 +320,8 @@ void main() {
     });
   });
 
-  group('Payment', () {
+  // /User/Payment — payment and seller transfer records, without refunds.
+  group('Payment model', () {
     test('parse Payment', () {
       final payment = Payment.fromJson({
         'payment_id': '8',
@@ -329,9 +343,12 @@ void main() {
       expect(payment.status, PaymentStatus.paid);
       expect(payment.sellerTransferStatus, SellerTransferStatus.held);
       expect(payment.amount, 472.50);
+      expect(payment.toJson()['payment_method'], 'bank_transfer');
+      expect(payment.toJson()['payment_status'], 'paid');
     });
   });
 
+  // /User/Dashboard and /Admin/Dashboard — paginated and summary responses.
   group('Response wrappers', () {
     test('ApiPage parse pagination และ data', () {
       final page = ApiPage.fromJson({
@@ -346,6 +363,7 @@ void main() {
       expect(page.page, 1);
       expect(page.limit, 20);
       expect(page.hasMore, isFalse);
+      expect(page.toJson((item) => item.toJson())['has_more'], isFalse);
     });
 
     test('AuthSession parse token และ user', () {
@@ -363,6 +381,7 @@ void main() {
         'user': userJson(),
         'counts': {
           'my_listings': '2',
+          'sold_listings': '1',
           'listings_to_review': '1',
           'listings_to_fix': '0',
           'buying_active': '1',
@@ -380,6 +399,7 @@ void main() {
 
       expect(dashboard.user.displayName, 'Maya Demo');
       expect(dashboard.counts.myListings, 2);
+      expect(dashboard.counts.soldListings, 1);
       expect(dashboard.recentListings.single.title, 'Oak study desk');
       expect(dashboard.recentOrders.single.id, 5);
       expect(dashboard.pendingLocationRequest?.name, 'Sunrise Apartment');

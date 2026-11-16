@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -52,7 +50,7 @@ void main() {
     });
   });
 
-  group('categories และ locations', () {
+  group('categories, locations และ locationRequests', () {
     test('categories คืนรายการ map และข้ามสมาชิกที่ไม่ใช่ map', () async {
       products = ProductController(
         fakeApi(
@@ -90,9 +88,62 @@ void main() {
       await products.locations(zone: 'off_campus');
       expect(calls.single.query, {'zone': 'off_campus'});
     });
+
+    test('requestLocation ส่งเฉพาะ name และ zone เมื่อไม่ระบุ optional fields', () async {
+      await products.requestLocation(
+        name: 'Sunrise Apartment',
+        zone: 'off_campus',
+        address: '',
+        reason: '',
+      );
+
+      expect(calls.single.label, 'POST /api/location-requests');
+      expect(calls.single.body, {
+        'name': 'Sunrise Apartment',
+        'zone': 'off_campus',
+      });
+    });
+
+    test('requestLocation ส่ง address และ reason เมื่อระบุข้อความ', () async {
+      await products.requestLocation(
+        name: 'Sunrise Apartment',
+        zone: 'off_campus',
+        address: '123 Campus Rd',
+        reason: 'Many students live here',
+      );
+
+      expect(calls.single.label, 'POST /api/location-requests');
+      expect(calls.single.body, {
+        'name': 'Sunrise Apartment',
+        'zone': 'off_campus',
+        'address': '123 Campus Rd',
+        'reason': 'Many students live here',
+      });
+    });
   });
 
-  group('รายละเอียดและรายการของฉัน', () {
+  group('รายละเอียดผู้ขาย แดชบอร์ด และรายการของฉัน', () {
+    test('seller เรียก GET /api/sellers/:id พร้อม paging ตั้งต้น', () async {
+      await products.seller(7);
+
+      expect(calls.single.label, 'GET /api/sellers/7');
+      expect(calls.single.query, {'page': '1', 'limit': '20'});
+    });
+
+    test('seller ส่ง paging ที่กำหนด', () async {
+      await products.seller(7, page: 2, limit: 10);
+
+      expect(calls.single.label, 'GET /api/sellers/7');
+      expect(calls.single.query, {'page': '2', 'limit': '10'});
+    });
+
+    test('myDashboard เรียก GET /api/dashboard', () async {
+      await products.myDashboard();
+
+      expect(calls.single.label, 'GET /api/dashboard');
+      expect(calls.single.query, isEmpty);
+    });
+
     test('detail เรียก GET /api/products/:id', () async {
       await products.detail(10);
       expect(calls.single.label, 'GET /api/products/10');
@@ -153,12 +204,7 @@ void main() {
       expect(calls.single.body!['display_order'], 3);
     });
 
-    test('uploadImage ส่งไฟล์ไปยัง endpoint พร้อมลำดับภาพ', () async {
-      final directory = await Directory.systemTemp.createTemp(
-        'uni-swap-product-',
-      );
-      final file = File('${directory.path}${Platform.pathSeparator}photo.png');
-      await file.writeAsBytes([65, 66, 67]);
+    test('uploadImage ส่ง bytes ไปยัง endpoint พร้อมลำดับภาพ', () async {
       http.Request? captured;
       final api = ApiClient(
         client: MockClient((request) async {
@@ -171,7 +217,7 @@ void main() {
       try {
         await products.uploadImage(
           10,
-          filePath: file.path,
+          bytes: [65, 66, 67],
           fileName: 'photo.png',
           displayOrder: 3,
         );
@@ -181,9 +227,41 @@ void main() {
         expect(captured!.body, contains('name="display_order"'));
         expect(captured!.body, contains('3'));
         expect(captured!.body, contains('filename="photo.png"'));
+        expect(
+          captured!.body.toLowerCase(),
+          contains('content-type: image/png'),
+        );
+        expect(captured!.body, contains('ABC'));
       } finally {
         api.close();
-        await directory.delete(recursive: true);
+      }
+    });
+
+    test('uploadImage ใช้ mimeType ที่ระบุเมื่อส่งเข้ามา', () async {
+      http.Request? captured;
+      final api = ApiClient(
+        client: MockClient((request) async {
+          captured = request;
+          return http.Response('{"success":true}', 201);
+        }),
+      );
+      products = ProductController(api);
+
+      try {
+        await products.uploadImage(
+          10,
+          bytes: [1, 2, 3],
+          fileName: 'upload.bin',
+          mimeType: 'image/webp',
+          displayOrder: 1,
+        );
+
+        expect(
+          captured!.body.toLowerCase(),
+          contains('content-type: image/webp'),
+        );
+      } finally {
+        api.close();
       }
     });
   });

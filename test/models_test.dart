@@ -123,9 +123,15 @@ void main() {
       expect(user.residenceZone, ResidenceZone.onCampus);
       expect(user.residenceName, 'Lamduan 1 Dormitory');
       expect(user.role, UserRole.member);
+      expect(user.isAdmin, isFalse);
       expect(user.status, UserStatus.active);
       expect(user.isActive, isTrue);
       expect(user.createdAt?.toUtc(), DateTime.utc(2026, 11, 1, 8));
+    });
+
+    test('isAdmin คืน true เมื่อ role เป็น admin', () {
+      final admin = User.fromJson({...userJson(), 'role': 'admin'});
+      expect(admin.isAdmin, isTrue);
     });
 
     test('toJson ใช้ชื่อ field แบบเดียวกับ API', () {
@@ -136,6 +142,35 @@ void main() {
       expect(json['role'], 'member');
       expect(json['status'], 'active');
       expect(json['created_at'], '2026-11-01T08:00:00.000Z');
+    });
+  });
+
+  group('SellerProfile', () {
+    test('parse ข้อมูลผู้ขายและคำนวณ initials', () {
+      final profile = SellerProfile.fromJson({
+        'user_id': '3',
+        'display_name': 'Niran Lee',
+        'username': 'niran_demo',
+        'member_since': '2026-10-01T08:00:00.000Z',
+        'completed_sales': '14',
+        'location_name': 'Lamduan 1 Dormitory',
+      });
+
+      expect(profile.id, 3);
+      expect(profile.name, 'Niran Lee');
+      expect(profile.username, 'niran_demo');
+      expect(profile.completedSales, 14);
+      expect(profile.locationName, 'Lamduan 1 Dormitory');
+      expect(profile.initials, 'NL');
+    });
+
+    test('initials คืน "?" เมื่อไม่มีชื่อแสดงผล', () {
+      final emptyProfile = SellerProfile.fromJson({
+        'user_id': 4,
+        'display_name': '   ',
+      });
+
+      expect(emptyProfile.initials, '?');
     });
   });
 
@@ -221,6 +256,31 @@ void main() {
       expect(product.isOwnItem, isFalse);
     });
 
+    test('daysLeft คืน 0 เมื่อเลย clearance_deadline แล้ว และ primaryImageUrl fallback ไปรูปแรก', () {
+      final expired = Product.fromJson({
+        ...productJson(),
+        'clearance_deadline': '2020-01-01',
+        'image_url': null,
+        'category_name': null,
+      });
+
+      expect(expired.daysLeft, 0);
+      expect(expired.primaryImageUrl, 'https://example.com/desk-1.jpg');
+      expect(expired.categoryLabel, 'Furniture');
+    });
+
+    test('copyWith แก้ไขเฉพาะ field ที่ระบุ', () {
+      final updated = Product.fromJson(productJson()).copyWith(
+        title: 'Oak desk v2',
+        status: ProductStatus.hidden,
+      );
+
+      expect(updated.title, 'Oak desk v2');
+      expect(updated.status, ProductStatus.hidden);
+      expect(updated.isAvailable, isFalse);
+      expect(updated.id, 10);
+    });
+
     test('ProductDetail.fromJson แปลงเป็น field ที่ UI ใช้', () {
       final detail = ProductDetail.fromJson(productJson());
 
@@ -279,6 +339,23 @@ void main() {
       expect(order.shownStatus, OrderStatus.expired);
       expect(order.isActive, isFalse);
       expect(order.needsPayment, isTrue);
+    });
+
+    test('สินค้าฟรี (totalAmount=0) ไม่ต้องจ่ายเงิน และ deadline ในอนาคตยัง active', () {
+      final freeOrder = Order.fromJson({
+        ...orderJson(),
+        'seller_price': '0.00',
+        'commission_amount': '0.00',
+        'total_amount': '0.00',
+        'seller_payout': '0.00',
+        'payment_deadline': '2099-01-01T00:00:00.000Z',
+        'perspective': 'selling',
+      });
+
+      expect(freeOrder.needsPayment, isFalse);
+      expect(freeOrder.shownStatus, OrderStatus.pendingPayment);
+      expect(freeOrder.isActive, isTrue);
+      expect(freeOrder.isSelling, isTrue);
     });
 
     test('parse joined payment summary fields', () {

@@ -36,6 +36,54 @@ void main() {
       expect(orderLabel(8), '#US-8');
       expect(orderLabel(1024), '#US-1024');
     });
+
+    group('timeAgo', () {
+      final now = DateTime(2026, 11, 16, 12, 0);
+
+      test('null คืนค่าว่าง', () {
+        expect(timeAgo(null, now: now), '');
+      });
+
+      test('น้อยกว่า 1 นาทีแสดง just now', () {
+        expect(
+          timeAgo(DateTime(2026, 11, 16, 11, 59, 30), now: now),
+          'just now',
+        );
+      });
+
+      test('หลักนาที ชั่วโมง และวันแสดงหน่วยที่เหมาะสม', () {
+        expect(
+          timeAgo(DateTime(2026, 11, 16, 11, 48), now: now),
+          '12 min ago',
+        );
+        expect(timeAgo(DateTime(2026, 11, 16, 9, 0), now: now), '3 h ago');
+        expect(timeAgo(DateTime(2026, 11, 14, 12, 0), now: now), '2 d ago');
+        expect(timeAgo(DateTime(2026, 10, 17, 12, 0), now: now), '30 d ago');
+      });
+
+      test('เกิน 30 วันแสดงวันที่แบบเต็ม', () {
+        expect(
+          timeAgo(DateTime(2026, 10, 16, 12, 0), now: now),
+          'Oct 16, 2026',
+        );
+      });
+    });
+
+    group('formatClock และ formatWhen', () {
+      test('formatClock แปลงเวลา 12 ชั่วโมงได้ถูกต้องทั้งเที่ยงคืน เที่ยงวัน และบ่าย', () {
+        expect(formatClock(DateTime(2026, 11, 15, 0, 5)), '12:05 AM');
+        expect(formatClock(DateTime(2026, 11, 15, 11, 59)), '11:59 AM');
+        expect(formatClock(DateTime(2026, 11, 15, 12, 30)), '12:30 PM');
+        expect(formatClock(DateTime(2026, 11, 15, 14, 5)), '2:05 PM');
+      });
+
+      test('formatWhen แสดงเดือน วันที่ และเวลา', () {
+        expect(
+          formatWhen(DateTime(2026, 11, 15, 14, 30)),
+          'Nov 15 · 2:30 PM',
+        );
+      });
+    });
   });
 
   group('json_utils.dart', () {

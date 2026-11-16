@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -21,6 +20,7 @@ void main() {
     });
 
     test('baseUrl ตั้งต้นชี้ไปที่ localhost:3000', () {
+      expect(defaultApiBaseUrl(), 'http://localhost:3000/api');
       final api = ApiClient();
       expect(api.baseUrl, 'http://localhost:3000/api');
       api.close();
@@ -91,15 +91,8 @@ void main() {
     });
 
     test(
-      'multipart upload attaches the file, fields, and bearer token',
+      'multipart upload attaches bytes, fields, mimeType, and bearer token',
       () async {
-        final directory = await Directory.systemTemp.createTemp(
-          'uni-swap-upload-',
-        );
-        final file = File(
-          '${directory.path}${Platform.pathSeparator}photo.png',
-        );
-        await file.writeAsBytes([65, 66, 67]);
         http.Request? captured;
         final api = ApiClient(
           tokenProvider: () => 'seller-token',
@@ -113,8 +106,9 @@ void main() {
           await api.postMultipart(
             'products/12/images',
             fileField: 'image',
-            filePath: file.path,
+            bytes: [65, 66, 67],
             fileName: 'photo.png',
+            mimeType: 'image/webp',
             fields: {'display_order': '2'},
           );
 
@@ -127,10 +121,13 @@ void main() {
           expect(captured!.body, contains('name="display_order"'));
           expect(captured!.body, contains('filename="photo.png"'));
           expect(captured!.body, contains('name="image"'));
+          expect(
+            captured!.body.toLowerCase(),
+            contains('content-type: image/webp'),
+          );
           expect(captured!.body, contains('ABC'));
         } finally {
           api.close();
-          await directory.delete(recursive: true);
         }
       },
     );

@@ -90,7 +90,8 @@ class OrderDetailsPage extends StatefulWidget {
   final String productLocation; // products.location_name ใช้แนะนำจุดนัด
   final String? pickupDetail;
   // ตัวเลขคิดโดย backend ตอนสร้างออเดอร์ แอปแสดงอย่างเดียว ไม่คำนวณเอง
-  // TODO: ยืนยันกับเพื่อนว่า commission_rate เก็บเป็นเปอร์เซ็นต์ (5.00) และหักจากผู้ขาย
+  // commission_rate เก็บเป็นเปอร์เซ็นต์ (5.00 = 5%) หักจากผู้ขาย ผู้ซื้อจ่ายเท่าราคาสินค้า
+  // (ยืนยันจาก COMMISSION_RATE ใน app.js)
   final double commissionRate; // orders.commission_rate
   final double commissionAmount; // orders.commission_amount
   final double sellerPayout; // orders.seller_payout

@@ -81,7 +81,3 @@ enum ProductStatus {
   static ProductStatus fromApi(String value) =>
       tryParse(value) ?? ProductStatus.available;
 }
-
-/// อายุของออเดอร์ก่อนต้องจ่ายเงิน (orders.payment_deadline = created_at + 30 นาที)
-/// TODO: backend เป็นคนตั้งค่านี้ แอปใช้แค่ในข้อมูลจำลอง
-const kPaymentWindow = Duration(minutes: 30);

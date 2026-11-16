@@ -423,6 +423,35 @@ class ProductDetail {
     );
   }
 
+  /// ข้อมูลตัวอย่างสำหรับ UI ก่อนต่อ API
+  factory ProductDetail.mock({
+    required int id,
+    required String title,
+    required double price,
+    required String place,
+    String? category,
+    bool urgent = false,
+  }) {
+    return ProductDetail(
+      id: id,
+      title: title,
+      price: price,
+      place: place,
+      category: category,
+      description:
+          'Solid ${title.toLowerCase()} in great condition. A few small marks, '
+          'but sturdy and ready for a new home. Must go soon.',
+      urgent: urgent,
+      daysLeft: urgent ? 3 : null,
+      seller: SellerInfo(
+        id: 0,
+        name: 'Jamie Lee',
+        sales: 18,
+        location: place.split(' · ').last,
+      ),
+    );
+  }
+
   final int id;
   final String title;
   final double price;
@@ -436,7 +465,7 @@ class ProductDetail {
   final ProductStatus status;
   final bool isOwnItem;
 
-  /// ข้อมูลดิบจาก API
+  /// ข้อมูลดิบจาก API (null ถ้าสร้างจาก mock)
   final Product? product;
 
   Map<String, dynamic> toJson() {

@@ -7,7 +7,7 @@ import 'package:http_parser/http_parser.dart' show MediaType;
 
 /// URL ของ backend ที่ใช้เมื่อไม่ได้ส่ง baseUrl เข้ามา
 ///
-///  1. `--dart-define=API_BASE_URL=...` (ใช้กับมือถือจริง: http://<IP เครื่องที่รัน backend>:3000/api
+///  1. `--dart-define=API_BASE_URL=...` (ใช้กับมือถือจริง: `http://IP-ของเครื่องที่รัน-backend:3000/api`
 ///     โดยมือถือกับคอมต้องอยู่ wifi เดียวกัน)
 ///  2. Android emulator -> http://10.0.2.2:3000/api (10.0.2.2 คือ localhost ของคอม)
 ///  3. อื่นๆ (web, desktop, iOS simulator) -> http://localhost:3000/api

@@ -9,14 +9,14 @@ import 'product_controller.dart';
 /// Shared controller instances for the current single-session app flow.
 /// A provider-based scope can replace this when the frontend grows.
 ///
-/// ตัวแปรเป็น `late` (ไม่ใช่ final) และมีค่าเริ่มต้นแบบ lazy เพื่อให้
+/// ตัวแปรไม่ใช่ final และมีค่าเริ่มต้น (สร้างตอนใช้ครั้งแรก) เพื่อให้
 ///  - แอปจริงใช้ได้เลยโดยไม่ต้องทำอะไร
 ///  - widget test เรียก [setupControllers] ใส่ `MockClient` แทน HTTP จริงได้
-late ApiClient apiClient = ApiClient(tokenProvider: () => authController.token);
-late AuthController authController = AuthController(apiClient);
-late ProductController productController = ProductController(apiClient);
-late OrderController orderController = OrderController(apiClient);
-late AdminController adminController = AdminController(apiClient);
+ApiClient apiClient = ApiClient(tokenProvider: () => authController.token);
+AuthController authController = AuthController(apiClient);
+ProductController productController = ProductController(apiClient);
+OrderController orderController = OrderController(apiClient);
+AdminController adminController = AdminController(apiClient);
 
 /// สร้าง controller ทั้งหมดใหม่ (state ล้างหมด เช่น token หาย)
 ///

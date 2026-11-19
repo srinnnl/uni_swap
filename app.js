@@ -374,10 +374,10 @@ app.post('/api/products/:product_id/images', auth, parseProductImage, async (req
         ? `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`
         : body.image_url ?? body.imageUrl;
     if (!validId(req.params.product_id) || !validText(imageUrl, 500, true) ||
-        !Number.isInteger(order) || order < 1 || order > MAX_PRODUCT_IMAGES) {
-        if (req.file) await removeUploadedFile(req.file.path);
-        return bad(res, 'Invalid image');
-    }
+    !Number.isInteger(order) || order < 1) {
+    if (req.file) await removeUploadedFile(req.file.path);
+    return bad(res, 'Invalid image');
+}
 
     try {
         const result = await transaction(async query => {
@@ -395,6 +395,9 @@ app.post('/api/products/:product_id/images', auth, parseProductImage, async (req
             );
             if (Number(images[0].image_count) >= MAX_PRODUCT_IMAGES) {
                 throw Object.assign(new Error('A product can have at most six photos'), { status: 409 });
+            }
+            if (order > MAX_PRODUCT_IMAGES) {
+                throw Object.assign(new Error('Invalid image'), { status: 400 });
             }
             const inserted = await query(
                 'INSERT INTO product_images (product_id,image_url,display_order) VALUES (?,?,?)',

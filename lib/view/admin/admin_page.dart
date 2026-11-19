@@ -191,7 +191,7 @@ class _AdminPageState extends State<AdminPage> {
                 // 3. Pending approval
                 _PendingApprovalCard(
                   count: overview!.itemsPending,
-                  onTap: () => _open(const AdminItemsPage()),
+                  onTap: () => _open(const AdminItemsPage(reviewOnly: true)),
                 ),
 
                 const SizedBox(height: 26),
@@ -313,7 +313,7 @@ class _AdminPageState extends State<AdminPage> {
             icon: Icons.inventory_2_outlined,
             bg: _cAmberBg,
             fg: _cAmberFg,
-            onTap: () => _open(const AdminItemsPage()),
+            onTap: () => _open(const AdminItemsPage(reviewOnly: true)),
           ),
         ),
       for (final LocationRequest r in data.pendingLocationRequests.take(5))

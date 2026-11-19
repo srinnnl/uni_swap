@@ -1,3 +1,5 @@
+import 'package:uni_swap/config/api_config.dart';
+
 import 'enums.dart';
 import 'json_utils.dart';
 import 'order_status.dart';
@@ -43,7 +45,7 @@ class Order {
         json['product_location_name'] ?? json['location_name'],
       ),
       pickupDetail: jsonString(json['pickup_detail']),
-      imageUrl: jsonString(json['image_url']),
+      imageUrl: resolveMediaUrl(jsonString(json['image_url'])),
       buyerId: jsonInt(json['buyer_id']) ?? 0,
       buyerName: jsonString(json['buyer_name']),
       sellerId: jsonInt(json['seller_id']) ?? 0,

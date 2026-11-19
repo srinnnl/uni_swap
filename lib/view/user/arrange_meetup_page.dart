@@ -20,6 +20,7 @@ class ArrangeMeetupPage extends StatefulWidget {
     required this.price,
     required this.sellerName,
     required this.sellerLocation,
+    this.pickupDetail = '',
     this.initialWhen,
   });
 
@@ -27,6 +28,7 @@ class ArrangeMeetupPage extends StatefulWidget {
   final double price;
   final String sellerName;
   final String sellerLocation;
+  final String pickupDetail;
   final DateTime? initialWhen;
 
   @override
@@ -105,6 +107,8 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
             _buildHeader(),
             const SizedBox(height: 20),
             _buildSellerLocation(),
+            const SizedBox(height: 16),
+            _buildPickupDetail(),
             const SizedBox(height: 16),
 
             // ✨ รวมร่างกล่องผู้ขายกับคำแนะนำการนัดรับให้อยู่ในการ์ดเดียวกัน (ไม่โย้เย้แล้ว)
@@ -229,6 +233,35 @@ class _ArrangeMeetupPageState extends State<ArrangeMeetupPage> {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPickupDetail() {
+    final detail = widget.pickupDetail.trim();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _C.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Pickup detail',
+            style: TextStyle(fontSize: 12, color: _C.muted),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            detail.isEmpty
+                ? 'No pickup detail provided. Agree on a public meeting spot with the seller.'
+                : detail,
+            style: const TextStyle(fontSize: 14, height: 1.4, color: _C.ink),
           ),
         ],
       ),

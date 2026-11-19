@@ -358,7 +358,9 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'cancel', child: Text('Cancel order')),
             ],
-          ),
+          )
+        else
+          const SizedBox(width: 48),
       ],
     );
   }

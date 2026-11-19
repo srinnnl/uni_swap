@@ -31,6 +31,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   int _imageIndex = 0;
   ProductDetail? _loadedProduct;
   bool _ordered = false;
+  bool _isLoadingPickupDetail = false;
   bool _isOrdering = false;
 
   ProductDetail get _p => _loadedProduct ?? widget.product;
@@ -57,11 +58,13 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       _p.status == ProductStatus.available &&
       !_isOwn &&
       !_ordered &&
+      !_isLoadingPickupDetail &&
       !_isOrdering;
 
   String get _buttonLabel {
     if (_isOwn) return 'Your item';
     if (_ordered) return 'Order placed';
+    if (_isLoadingPickupDetail) return 'Loading pickup detail…';
     if (_isOrdering) return 'Placing order…';
     return switch (_p.status) {
       ProductStatus.available => 'Buy now',
@@ -106,25 +109,35 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     }
   }
 
-  // Buy now: use the seller's listed location and selected time to create an order.
+  // Reveal private pickup instructions only after the buyer starts checkout.
   Future<void> _buyNow() async {
     final sellerName = _p.seller?.name ?? 'the seller';
-    final confirmed = await Navigator.push<MeetupChoice>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ArrangeMeetupPage(
-          productTitle: _p.title,
-          price: _p.price,
-          sellerName: sellerName,
-          sellerLocation: _p.place,
-        ),
-      ),
-    );
-
-    if (confirmed == null || !mounted) return;
-
-    setState(() => _isOrdering = true);
+    setState(() => _isLoadingPickupDetail = true);
     try {
+      final pickupResponse = await productController.pickupDetail(_p.id);
+      final pickupData = pickupResponse['data'];
+      if (pickupResponse['success'] != true || pickupData is! Map) {
+        throw const ApiException('Could not load the pickup detail.');
+      }
+      final pickupDetail = pickupData['pickup_detail']?.toString() ?? '';
+      if (!mounted) return;
+
+      final confirmed = await Navigator.push<MeetupChoice>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ArrangeMeetupPage(
+            productTitle: _p.title,
+            price: _p.price,
+            sellerName: sellerName,
+            sellerLocation: _p.place,
+            pickupDetail: pickupDetail,
+          ),
+        ),
+      );
+
+      if (confirmed == null || !mounted) return;
+
+      setState(() => _isOrdering = true);
       final response = await orderController.create(
         productId: _p.id,
         meetupLocation: _p.place,
@@ -151,7 +164,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         _toast('Could not place the order. Please try again.');
       }
     } finally {
-      if (mounted) setState(() => _isOrdering = false);
+      if (mounted) {
+        setState(() {
+          _isLoadingPickupDetail = false;
+          _isOrdering = false;
+        });
+      }
     }
   }
 
@@ -276,7 +294,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
   Widget _buildContent() {
     final seller = _p.seller;
-    final pickupDetail = _p.product?.locationDetail?.trim();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -355,21 +372,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           const SizedBox(height: 8),
           Text(
             _p.description!,
-            style: const TextStyle(fontSize: 14, height: 1.55, color: _C.muted),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 20),
-            child: Divider(height: 1, color: _C.border),
-          ),
-        ],
-        if (pickupDetail != null && pickupDetail.isNotEmpty) ...[
-          const Text(
-            'Pickup detail',
-            style: TextStyle(fontSize: 17, color: _C.ink),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            pickupDetail,
             style: const TextStyle(fontSize: 14, height: 1.55, color: _C.muted),
           ),
           const Padding(

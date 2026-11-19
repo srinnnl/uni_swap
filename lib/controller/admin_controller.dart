@@ -75,6 +75,11 @@ class AdminController {
     'admin/locations/$id',
     body: {'name': name, 'is_active': active},
   );
+  Future<Map<String, dynamic>> deleteLocation(int id) =>
+      _api.delete('admin/locations/$id');
+
+  Future<Map<String, dynamic>> deleteListing(int productId) =>
+      _api.delete('admin/listings/$productId');
 
   Future<Map<String, dynamic>> locationRequests({
     String? status,

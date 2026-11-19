@@ -4,21 +4,10 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart' show MediaType;
+import 'package:uni_swap/config/api_config.dart';
 
-/// URL ของ backend ที่ใช้เมื่อไม่ได้ส่ง baseUrl เข้ามา
-///
-///  1. `--dart-define=API_BASE_URL=...` (ใช้กับมือถือจริง: `http://IP-ของเครื่องที่รัน-backend:3000/api`
-///     โดยมือถือกับคอมต้องอยู่ wifi เดียวกัน)
-///  2. Android emulator -> http://10.0.2.2:3000/api (10.0.2.2 คือ localhost ของคอม)
-///  3. อื่นๆ (web, desktop, iOS simulator) -> http://localhost:3000/api
-String defaultApiBaseUrl() {
-  const fromEnv = String.fromEnvironment('API_BASE_URL');
-  if (fromEnv.isNotEmpty) return fromEnv;
-  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-    return 'http://10.0.2.2:3000/api';
-  }
-  return 'http://localhost:3000/api';
-}
+export 'package:uni_swap/config/api_config.dart'
+    show defaultApiBaseUrl, resolveMediaUrl;
 
 /// HTTP client for the Express API in the repository root.
 ///

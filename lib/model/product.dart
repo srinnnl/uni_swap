@@ -1,6 +1,22 @@
+import 'package:uni_swap/config/api_config.dart';
+
 import 'enums.dart';
 import 'json_utils.dart';
 import 'order_status.dart';
+
+const int urgentDeadlineWindowDays = 7;
+
+/// Treat a listing as urgent only when its calendar-day deadline is within
+/// the next week (including today). Date-only comparison avoids time-of-day
+/// and timezone offsets changing the displayed urgency.
+bool isDeadlineUrgent(DateTime? deadline, {DateTime? now}) {
+  if (deadline == null) return false;
+  final current = now ?? DateTime.now();
+  final today = DateTime(current.year, current.month, current.day);
+  final deadlineDay = DateTime(deadline.year, deadline.month, deadline.day);
+  final daysUntil = deadlineDay.difference(today).inDays;
+  return daysUntil >= 0 && daysUntil <= urgentDeadlineWindowDays;
+}
 
 /// รูปสินค้า 1 รูป (ตาราง `product_images`)
 class ProductImage {
@@ -16,7 +32,7 @@ class ProductImage {
     return ProductImage(
       id: jsonInt(json['image_id'] ?? json['id']) ?? 0,
       productId: jsonInt(json['product_id']),
-      url: jsonString(json['image_url'] ?? json['url']) ?? '',
+      url: resolveMediaUrl(jsonString(json['image_url'] ?? json['url'])) ?? '',
       displayOrder: jsonInt(json['display_order']) ?? 1,
       createdAt: jsonDateTime(json['created_at']),
     );
@@ -206,7 +222,7 @@ class Product {
       imageCount:
           jsonInt(json['image_count']) ??
           jsonParseList(json['images'], ProductImage.fromJson).length,
-      imageUrl: jsonString(json['image_url']),
+      imageUrl: resolveMediaUrl(jsonString(json['image_url'])),
       images: jsonParseList(json['images'], ProductImage.fromJson),
       isOwnItem: jsonBool(json['is_own_item']) ?? false,
     );
@@ -247,7 +263,9 @@ class Product {
       ? categoryName!
       : category;
   bool get isAvailable => status == ProductStatus.available;
-  bool get isUrgent => urgencyLevel != UrgencyLevel.normal;
+  bool get isUrgent => clearanceDeadline == null
+      ? urgencyLevel != UrgencyLevel.normal
+      : isDeadlineUrgent(clearanceDeadline);
 
   String? get primaryImageUrl {
     if (imageUrl != null && imageUrl!.isNotEmpty) return imageUrl;

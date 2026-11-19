@@ -606,7 +606,11 @@ class _SearchPageState extends State<SearchPage> {
           _buildChip('All', null),
           const SizedBox(width: 10),
           for (final category in _categories) ...[
-            _buildChip(category.name, categoryIcon(category.name)),
+            _buildChip(
+              category.name,
+              categoryIcon(category.name),
+              emoji: category.emoji,
+            ),
             const SizedBox(width: 10),
           ],
         ],
@@ -614,8 +618,14 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
-  Widget _buildChip(String label, IconData? icon) {
+  Widget _buildChip(String label, IconData? icon, {String? emoji}) {
     final selected = _category == label;
+    final cleanEmoji = emoji?.trim() ?? '';
+    final Widget? leading = cleanEmoji.isNotEmpty
+        ? Text(cleanEmoji, style: const TextStyle(fontSize: 16))
+        : icon == null
+        ? null
+        : Icon(icon, size: 16, color: selected ? Colors.white : _C.muted);
 
     return GestureDetector(
       onTap: () => setState(() => _category = label),
@@ -629,8 +639,8 @@ class _SearchPageState extends State<SearchPage> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (icon != null) ...[
-              Icon(icon, size: 16, color: selected ? Colors.white : _C.muted),
+            if (leading != null) ...[
+              leading,
               const SizedBox(width: 6),
             ],
             Text(

@@ -70,10 +70,24 @@ function uploadedFilePath(imageUrl) {
         return null;
     }
 }
+function normalizeStoredImageUrl(imageUrl, requestHost) {
+    if (typeof imageUrl !== 'string') return imageUrl;
+    const value = imageUrl.trim();
+    try {
+        const parsed = new URL(value, `http://${requestHost}`);
+        const host = parsed.hostname.toLowerCase();
+        const isLocalHost = host === 'localhost' || host === '10.0.2.2' || host === '0.0.0.0' || host === '::1' || host.startsWith('127.');
+        if (parsed.pathname.startsWith('/uploads/') && (parsed.host === requestHost || isLocalHost)) {
+            return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+        }
+    } catch (_) { }
+    return value;
+}
 
 const db = (sql, values = []) => new Promise((resolve, reject) => con.query(sql, values, (err, rows) => err ? reject(err) : resolve(rows)));
 const validId = value => /^[1-9]\d*$/.test(String(value));
 const validText = (value, max, required = false) => value === undefined || value === null ? !required : typeof value === 'string' && value.trim().length <= max && (!required || value.trim().length > 0);
+const hasVisibleText = value => typeof value === 'string' && value.normalize('NFC').replace(/[\p{White_Space}\p{Cc}\p{Cf}\p{Cs}\p{Default_Ignorable_Code_Point}]/gu, '').length > 0;
 const bad = (res, message) => res.status(400).json({ success: false, message });
 function dbError(res, err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ success: false, message: 'This record already exists' });
@@ -253,11 +267,21 @@ app.get('/api/products', async (req, res) => {
     const clauses = ["p.status='available'", "u.status='active'"]; const values = [];
     if (keyword) { clauses.push('(p.title LIKE ? OR p.description LIKE ?)'); values.push(`%${keyword.trim()}%`, `%${keyword.trim()}%`); }
     if (category_id) { clauses.push('p.category_id=?'); values.push(category_id); } if (zone) { clauses.push('p.zone=?'); values.push(zone); } if (location_id) { clauses.push('p.location_id=?'); values.push(location_id); }
-    try { await expirePendingOrders(); const rows = await db(`SELECT p.product_id,p.title,p.description,p.price,p.item_condition,p.urgency_level,p.zone,l.name AS location_name,p.location_id,p.location_detail,p.clearance_deadline,p.created_at,p.category_id,c.name AS category_name,u.user_id AS seller_id,u.display_name AS seller_name,(SELECT image_url FROM product_images WHERE product_id=p.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url,(SELECT COUNT(*) FROM product_images WHERE product_id=p.product_id) AS image_count FROM products p JOIN users u ON u.user_id=p.seller_id LEFT JOIN categories c ON c.category_id=p.category_id LEFT JOIN locations l ON l.location_id=p.location_id WHERE ${clauses.join(' AND ')} ORDER BY ${orderBy} LIMIT ? OFFSET ?`, [...values, paging.limit + 1, paging.offset]); sendPage(res, rows, paging); } catch (err) { dbError(res, err); }
+    try { await expirePendingOrders(); const rows = await db(`SELECT p.product_id,p.title,p.description,p.price,p.item_condition,p.urgency_level,p.zone,l.name AS location_name,p.location_id,p.clearance_deadline,p.created_at,p.category_id,c.name AS category_name,u.user_id AS seller_id,u.display_name AS seller_name,(SELECT image_url FROM product_images WHERE product_id=p.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url,(SELECT COUNT(*) FROM product_images WHERE product_id=p.product_id) AS image_count FROM products p JOIN users u ON u.user_id=p.seller_id LEFT JOIN categories c ON c.category_id=p.category_id LEFT JOIN locations l ON l.location_id=p.location_id WHERE ${clauses.join(' AND ')} ORDER BY ${orderBy} LIMIT ? OFFSET ?`, [...values, paging.limit + 1, paging.offset]); sendPage(res, rows, paging); } catch (err) { dbError(res, err); }
+});
+app.get('/api/products/:product_id/pickup-detail', auth, async (req, res) => {
+    if (!validId(req.params.product_id)) return bad(res, 'Invalid product_id');
+    try {
+        const rows = await db(`SELECT location_detail FROM products
+            WHERE product_id=? AND status='available' AND seller_id<>?`,
+        [req.params.product_id, req.user.user_id]);
+        if (!rows.length) return notFound(res, 'Pickup detail not found');
+        res.json({ success: true, data: { pickup_detail: rows[0].location_detail } });
+    } catch (err) { dbError(res, err); }
 });
 app.get('/api/products/:product_id', async (req, res) => {
     if (!validId(req.params.product_id)) return bad(res, 'Invalid product_id');
-    try { const rows = await db(`SELECT p.*,u.display_name AS seller_name,u.username,c.name AS category_name,l.name AS location_name,(SELECT COUNT(*) FROM orders o WHERE o.seller_id=p.seller_id AND o.status='completed') AS sales FROM products p JOIN users u ON u.user_id=p.seller_id LEFT JOIN categories c ON c.category_id=p.category_id LEFT JOIN locations l ON l.location_id=p.location_id WHERE p.product_id=? AND p.status IN ('available','reserved')`, [req.params.product_id]); if (!rows.length) return notFound(res, 'Product not found'); const images = await db('SELECT image_id,image_url,display_order FROM product_images WHERE product_id=? ORDER BY display_order,image_id', [req.params.product_id]); await db('UPDATE products SET view_count=view_count+1 WHERE product_id=?', [req.params.product_id]); res.json({ success: true, data: { ...rows[0], view_count: Number(rows[0].view_count) + 1, images } }); } catch (err) { dbError(res, err); }
+    try { const rows = await db(`SELECT p.product_id,p.seller_id,p.title,p.description,p.price,p.item_condition,p.urgency_level,p.zone,p.clearance_deadline,p.status,p.created_at,p.updated_at,p.category_id,p.reject_reason,p.review_note,p.reviewed_by,p.reviewed_at,p.location_id,p.view_count,u.display_name AS seller_name,u.username,c.name AS category_name,l.name AS location_name,(SELECT COUNT(*) FROM orders o WHERE o.seller_id=p.seller_id AND o.status='completed') AS sales FROM products p JOIN users u ON u.user_id=p.seller_id LEFT JOIN categories c ON c.category_id=p.category_id LEFT JOIN locations l ON l.location_id=p.location_id WHERE p.product_id=? AND p.status IN ('available','reserved')`, [req.params.product_id]); if (!rows.length) return notFound(res, 'Product not found'); const images = await db('SELECT image_id,image_url,display_order FROM product_images WHERE product_id=? ORDER BY display_order,image_id', [req.params.product_id]); await db('UPDATE products SET view_count=view_count+1 WHERE product_id=?', [req.params.product_id]); res.json({ success: true, data: { ...rows[0], view_count: Number(rows[0].view_count) + 1, images } }); } catch (err) { dbError(res, err); }
 });
 // Public seller profile: seller summary + their available listings (paged).
 app.get('/api/sellers/:user_id', async (req, res) => {
@@ -266,15 +290,22 @@ app.get('/api/sellers/:user_id', async (req, res) => {
     try {
         const sellers = await db(`SELECT u.user_id,u.display_name,u.username,u.created_at AS member_since,l.name AS location_name,(SELECT COUNT(*) FROM orders o WHERE o.seller_id=u.user_id AND o.status='completed') AS completed_sales FROM users u LEFT JOIN locations l ON l.location_id=u.residence_location_id WHERE u.user_id=? AND u.status='active'`, [req.params.user_id]);
         if (!sellers.length) return notFound(res, 'Seller not found');
-        const rows = await db(`SELECT p.product_id,p.title,p.description,p.price,p.item_condition,p.urgency_level,p.zone,l.name AS location_name,p.location_id,p.location_detail,p.clearance_deadline,p.created_at,p.category_id,c.name AS category_name,u.user_id AS seller_id,u.display_name AS seller_name,(SELECT image_url FROM product_images WHERE product_id=p.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url,(SELECT COUNT(*) FROM product_images WHERE product_id=p.product_id) AS image_count FROM products p JOIN users u ON u.user_id=p.seller_id LEFT JOIN categories c ON c.category_id=p.category_id LEFT JOIN locations l ON l.location_id=p.location_id WHERE p.seller_id=? AND p.status='available' ORDER BY p.created_at DESC,p.product_id DESC LIMIT ? OFFSET ?`, [req.params.user_id, paging.limit + 1, paging.offset]);
+        const rows = await db(`SELECT p.product_id,p.title,p.description,p.price,p.item_condition,p.urgency_level,p.zone,l.name AS location_name,p.location_id,p.clearance_deadline,p.created_at,p.category_id,c.name AS category_name,u.user_id AS seller_id,u.display_name AS seller_name,(SELECT image_url FROM product_images WHERE product_id=p.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url,(SELECT COUNT(*) FROM product_images WHERE product_id=p.product_id) AS image_count FROM products p JOIN users u ON u.user_id=p.seller_id LEFT JOIN categories c ON c.category_id=p.category_id LEFT JOIN locations l ON l.location_id=p.location_id WHERE p.seller_id=? AND p.status='available' ORDER BY p.created_at DESC,p.product_id DESC LIMIT ? OFFSET ?`, [req.params.user_id, paging.limit + 1, paging.offset]);
         const seller = { ...sellers[0], completed_sales: Number(sellers[0].completed_sales) };
         res.json({ success: true, data: { seller, items: rows.slice(0, paging.limit) }, page: paging.page, limit: paging.limit, has_more: rows.length > paging.limit });
     } catch (err) { dbError(res, err); }
 });
 function getProductInput(b) {
     const x = b || {}; const locationId = x.location_id ?? x.locationId;
-    if (!validId(x.category_id ?? x.categoryId) || !validText(x.title, 150, true) || !validText(x.description, 5000) || !/^\d+(\.\d{1,2})?$/.test(String(x.price)) || Number(x.price) > 99999999.99 || (x.item_condition != null && !['new', 'like_new', 'good', 'fair'].includes(x.item_condition)) || !['normal', 'urgent', 'very_urgent'].includes(x.urgency_level || x.urgencyLevel || 'normal') || !zones.includes(x.zone) || !validId(locationId) || !validText(x.location_detail ?? x.locationDetail, 255)) return null;
-    return { categoryId: x.category_id ?? x.categoryId, title: x.title.trim(), description: x.description?.trim() || null, price: Number(x.price), condition: x.item_condition || null, urgency: x.urgency_level ?? x.urgencyLevel ?? 'normal', zone: x.zone, locationId, locationDetail: (x.location_detail ?? x.locationDetail)?.trim() || null, deadline: x.clearance_deadline ?? x.clearanceDeadline ?? null };
+    const isFree = x.is_free === true || x.isFree === true;
+    const priceText = typeof x.price === 'number' && Number.isFinite(x.price)
+        ? String(x.price)
+        : typeof x.price === 'string' ? x.price.trim() : '';
+    if (!/^\d+(\.\d{1,2})?$/.test(priceText)) return null;
+    const price = Number(priceText);
+    if (!Number.isFinite(price) || price > 99999999.99 || (isFree ? price !== 0 : price <= 0)) return null;
+    if (!validId(x.category_id ?? x.categoryId) || !validText(x.title, 150, true) || !validText(x.description, 5000) || (x.item_condition != null && !['new', 'like_new', 'good', 'fair'].includes(x.item_condition)) || !['normal', 'urgent', 'very_urgent'].includes(x.urgency_level || x.urgencyLevel || 'normal') || !zones.includes(x.zone) || !validId(locationId) || !validText(x.location_detail ?? x.locationDetail, 255)) return null;
+    return { categoryId: x.category_id ?? x.categoryId, title: x.title.trim(), description: x.description?.trim() || null, price, condition: x.item_condition || null, urgency: x.urgency_level ?? x.urgencyLevel ?? 'normal', zone: x.zone, locationId, locationDetail: (x.location_detail ?? x.locationDetail)?.trim() || null, deadline: x.clearance_deadline ?? x.clearanceDeadline ?? null };
 }
 function usesSellerResidence(user, product) {
     return user.residence_location_id != null &&
@@ -282,6 +313,7 @@ function usesSellerResidence(user, product) {
         user.residence_zone === product.zone;
 }
 app.post('/api/products', auth, async (req, res) => {
+    if (!hasVisibleText(req.body?.title)) return bad(res, 'Title must include visible text');
     const x = getProductInput(req.body); if (!x) return bad(res, 'Invalid product details');
     if (!req.user.residence_location_id) return res.status(409).json({ success: false, message: 'Set an approved residence in your profile before listing an item' });
     if (!usesSellerResidence(req.user, x)) return bad(res, 'Listings must use your registered residence');
@@ -290,6 +322,7 @@ app.post('/api/products', auth, async (req, res) => {
 app.get('/api/my/listings', auth, async (req, res) => { const paging = getPaging(req, res); if (!paging) return; try { const rows = await db(`SELECT p.*,c.name AS category_name,l.name AS location_name,(SELECT image_url FROM product_images WHERE product_id=p.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url,(SELECT COUNT(*) FROM product_images WHERE product_id=p.product_id) AS image_count FROM products p LEFT JOIN categories c ON c.category_id=p.category_id LEFT JOIN locations l ON l.location_id=p.location_id WHERE p.seller_id=? ORDER BY p.updated_at DESC,p.product_id DESC LIMIT ? OFFSET ?`, [req.user.user_id, paging.limit + 1, paging.offset]); const pageRows = rows.slice(0, paging.limit); if (pageRows.length) { const imgs = await db('SELECT image_id,product_id,image_url,display_order FROM product_images WHERE product_id IN (?) ORDER BY display_order,image_id', [pageRows.map(r => r.product_id)]); for (const r of pageRows) r.images = imgs.filter(i => i.product_id === r.product_id); } sendPage(res, rows, paging); } catch (err) { dbError(res, err); } });
 app.put('/api/products/:product_id', auth, async (req, res) => {
     if (!validId(req.params.product_id)) return bad(res, 'Invalid product_id');
+    if (!hasVisibleText(req.body?.title)) return bad(res, 'Title must include visible text');
     const x = getProductInput(req.body);
     if (!x) return bad(res, 'Invalid product details');
     if (!req.user.residence_location_id) return res.status(409).json({ success: false, message: 'Set an approved residence in your profile before editing listings' });
@@ -371,8 +404,8 @@ app.post('/api/products/:product_id/images', auth, parseProductImage, async (req
     const body = req.body || {};
     const order = Number(body.display_order ?? body.displayOrder ?? 1);
     const imageUrl = req.file
-        ? `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`
-        : body.image_url ?? body.imageUrl;
+        ? `/uploads/${req.file.filename}`
+        : normalizeStoredImageUrl(body.image_url ?? body.imageUrl, req.get('host'));
     if (!validId(req.params.product_id) || !validText(imageUrl, 500, true) ||
     !Number.isInteger(order) || order < 1) {
     if (req.file) await removeUploadedFile(req.file.path);
@@ -582,7 +615,15 @@ app.post('/api/orders/:order_id/cancel', auth, async (req, res) => {
     }
 });
 // ---------- Residence requests ----------
-app.post('/api/location-requests', auth, async (req, res) => { const { name, zone, address, reason } = req.body || {}; if (!validText(name, 150, true) || !zones.includes(zone) || !validText(address, 255) || !validText(reason, 5000)) return bad(res, 'Invalid location request'); try { const result = await db('INSERT INTO location_requests (requested_by,name,zone,address,reason) VALUES (?,?,?,?,?)', [req.user.user_id, name.trim(), zone, address?.trim() || null, reason?.trim() || null]); res.status(201).json({ success: true, request_id: result.insertId, status: 'pending' }); } catch (err) { dbError(res, err); } });
+app.post('/api/location-requests', auth, async (req, res) => {
+    const { name, zone, address, reason } = req.body || {};
+    if (typeof name === 'string' && name.trim().length > 150) return bad(res, 'Location name must be 150 characters or fewer');
+    if (!validText(name, 150, true) || !zones.includes(zone) || !validText(address, 255) || !validText(reason, 5000)) return bad(res, 'Invalid location request');
+    try {
+        const result = await db('INSERT INTO location_requests (requested_by,name,zone,address,reason) VALUES (?,?,?,?,?)', [req.user.user_id, name.trim(), zone, address?.trim() || null, reason?.trim() || null]);
+        res.status(201).json({ success: true, request_id: result.insertId, status: 'pending' });
+    } catch (err) { dbError(res, err); }
+});
 
 // ---------- Admin dashboard and moderation ----------
 app.get('/api/admin/dashboard', auth, adminOnly, async (_req, res) => {
@@ -620,6 +661,30 @@ app.get('/api/admin/listings', auth, adminOnly, async (req, res) => {
         dbError(res, err);
     }
 });
+app.delete('/api/admin/listings/:product_id', auth, adminOnly, async (req, res) => {
+    if (!validId(req.params.product_id)) return bad(res, 'Invalid product_id');
+    try {
+        const result = await transaction(async query => {
+            const products = await query(`SELECT p.product_id,
+                    EXISTS (SELECT 1 FROM orders o WHERE o.product_id=p.product_id) AS has_order_history
+                FROM products p WHERE p.product_id=? FOR UPDATE`, [req.params.product_id]);
+            if (!products.length) throw Object.assign(new Error('Item not found'), { status: 404 });
+            if (Number(products[0].has_order_history)) {
+                throw Object.assign(new Error('This item has order records and cannot be deleted.'), { status: 409 });
+            }
+            const images = await query('SELECT image_url FROM product_images WHERE product_id=?', [req.params.product_id]);
+            await query('DELETE FROM product_images WHERE product_id=?', [req.params.product_id]);
+            const deleted = await query('DELETE FROM products WHERE product_id=?', [req.params.product_id]);
+            if (!deleted.affectedRows) throw Object.assign(new Error('Item could not be deleted'), { status: 409 });
+            return images.map(image => image.image_url);
+        });
+        await Promise.all(result.map(imageUrl => {
+            const filePath = uploadedFilePath(imageUrl);
+            return filePath ? removeUploadedFile(filePath) : Promise.resolve();
+        }));
+        res.json({ success: true, message: 'Item deleted' });
+    } catch (err) { err.status ? res.status(err.status).json({ success: false, message: err.message }) : dbError(res, err); }
+});
 app.put('/api/admin/listings/:product_id/review', auth, adminOnly, async (req, res) => { const b = req.body || {}; const map = { approve: 'available', changes_requested: 'changes_requested', reject: 'rejected' }; if (!validId(req.params.product_id) || !map[b.action] || !validText(b.review_note ?? b.reviewNote, 5000, b.action !== 'approve') || (b.action === 'reject' && !['prohibited_item', 'misleading', 'poor_photos', 'duplicate', 'other'].includes(b.reject_reason ?? b.rejectReason))) return bad(res, 'Invalid review'); try { const result = await db("UPDATE products SET status=?,review_note=?,reject_reason=?,reviewed_by=?,reviewed_at=UTC_TIMESTAMP() WHERE product_id=? AND status='pending_review'", [map[b.action], (b.review_note ?? b.reviewNote)?.trim() || null, b.action === 'reject' ? (b.reject_reason ?? b.rejectReason) : null, req.user.user_id, req.params.product_id]); if (!result.affectedRows) return res.status(409).json({ success: false, message: 'Listing is not awaiting review' }); res.json({ success: true, status: map[b.action] }); } catch (err) { dbError(res, err); } });
 app.get('/api/admin/categories', auth, adminOnly, async (_req, res) => {
     try {
@@ -651,6 +716,26 @@ app.post('/api/admin/locations', auth, adminOnly, async (req, res) => {
 app.put('/api/admin/locations/:location_id', auth, adminOnly, async (req, res) => {
     const { name, is_active } = req.body || {}; if (!validId(req.params.location_id) || !validText(name, 150, true) || typeof is_active !== 'boolean') return bad(res, 'Invalid location');
     try { const result = await db('UPDATE locations SET name=?,is_active=? WHERE location_id=?', [name.trim(), is_active, req.params.location_id]); if (!result.affectedRows) return notFound(res, 'Location not found'); res.json({ success: true, message: 'Location updated' }); } catch (err) { dbError(res, err); }
+});
+app.delete('/api/admin/locations/:location_id', auth, adminOnly, async (req, res) => {
+    if (!validId(req.params.location_id)) return bad(res, 'Invalid location_id');
+    try {
+        await transaction(async query => {
+            const locations = await query('SELECT location_id FROM locations WHERE location_id=? FOR UPDATE', [req.params.location_id]);
+            if (!locations.length) throw Object.assign(new Error('Location not found'), { status: 404 });
+            const references = await query(`SELECT
+                (SELECT COUNT(*) FROM users WHERE residence_location_id=?) +
+                (SELECT COUNT(*) FROM products WHERE location_id=?) +
+                (SELECT COUNT(*) FROM location_requests WHERE approved_location_id=? OR merged_into_location_id=?) AS reference_count`,
+            [req.params.location_id, req.params.location_id, req.params.location_id, req.params.location_id]);
+            if (Number(references[0].reference_count) > 0) {
+                throw Object.assign(new Error('This location is still used by users, items, or approved requests and cannot be deleted.'), { status: 409 });
+            }
+            const deleted = await query('DELETE FROM locations WHERE location_id=?', [req.params.location_id]);
+            if (!deleted.affectedRows) throw Object.assign(new Error('Location could not be deleted'), { status: 409 });
+        });
+        res.json({ success: true, message: 'Location deleted' });
+    } catch (err) { err.status ? res.status(err.status).json({ success: false, message: err.message }) : dbError(res, err); }
 });
 app.get('/api/admin/location-requests', auth, adminOnly, async (req, res) => {
     const status = req.query.status; if (status && !['pending', 'reviewing', 'approved', 'merged', 'rejected'].includes(status)) return bad(res, 'Invalid status');

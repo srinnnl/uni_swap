@@ -19,8 +19,6 @@ const _cAmberBg = Color(0xFFFBEBC2);
 const _cAmberFg = Color(0xFF8A6410);
 const _cRedFg = Color(0xFFB3402F);
 
-enum _LStatus { pending, changes }
-
 class _Item {
   final int id;
   final String title;
@@ -32,7 +30,7 @@ class _Item {
   final String description;
   final bool urgent;
   final List<String?> photos;
-  _LStatus status;
+  final ProductStatus status;
   String? note; // ข้อความที่ส่งกลับให้ผู้ขายแก้ไข
 
   _Item.fromProduct(Product product)
@@ -50,20 +48,21 @@ class _Item {
           ? [product.primaryImageUrl]
           : product.images.map((image) => image.url).toList(growable: false),
       note = product.reviewNote,
-      status = product.status == ProductStatus.changesRequested
-          ? _LStatus.changes
-          : _LStatus.pending;
+      status = product.status;
 }
 
 class AdminItemsPage extends StatefulWidget {
-  const AdminItemsPage({super.key});
+  const AdminItemsPage({super.key, this.reviewOnly = false});
+
+  final bool reviewOnly;
 
   @override
   State<AdminItemsPage> createState() => _AdminItemsPageState();
 }
 
 class _AdminItemsPageState extends State<AdminItemsPage> {
-  static const _filters = ['All', 'Pending', 'Changes requested'];
+  static const _reviewFilters = ['All', 'Pending', 'Changes requested'];
+  static const _currentFilters = ['All', 'Active', 'Reserved', 'Rejected', 'Hidden'];
   // (ค่าที่ส่ง API, ข้อความที่แสดง) ตรงกับ products.reject_reason ใน DB
   static const _rejectReasons = <(String, String)>[
     ('prohibited_item', 'Prohibited item'),
@@ -74,6 +73,7 @@ class _AdminItemsPageState extends State<AdminItemsPage> {
   ];
 
   final List<_Item> _items = [];
+  final List<_Item> _currentItems = [];
   bool _loading = true;
   String? _error;
   bool _busy = false;
@@ -81,11 +81,27 @@ class _AdminItemsPageState extends State<AdminItemsPage> {
   String _query = '';
   String _filter = 'All';
 
-  String _label(_LStatus s) =>
-      s == _LStatus.pending ? 'Pending' : 'Changes requested';
+  List<String> get _filters =>
+      widget.reviewOnly ? _reviewFilters : _currentFilters;
 
-  (Color, Color) _colors(_LStatus s) =>
-      s == _LStatus.pending ? (_cAmberBg, _cAmberFg) : (_cBlueBg, _cBlueFg);
+  String _label(ProductStatus status) => switch (status) {
+    ProductStatus.pendingReview => 'Pending',
+    ProductStatus.changesRequested => 'Changes requested',
+    ProductStatus.rejected => 'Rejected',
+    ProductStatus.available => 'Active',
+    ProductStatus.reserved => 'Reserved',
+    ProductStatus.sold => 'Sold',
+    ProductStatus.hidden => 'Hidden',
+  };
+
+  (Color, Color) _colors(ProductStatus status) => switch (status) {
+    ProductStatus.pendingReview => (_cAmberBg, _cAmberFg),
+    ProductStatus.changesRequested => (_cBlueBg, _cBlueFg),
+    ProductStatus.rejected => (const Color(0xFFF8DADA), _cRedFg),
+    ProductStatus.available => (_cBlueBg, _cBlueFg),
+    ProductStatus.reserved => (_cAmberBg, _cAmberFg),
+    ProductStatus.sold || ProductStatus.hidden => (_cChip, _cMuted),
+  };
 
   List<_Item> get _visible {
     final q = _query.trim().toLowerCase();
@@ -97,6 +113,18 @@ class _AdminItemsPageState extends State<AdminItemsPage> {
           i.category.toLowerCase().contains(q);
       final matchF = _filter == 'All' || _label(i.status) == _filter;
       return matchQ && matchF;
+    }).toList();
+  }
+
+  List<_Item> get _visibleCurrentItems {
+    final q = _query.trim().toLowerCase();
+    return _currentItems.where((item) {
+      final matchesQuery = q.isEmpty ||
+          item.title.toLowerCase().contains(q) ||
+          item.seller.toLowerCase().contains(q) ||
+          item.category.toLowerCase().contains(q);
+      final matchesFilter = _filter == 'All' || _label(item.status) == _filter;
+      return matchesQuery && matchesFilter;
     }).toList();
   }
 
@@ -113,27 +141,56 @@ class _AdminItemsPageState extends State<AdminItemsPage> {
       _error = null;
     });
     try {
-      final responses = await Future.wait([
-        adminController.listings(status: 'pending_review', limit: 100),
-        adminController.listings(status: 'changes_requested', limit: 100),
-      ]);
-      if (responses.any(
-        (response) => response['success'] != true || response['data'] is! List,
-      )) {
-        throw const ApiException('The server could not load review listings.');
+      final products = <Product>[];
+      final statuses = widget.reviewOnly
+          ? const ['pending_review', 'changes_requested']
+          : const ['all'];
+      for (final status in statuses) {
+        var page = 1;
+        while (true) {
+          final response = await adminController.listings(
+            status: status,
+            page: page,
+            limit: 100,
+          );
+          if (response['success'] != true || response['data'] is! List) {
+            throw const ApiException('The server could not load the items.');
+          }
+          products.addAll(jsonParseList(response['data'], Product.fromJson));
+          if (response['has_more'] != true) break;
+          page++;
+        }
       }
-      final products = [
-        for (final response in responses)
-          ...jsonParseList(response['data'], Product.fromJson),
-      ];
       if (products.any((product) => product.id <= 0)) {
         throw const ApiException('The server returned invalid listing data.');
       }
+      final reviewProducts = widget.reviewOnly
+          ? products
+              .where(
+                (product) =>
+                    product.status == ProductStatus.pendingReview ||
+                    product.status == ProductStatus.changesRequested,
+              )
+              .toList()
+          : <Product>[];
+      final currentProducts = widget.reviewOnly
+          ? <Product>[]
+          : products
+                .where(
+                  (product) =>
+                      product.status != ProductStatus.pendingReview &&
+                      product.status != ProductStatus.changesRequested &&
+                      product.status != ProductStatus.sold,
+                )
+                .toList();
       if (mounted) {
         setState(() {
           _items
             ..clear()
-            ..addAll(products.map(_Item.fromProduct));
+            ..addAll(reviewProducts.map(_Item.fromProduct));
+          _currentItems
+            ..clear()
+            ..addAll(currentProducts.map(_Item.fromProduct));
         });
       }
     } on ApiException catch (error) {
@@ -180,6 +237,48 @@ class _AdminItemsPageState extends State<AdminItemsPage> {
       }
     } on ApiException catch (error) {
       if (mounted) _snack(context, error.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _deleteItem(_Item item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete item?'),
+        content: Text(
+          'Delete ${item.title}? Items with order records cannot be deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(foregroundColor: _cRedFg),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted || _busy) return;
+    setState(() => _busy = true);
+    try {
+      final response = await adminController.deleteListing(item.id);
+      if (response['success'] != true) {
+        throw ApiException(
+          response['message']?.toString() ?? 'Could not delete item.',
+        );
+      }
+      if (!mounted) return;
+      _snack(context, '${item.title} deleted');
+      await _loadListings();
+    } on ApiException catch (error) {
+      if (mounted) _snack(context, error.message);
+    } catch (_) {
+      if (mounted) _snack(context, 'Could not delete item.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -243,7 +342,7 @@ class _AdminItemsPageState extends State<AdminItemsPage> {
             _Notice('Sent to seller: ${item.note}', bg: _cBlueBg, fg: _cBlueFg),
           ],
           const SizedBox(height: 20),
-          if (item.status == _LStatus.pending) ...[
+          if (item.status == ProductStatus.pendingReview) ...[
             _ActionButton(
               label: _busy ? 'Saving…' : 'Approve item',
               onPressed: _busy
@@ -293,7 +392,7 @@ class _AdminItemsPageState extends State<AdminItemsPage> {
                       );
                     },
             ),
-          ] else
+          ] else if (item.status == ProductStatus.changesRequested)
             const _Notice(
               'Waiting for the seller to edit and resubmit this listing.',
               bg: _cBlueBg,
@@ -307,17 +406,22 @@ class _AdminItemsPageState extends State<AdminItemsPage> {
   @override
   Widget build(BuildContext context) {
     final list = _visible;
-    final n = _items.length;
+    final currentItems = _visibleCurrentItems;
+    final n = widget.reviewOnly ? _items.length : _currentItems.length;
     return Scaffold(
       backgroundColor: _cBg,
       body: SafeArea(
         child: Column(
           children: [
             _Header(
-              title: 'Items review',
-              subtitle: n == 1
-                  ? '1 item waiting for review'
-                  : '$n items waiting for review',
+              title: widget.reviewOnly ? 'Items review' : 'Items',
+              subtitle: widget.reviewOnly
+                  ? n == 1
+                        ? '1 item waiting for review'
+                        : '$n items waiting for review'
+                  : n == 1
+                  ? '1 current item'
+                  : '$n current items',
             ),
             _SearchRow(
               hint: 'Search items or sellers',
@@ -325,7 +429,6 @@ class _AdminItemsPageState extends State<AdminItemsPage> {
               onChanged: (v) => setState(() => _query = v),
               onFilter: _openFilter,
             ),
-            _SectionRow(label: 'Needs attention', shown: list.length),
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
@@ -340,25 +443,67 @@ class _AdminItemsPageState extends State<AdminItemsPage> {
                         ),
                       ],
                     )
-                  : list.isEmpty
-                  ? const _Empty('No items to review')
                   : ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.only(bottom: 24),
                       children: [
-                        for (final i in list)
-                          _ListRow(
-                            icon: Icons.fact_check_outlined,
-                            iconBg: _cAmberBg,
-                            iconFg: _cAmberFg,
-                            thumb: _Thumb(i.photos.first),
-                            title: i.title,
-                            subtitle:
-                                '${i.price} THB · ${i.seller} · ${i.submitted}',
-                            badge: _label(i.status),
-                            badgeBg: _colors(i.status).$1,
-                            badgeFg: _colors(i.status).$2,
-                            onTap: () => _openItem(i),
+                        if (widget.reviewOnly) ...[
+                          _SectionRow(
+                            label: 'Needs attention',
+                            shown: list.length,
                           ),
+                          if (list.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 18),
+                              child: _Empty('No items to review'),
+                            ),
+                          for (final i in list)
+                            _ListRow(
+                              icon: Icons.fact_check_outlined,
+                              iconBg: _cAmberBg,
+                              iconFg: _cAmberFg,
+                              thumb: _Thumb(i.photos.first),
+                              title: i.title,
+                              subtitle:
+                                  '${i.price} THB · ${i.seller} · ${i.submitted}',
+                              badge: _label(i.status),
+                              badgeBg: _colors(i.status).$1,
+                              badgeFg: _colors(i.status).$2,
+                              onTap: () => _openItem(i),
+                            ),
+                        ] else ...[
+                          _SectionRow(
+                            label: 'Current items',
+                            shown: currentItems.length,
+                          ),
+                          if (currentItems.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 18),
+                              child: _Empty('No current items found'),
+                            ),
+                          for (final item in currentItems)
+                            _ListRow(
+                              icon: Icons.inventory_2_outlined,
+                              iconBg: _cChip,
+                              iconFg: _cMuted,
+                              thumb: _Thumb(item.photos.first),
+                              title: item.title,
+                              subtitle:
+                                  '${formatPrice(item.price)} THB · ${item.seller} · ${item.place}',
+                              badge: _label(item.status),
+                              badgeBg: _colors(item.status).$1,
+                              badgeFg: _colors(item.status).$2,
+                              onTap: () => _openItem(item),
+                              trailing: IconButton(
+                                tooltip: 'Delete item',
+                                onPressed: _busy
+                                    ? null
+                                    : () => _deleteItem(item),
+                                icon: const Icon(Icons.delete_outline),
+                                color: _cRedFg,
+                              ),
+                            ),
+                        ],
                       ],
                     ),
             ),
@@ -768,6 +913,7 @@ class _ListRow extends StatelessWidget {
   final Color badgeBg;
   final Color badgeFg;
   final VoidCallback onTap;
+  final Widget? trailing;
   final Widget? thumb; // ถ้ามี จะแสดงแทนกล่องไอคอน (เช่น รูปสินค้า)
   const _ListRow({
     required this.icon,
@@ -780,6 +926,7 @@ class _ListRow extends StatelessWidget {
     required this.badgeFg,
     required this.onTap,
     this.thumb,
+    this.trailing,
   });
 
   @override
@@ -820,7 +967,7 @@ class _ListRow extends StatelessWidget {
             const SizedBox(width: 8),
             _Badge(label: badge, bg: badgeBg, fg: badgeFg),
             const SizedBox(width: 6),
-            const Icon(Icons.chevron_right, size: 20),
+            trailing ?? const Icon(Icons.chevron_right, size: 20),
           ],
         ),
       ),

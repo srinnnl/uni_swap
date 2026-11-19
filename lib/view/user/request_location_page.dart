@@ -3,6 +3,7 @@ import 'package:uni_swap/controller/api_client.dart';
 import 'package:uni_swap/controller/app_controllers.dart';
 import 'package:uni_swap/model/enums.dart';
 import 'package:uni_swap/view/user/location_picker.dart';
+import 'package:flutter/services.dart';
 
 const _cBg = Color(0xFFFAF9F6);
 const _cInk = Color(0xFF2B2B26);
@@ -61,7 +62,7 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
               child: Text(
                 title,
                 style: const TextStyle(
@@ -73,6 +74,8 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
             ),
             for (final o in options)
               ListTile(
+                dense: true,
+                visualDensity: const VisualDensity(vertical: -1),
                 title: Text(o.$2),
                 trailing: o.$1 == selected
                     ? const Icon(Icons.check, color: _cInk)
@@ -104,7 +107,11 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
     if (_submitting) return;
     final name = _nameCtrl.text.trim();
     setState(() {
-      _nameError = name.length < 3 ? 'Please enter the location name' : null;
+      _nameError = name.length > 150
+          ? 'Location name must be 150 characters or fewer'
+          : name.length < 3
+          ? 'Please enter the location name'
+          : null;
       _zoneError = _zone == null ? 'Please choose a zone' : null;
     });
     if (_nameError != null || _zoneError != null) return;
@@ -228,6 +235,7 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
               'e.g. Riverside Residence',
               controller: _nameCtrl,
               maxLength: 150,
+              maxLengthEnforcement: MaxLengthEnforcement.enforced,
               errorText: _nameError,
               onChanged: (_) {
                 if (_nameError != null) setState(() => _nameError = null);
@@ -304,6 +312,7 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
     required TextEditingController controller,
     int maxLines = 1,
     int? maxLength,
+    MaxLengthEnforcement? maxLengthEnforcement,
     String? errorText,
     ValueChanged<String>? onChanged,
   }) {
@@ -330,6 +339,7 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
             controller: controller,
             maxLines: maxLines,
             maxLength: maxLength,
+            maxLengthEnforcement: maxLengthEnforcement,
             enabled: !_submitting,
             onChanged: onChanged,
             textCapitalization: TextCapitalization.sentences,

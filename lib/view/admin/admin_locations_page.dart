@@ -6,6 +6,7 @@ import 'package:uni_swap/model/format.dart';
 import 'package:uni_swap/model/json_utils.dart';
 import 'package:uni_swap/model/location.dart';
 import 'package:uni_swap/view/user/location_picker.dart';
+import 'package:flutter/services.dart';
 
 // ---- colors (local to this file) ----
 const _cBg = Color(0xFFFAF9F6);
@@ -31,8 +32,10 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
 
   // คำขอที่ยังเปิดอยู่ (pending + reviewing) จาก GET /admin/location-requests
   List<LocationRequest> _requests = [];
+  List<Location> _locations = [];
   // คำขอที่กำลังยิง API อยู่ (disable แถวนั้นไว้)
   final Set<int> _busyIds = {};
+  final Set<int> _busyLocationIds = {};
   bool _loading = true;
   String? _error;
 
@@ -58,6 +61,14 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
     return jsonParseList(response['data'], LocationRequest.fromJson);
   }
 
+  Future<List<Location>> _fetchLocations() async {
+    final response = await adminController.locations();
+    if (response['success'] != true || response['data'] is! List) {
+      throw const ApiException('The server returned invalid locations.');
+    }
+    return jsonParseList(response['data'], Location.fromJson);
+  }
+
   /// [silent] = ไม่โชว์ spinner เต็มหน้า (ใช้ตอน pull-to-refresh / โหลดซ้ำหลัง action)
   Future<void> _load({bool silent = false}) async {
     if (!silent) {
@@ -71,6 +82,7 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
         _fetchByStatus('pending'),
         _fetchByStatus('reviewing'),
       ]);
+      final locations = await _fetchLocations();
       final epoch = DateTime.fromMillisecondsSinceEpoch(0);
       // เก่าสุดขึ้นก่อน (รอนานสุด = ควรดูก่อน)
       final open =
@@ -84,6 +96,7 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
       if (mounted) {
         setState(() {
           _requests = open;
+          _locations = locations;
           _error = null;
         });
       }
@@ -171,6 +184,15 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
           _requesterLabel(r).toLowerCase().contains(q);
       final matchF = _filter == 'All' || _statusLabel(r.status) == _filter;
       return matchQ && matchF;
+    }).toList();
+  }
+
+  List<Location> get _visibleLocations {
+    final q = _query.trim().toLowerCase();
+    return _locations.where((location) {
+      return q.isEmpty ||
+          location.name.toLowerCase().contains(q) ||
+          locationZoneLabel(location.zone).toLowerCase().contains(q);
     }).toList();
   }
 
@@ -322,11 +344,56 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
     await _load(silent: true);
   }
 
+  Future<void> _deleteLocation(Location location) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete location?'),
+        content: Text(
+          'Delete ${location.name}? Locations used by users, items, or approved requests cannot be deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(foregroundColor: _cRedFg),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busyLocationIds.add(location.id));
+    try {
+      final response = await adminController.deleteLocation(location.id);
+      if (response['success'] != true) {
+        throw ApiException(
+          response['message']?.toString() ?? 'Could not delete location.',
+        );
+      }
+      if (!mounted) return;
+      _snack(context, '${location.name} deleted');
+      await _load(silent: true);
+    } on ApiException catch (error) {
+      if (mounted) _snack(context, error.message, isError: true);
+    } catch (_) {
+      if (mounted) {
+        _snack(context, 'Could not delete location.', isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _busyLocationIds.remove(location.id));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final list = _visible;
+    final locations = _visibleLocations;
     final n = _requests.length;
-    final hasData = _requests.isNotEmpty;
+    final hasData = _requests.isNotEmpty || _locations.isNotEmpty;
     return Scaffold(
       backgroundColor: _cBg,
       body: SafeArea(
@@ -346,7 +413,6 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
               onChanged: (v) => setState(() => _query = v),
               onFilter: _openFilter,
             ),
-            _SectionRow(label: 'Needs attention', shown: list.length),
             if (_error != null && hasData)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
@@ -358,7 +424,7 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () => _load(silent: true),
-                child: _buildBody(list, hasData),
+                child: _buildBody(list, locations, hasData),
               ),
             ),
           ],
@@ -371,7 +437,11 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
     );
   }
 
-  Widget _buildBody(List<LocationRequest> list, bool hasData) {
+  Widget _buildBody(
+    List<LocationRequest> list,
+    List<Location> locations,
+    bool hasData,
+  ) {
     if (_loading && !hasData) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -399,19 +469,16 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
         ],
       );
     }
-    if (list.isEmpty) {
-      return ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(48),
-        children: [
-          _Empty(hasData ? 'No requests found' : 'No pending requests'),
-        ],
-      );
-    }
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 24),
       children: [
+        _SectionRow(label: 'Needs attention', shown: list.length),
+        if (list.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 18),
+            child: _Empty('No pending requests'),
+          ),
         for (final r in list)
           _ListRow(
             icon: Icons.location_on_outlined,
@@ -424,6 +491,32 @@ class _AdminLocationsPageState extends State<AdminLocationsPage> {
             badgeFg: _colors(r.status).$2,
             busy: _busyIds.contains(r.id),
             onTap: () => _openRequest(r),
+          ),
+        const SizedBox(height: 22),
+        _SectionRow(label: 'Current locations', shown: locations.length),
+        if (locations.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 18),
+            child: _Empty('No locations found'),
+          ),
+        for (final location in locations)
+          _ListRow(
+            icon: Icons.location_on_outlined,
+            iconBg: _cBlueBg,
+            iconFg: _cBlueFg,
+            title: location.name,
+            subtitle: locationZoneLabel(location.zone),
+            badge: location.isActive ? 'Active' : 'Inactive',
+            badgeBg: location.isActive ? _cBlueBg : const Color(0xFFF0EEE9),
+            badgeFg: location.isActive ? _cBlueFg : _cMuted,
+            trailing: IconButton(
+              tooltip: 'Delete location',
+              onPressed: _busyLocationIds.contains(location.id)
+                  ? null
+                  : () => _deleteLocation(location),
+              icon: const Icon(Icons.delete_outline),
+              color: _cRedFg,
+            ),
           ),
       ],
     );
@@ -581,6 +674,10 @@ class _LocationFormState extends State<_LocationForm> {
       setState(() => _error = 'Please enter a name');
       return;
     }
+    if (name.length > 150) {
+      setState(() => _error = 'Location name must be 150 characters or fewer');
+      return;
+    }
     setState(() {
       _saving = true;
       _error = null;
@@ -617,6 +714,7 @@ class _LocationFormState extends State<_LocationForm> {
           controller: _name,
           enabled: !_saving,
           maxLength: 150,
+          maxLengthEnforcement: MaxLengthEnforcement.enforced,
           textCapitalization: TextCapitalization.words,
           decoration: _dec('e.g. Riverside Residence', error: _error),
           onChanged: (_) {
@@ -959,7 +1057,8 @@ class _ListRow extends StatelessWidget {
   final Color badgeBg;
   final Color badgeFg;
   final bool busy;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final Widget? trailing;
   const _ListRow({
     required this.icon,
     required this.iconBg,
@@ -970,7 +1069,8 @@ class _ListRow extends StatelessWidget {
     required this.badgeBg,
     required this.badgeFg,
     this.busy = false,
-    required this.onTap,
+    this.onTap,
+    this.trailing,
   });
 
   @override
@@ -1009,7 +1109,7 @@ class _ListRow extends StatelessWidget {
             const SizedBox(width: 8),
             _Badge(label: badge, bg: badgeBg, fg: badgeFg),
             const SizedBox(width: 6),
-            busy
+            trailing ?? (busy
                 ? const SizedBox(
                     width: 20,
                     height: 20,
@@ -1018,7 +1118,9 @@ class _ListRow extends StatelessWidget {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   )
-                : const Icon(Icons.chevron_right, size: 20),
+                : onTap != null
+                ? const Icon(Icons.chevron_right, size: 20)
+                : const SizedBox(width: 20)),
           ],
         ),
       ),

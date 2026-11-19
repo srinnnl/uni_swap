@@ -3,6 +3,7 @@ import 'package:uni_swap/controller/api_client.dart';
 import 'package:uni_swap/controller/app_controllers.dart';
 import 'package:uni_swap/model/category.dart';
 import 'package:uni_swap/model/location.dart';
+import 'package:uni_swap/model/product.dart';
 import 'package:uni_swap/view/user/product_categories.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -16,6 +17,12 @@ const _cChip = Color(0xFFF0EEE9);
 const _cSageDark = Color(0xFF3F6B52);
 const _cRedBg = Color(0xFFF8DADA);
 const _cRedFg = Color(0xFFB3402F);
+final _invisibleTitleCharacters = RegExp(
+  r'[\u0000-\u0020\u007F-\u009F\u00AD\u034F\u061C\u115F-\u1160\u17B4-\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u2800\u3164\uFE00-\uFE0F\uFEFF\uFFA0]',
+);
+
+bool _hasVisibleTitle(String value) =>
+    value.replaceAll(_invisibleTitleCharacters, '').trim().isNotEmpty;
 
 // ข้อมูลสินค้าเดิมสำหรับโหมดแก้ไข (แถวใน products)
 class SellDraft {
@@ -283,11 +290,12 @@ class _SellPageState extends State<SellPage> {
         'title': _titleCtrl.text.trim(),
         'description': _descCtrl.text.trim(),
         'price': _isFree ? 0 : double.parse(_priceCtrl.text.trim()),
+        'is_free': _isFree,
         'category_id': category.id,
         'item_condition': _conditionIndex == null
             ? null
             : _conditions[_conditionIndex!].$1,
-        'urgency_level': _deadline == null ? 'normal' : 'urgent',
+        'urgency_level': isDeadlineUrgent(_deadline) ? 'urgent' : 'normal',
         'zone': pickup.zone.apiValue,
         'location_id': pickup.id,
         'location_detail': _pickupNoteCtrl.text.trim().isEmpty
@@ -434,8 +442,8 @@ class _SellPageState extends State<SellPage> {
           const _FieldLabel('Item title'),
           TextFormField(
             controller: _titleCtrl,
-            validator: (v) => (v == null || v.trim().isEmpty)
-                ? 'Please enter a title'
+            validator: (v) => (v == null || !_hasVisibleTitle(v))
+                ? 'Please enter a title with visible text'
                 : (v.trim().length > 100
                       ? 'Too long (max 100 characters)'
                       : null),
@@ -449,11 +457,17 @@ class _SellPageState extends State<SellPage> {
             onTap: _categories.isEmpty ? () {} : _pickCategory,
             child: Row(
               children: [
-                Icon(
-                  categoryIcon(_selectedCategory?.name),
-                  size: 18,
-                  color: const Color(0xFF8B4A3C),
-                ),
+                if (_selectedCategory?.emoji.trim().isNotEmpty ?? false)
+                  Text(
+                    _selectedCategory!.emoji.trim(),
+                    style: const TextStyle(fontSize: 18),
+                  )
+                else
+                  Icon(
+                    categoryIcon(_selectedCategory?.name),
+                    size: 18,
+                    color: const Color(0xFF8B4A3C),
+                  ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -503,10 +517,19 @@ class _SellPageState extends State<SellPage> {
             enabled: !_isFree,
             validator: (v) {
               if (_isFree) return null;
-              final p = double.tryParse(v ?? '');
-              if (p == null) return 'Please enter a price';
-              if (p < 0) return 'Price cannot be negative';
-              if (p > 99999999) return 'Price is too high';
+              final input = (v ?? '').trim();
+              if (input.isEmpty) return 'Please enter a price';
+              if (!RegExp(r'^\d+(\.\d{1,2})?$').hasMatch(input)) {
+                return 'Use digits with up to 2 decimal places';
+              }
+              final price = double.tryParse(input);
+              if (price == null || !price.isFinite) {
+                return 'Please enter a valid price';
+              }
+              if (price <= 0) {
+                return 'Enter a price above 0 or choose Free';
+              }
+              if (price > 99999999.99) return 'Price is too high';
               return null;
             },
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -632,7 +655,7 @@ class _SellPageState extends State<SellPage> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                if (_deadline != null) ...[
+                if (isDeadlineUrgent(_deadline)) ...[
                   const SizedBox(width: 10),
                   const _StatusBadge(label: 'Urgent', bg: _cRedBg, fg: _cRedFg),
                 ],
@@ -641,7 +664,7 @@ class _SellPageState extends State<SellPage> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Adding a deadline marks your item as Urgent.',
+            'A deadline within 7 days marks your item as Urgent.',
             style: TextStyle(fontSize: 12, color: _cMuted),
           ),
           const SizedBox(height: 24),
@@ -701,7 +724,12 @@ class _SellPageState extends State<SellPage> {
           children: [
             for (final category in _categories)
               ListTile(
-                leading: Icon(categoryIcon(category.name)),
+                leading: category.emoji.trim().isNotEmpty
+                    ? Text(
+                        category.emoji.trim(),
+                        style: const TextStyle(fontSize: 20),
+                      )
+                    : Icon(categoryIcon(category.name)),
                 title: Text(category.name),
                 trailing: category.id == _selectedCategory?.id
                     ? const Icon(Icons.check, color: _cSageDark)

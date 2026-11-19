@@ -63,6 +63,10 @@ class ProductController {
   Future<Map<String, dynamic>> detail(int productId) =>
       _api.get('products/$productId');
 
+  /// Private pickup instructions shown after a buyer starts checkout.
+  Future<Map<String, dynamic>> pickupDetail(int productId) =>
+      _api.get('products/$productId/pickup-detail');
+
   Future<Map<String, dynamic>> myListings({int page = 1, int limit = 20}) =>
       _api.get('my/listings', query: {'page': page, 'limit': limit});
 

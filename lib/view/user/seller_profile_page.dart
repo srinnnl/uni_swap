@@ -228,10 +228,7 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
   }
 
   Widget _buildIdentity(SellerProfile seller) {
-    final info = [
-      if (seller.locationName.trim().isNotEmpty) seller.locationName.trim(),
-      _memberSince(seller.memberSince),
-    ].join(' · ');
+    final location = seller.locationName.trim();
     return Column(
       children: [
         CircleAvatar(
@@ -257,13 +254,26 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
         ),
         const SizedBox(height: 6),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.location_on_outlined, size: 14, color: _C.muted),
+            const Padding(
+              padding: EdgeInsets.only(top: 1),
+              child: Icon(
+                Icons.location_on_outlined,
+                size: 14,
+                color: _C.muted,
+              ),
+            ),
             const SizedBox(width: 4),
             Flexible(
-              child: Text(
-                info,
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    if (location.isNotEmpty) TextSpan(text: '$location · '),
+                    TextSpan(text: _memberSince(seller.memberSince)),
+                  ],
+                ),
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 12, color: _C.muted),
               ),

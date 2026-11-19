@@ -68,6 +68,9 @@ class OrderDetailsPage extends StatefulWidget {
     this.paymentStatus,
     this.transactionRef,
     this.paymentPaidAt,
+    this.sellerTransferRef,
+    this.sellerTransferStatus,
+    this.sellerPaidAt,
     this.imageUrl,
     this.startPayment = false,
   });
@@ -87,6 +90,9 @@ class OrderDetailsPage extends StatefulWidget {
   final String? paymentStatus;
   final String? transactionRef;
   final DateTime? paymentPaidAt;
+  final String? sellerTransferRef;
+  final String? sellerTransferStatus;
+  final DateTime? sellerPaidAt;
   final String productLocation; // products.location_name ใช้แนะนำจุดนัด
   final String? pickupDetail;
   // ตัวเลขคิดโดย backend ตอนสร้างออเดอร์ แอปแสดงอย่างเดียว ไม่คำนวณเอง
@@ -555,6 +561,12 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   // ตัวเลขทั้งหมดมาจาก orders (commission_*, seller_payout) ไม่คำนวณในแอป
   Widget _buildReceipt() {
     String money(double v) => '${v.toStringAsFixed(2)} THB';
+    final payoutStatus = switch (widget.sellerTransferStatus) {
+      'pending' || 'processing' => 'Awaiting admin payout',
+      'paid' => 'Paid (recorded by admin)',
+      'failed' => 'Payout failed — contact admin',
+      _ => 'Not yet recorded',
+    };
 
     Widget row(
       String label,
@@ -621,9 +633,24 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
             strong: true,
             color: _C.sage,
           ),
+          const Divider(height: 1, color: _C.border),
+          row('Payout status', payoutStatus),
+          if (widget.sellerPaidAt != null) ...[
+            const Divider(height: 1, color: _C.border),
+            row(
+              'Payout recorded',
+              '${_formatDay(widget.sellerPaidAt!)} · '
+                  '${_formatTime(TimeOfDay.fromDateTime(widget.sellerPaidAt!))}',
+            ),
+          ],
+          if (widget.sellerTransferRef?.trim().isNotEmpty == true) ...[
+            const Divider(height: 1, color: _C.border),
+            row('Transfer reference', widget.sellerTransferRef!.trim()),
+          ],
           const SizedBox(height: 2),
           Text(
-            'Demo payout only; no bank transfer is made · Order $_orderLabel',
+            'Buyer payment is simulated. Admin pays the seller outside the app '
+            'and updates this status · Order $_orderLabel',
             style: const TextStyle(fontSize: 11, color: _C.muted),
           ),
         ],

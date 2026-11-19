@@ -45,6 +45,9 @@ class _Order {
   final String? paymentStatus;
   final String? transactionRef;
   final DateTime? paymentPaidAt;
+  final String? sellerTransferRef;
+  final String? sellerTransferStatus;
+  final DateTime? sellerPaidAt;
   OrderStatus status;
   String meetupPlace; // orders.meetup_location (NOT NULL)
   DateTime? meetupAt; // orders.meetup_datetime
@@ -74,6 +77,9 @@ class _Order {
     this.paymentStatus,
     this.transactionRef,
     this.paymentPaidAt,
+    this.sellerTransferRef,
+    this.sellerTransferStatus,
+    this.sellerPaidAt,
   }) : commissionAmount =
            commissionAmount ??
            double.parse((price * commissionRate / 100).toStringAsFixed(2)),
@@ -104,6 +110,9 @@ class _Order {
     paymentStatus: order.paymentStatus,
     transactionRef: order.transactionRef,
     paymentPaidAt: order.paymentPaidAt,
+    sellerTransferRef: order.sellerTransferRef,
+    sellerTransferStatus: order.sellerTransferStatus,
+    sellerPaidAt: order.sellerPaidAt,
     status: order.status,
     meetupPlace: order.meetupLocation,
     meetupAt: order.meetupDatetime,
@@ -122,6 +131,16 @@ class _Order {
   }
 
   bool get isActive => shown.isActive;
+
+  String? get sellerPayoutLabel {
+    if (isBuying || shown != OrderStatus.completed) return null;
+    return switch (sellerTransferStatus) {
+      'pending' || 'processing' => 'Awaiting admin payout',
+      'paid' => 'Payout recorded as paid',
+      'failed' => 'Payout failed — contact admin',
+      _ => 'Payout status unavailable',
+    };
+  }
 
   // สินค้าฟรี (ราคา 0) ไม่มีขั้นจ่ายเงิน
   bool get needsPayment => price > 0;
@@ -459,6 +478,21 @@ class _OrdersPageState extends State<OrdersPage> {
                           '$priceText · ${o.isBuying ? 'Seller' : 'Buyer'}: ${o.person}',
                           style: const TextStyle(fontSize: 12, color: _cMuted),
                         ),
+                        if (o.sellerPayoutLabel != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'Seller payout: ${o.sellerPayoutLabel}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: o.sellerTransferStatus == 'paid'
+                                  ? _cSageDark
+                                  : o.sellerTransferStatus == 'failed'
+                                  ? _cRedFg
+                                  : _cAmberFg,
+                            ),
+                          ),
+                        ],
                         if (o.meetupAt != null && o.isActive) ...[
                           const SizedBox(height: 4),
                           Text(
@@ -535,6 +569,9 @@ class _OrdersPageState extends State<OrdersPage> {
           paymentStatus: o.paymentStatus,
           transactionRef: o.transactionRef,
           paymentPaidAt: o.paymentPaidAt,
+          sellerTransferRef: o.sellerTransferRef,
+          sellerTransferStatus: o.sellerTransferStatus,
+          sellerPaidAt: o.sellerPaidAt,
           imageUrl: o.imageUrl,
           startPayment: pay,
         ),

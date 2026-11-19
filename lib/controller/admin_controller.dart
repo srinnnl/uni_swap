@@ -7,6 +7,23 @@ class AdminController {
 
   Future<Map<String, dynamic>> dashboard() => _api.get('admin/dashboard');
 
+  Future<Map<String, dynamic>> completedTransactions({
+    String payoutStatus = 'all',
+    int page = 1,
+    int limit = 20,
+  }) => _api.get(
+    'admin/transactions',
+    query: {'payout_status': payoutStatus, 'page': page, 'limit': limit},
+  );
+
+  Future<Map<String, dynamic>> recordSellerPayout(
+    int orderId, {
+    String? transferRef,
+  }) => _api.put(
+    'admin/transactions/$orderId/payout',
+    body: {'transfer_ref': transferRef},
+  );
+
   Future<Map<String, dynamic>> users({
     String? status,
     int page = 1,

@@ -3,6 +3,7 @@
 library;
 
 export 'auth.dart';
+export 'admin_transactions.dart';
 export 'category.dart';
 export 'dashboard.dart';
 export 'enums.dart';

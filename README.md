@@ -19,6 +19,7 @@ UniSwap connects student members and administrators through a reviewed marketpla
 ### Administrators
 
 - View an overview of registered users, live listings, and items or residence requests needing attention.
+- Review completed sales, see commission and seller payout totals, and record a seller payout after paying them outside the app.
 - Approve, reject, suspend, or restore member accounts.
 - Review listings by approving them, requesting changes, or rejecting them with a reason.
 - Manage marketplace categories and residences.
@@ -32,17 +33,18 @@ UniSwap connects student members and administrators through a reviewed marketpla
 4. A buyer places an order for an available item. The item is reserved while payment is pending.
 5. The buyer confirms the demo payment within 30 minutes. The app records the payment status and the order moves to meetup.
 6. The buyer and seller meet at the seller's listed residence. The buyer marks the item received to complete the order.
+7. An administrator reviews the completed sale, pays the seller outside the app, and records the payout. The seller can see whether the payout is pending or recorded as paid.
 
 ## Important prototype limits
 
-- Payment is simulated: the app records a paid status, but it does not charge a card, transfer money, or pay out sellers.
+- Buyer payment is simulated: the app records a paid status but does not charge a card or collect money. Seller payouts happen outside the app; administrators can record the payout status and reference, and sellers can view that status.
 - A 5% seller commission is recorded for demonstration; no real commission is collected.
 - There is no in-app chat, map-based pickup, courier, or delivery service.
 - Pickup uses the seller's registered residence, with an optional text note for meetup details.
 
 ## Presentation notes
 
-> UniSwap is a campus-focused second-hand marketplace for students. Sellers can post items with photos and pickup details at their registered residence. Administrators review student accounts and listings, and manage the marketplace's categories and residences. Buyers can search for nearby items, place an order, confirm a simulated payment, and arrange a meetup. The goal is to make local buying and selling easier; real payments, chat, and delivery are outside this prototype's scope.
+> UniSwap is a campus-focused second-hand marketplace for students. Sellers can post items with photos and pickup details at their registered residence. Administrators review student accounts and listings, manage marketplace categories and residences, and track completed sales and seller payouts. Buyers can search for nearby items, place an order, confirm a simulated payment, and arrange a meetup. Admins record seller payouts after paying them outside the app; buyer payments are not processed in this prototype.
 
 ## Technology
 

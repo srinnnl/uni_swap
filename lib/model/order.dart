@@ -29,6 +29,9 @@ class Order {
     this.paymentStatus,
     this.transactionRef,
     this.paymentPaidAt,
+    this.sellerTransferRef,
+    this.sellerTransferStatus,
+    this.sellerPaidAt,
     this.createdAt,
     this.updatedAt,
     this.perspective,
@@ -63,6 +66,9 @@ class Order {
       paymentStatus: jsonString(json['payment_status']),
       transactionRef: jsonString(json['transaction_ref']),
       paymentPaidAt: jsonDateTime(json['payment_paid_at'] ?? json['paid_at']),
+      sellerTransferRef: jsonString(json['seller_transfer_ref']),
+      sellerTransferStatus: jsonString(json['seller_transfer_status']),
+      sellerPaidAt: jsonDateTime(json['seller_paid_at']),
       createdAt: jsonDateTime(json['created_at']),
       updatedAt: jsonDateTime(json['updated_at']),
       perspective: OrderPerspective.tryParse(json['perspective']),
@@ -94,6 +100,9 @@ class Order {
   final String? paymentStatus; // payments.payment_status
   final String? transactionRef; // payments.transaction_ref
   final DateTime? paymentPaidAt; // payments.paid_at
+  final String? sellerTransferRef; // payments.seller_transfer_ref
+  final String? sellerTransferStatus; // payments.seller_transfer_status
+  final DateTime? sellerPaidAt; // payments.seller_paid_at
   final DateTime? createdAt; // orders.created_at
   final DateTime? updatedAt; // orders.updated_at
   final OrderPerspective? perspective; // 'buying' / 'selling' จาก API
@@ -143,6 +152,9 @@ class Order {
     String? paymentStatus,
     String? transactionRef,
     DateTime? paymentPaidAt,
+    String? sellerTransferRef,
+    String? sellerTransferStatus,
+    DateTime? sellerPaidAt,
     DateTime? createdAt,
     DateTime? updatedAt,
     OrderPerspective? perspective,
@@ -172,6 +184,9 @@ class Order {
       paymentStatus: paymentStatus ?? this.paymentStatus,
       transactionRef: transactionRef ?? this.transactionRef,
       paymentPaidAt: paymentPaidAt ?? this.paymentPaidAt,
+      sellerTransferRef: sellerTransferRef ?? this.sellerTransferRef,
+      sellerTransferStatus: sellerTransferStatus ?? this.sellerTransferStatus,
+      sellerPaidAt: sellerPaidAt ?? this.sellerPaidAt,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       perspective: perspective ?? this.perspective,
@@ -204,6 +219,9 @@ class Order {
       'payment_status': paymentStatus,
       'transaction_ref': transactionRef,
       'payment_paid_at': paymentPaidAt?.toUtc().toIso8601String(),
+      'seller_transfer_ref': sellerTransferRef,
+      'seller_transfer_status': sellerTransferStatus,
+      'seller_paid_at': sellerPaidAt?.toUtc().toIso8601String(),
       'created_at': createdAt?.toUtc().toIso8601String(),
       'updated_at': updatedAt?.toUtc().toIso8601String(),
       'perspective': perspective?.apiValue,

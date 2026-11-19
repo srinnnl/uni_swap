@@ -20,6 +20,30 @@ void main() {
       expect(calls.single.label, 'GET /api/admin/dashboard');
     });
 
+    group('Admin / Completed transactions', () {
+      test('completedTransactions sends filter and pagination', () async {
+        await admin.completedTransactions(
+          payoutStatus: 'pending',
+          page: 2,
+          limit: 25,
+        );
+
+        expect(calls.single.label, 'GET /api/admin/transactions');
+        expect(calls.single.query, {
+          'payout_status': 'pending',
+          'page': '2',
+          'limit': '25',
+        });
+      });
+
+      test('recordSellerPayout sends optional transfer reference', () async {
+        await admin.recordSellerPayout(42, transferRef: 'BANK-123');
+
+        expect(calls.single.label, 'PUT /api/admin/transactions/42/payout');
+        expect(calls.single.body, {'transfer_ref': 'BANK-123'});
+      });
+    });
+
     test('users ใช้ page=1 limit=20 และไม่ส่ง status ถ้าไม่ระบุ', () async {
       await admin.users();
       expect(calls.single.label, 'GET /api/admin/users');
@@ -234,4 +258,22 @@ void main() {
       expect(calls.single.headers['authorization'], 'Bearer admin-token');
     });
   });
+
+  test('completedTransactions uses default filter and paging', () async {
+  await admin.completedTransactions();
+
+  expect(calls.single.label, 'GET /api/admin/transactions');
+  expect(calls.single.query, {
+    'payout_status': 'all',
+    'page': '1',
+    'limit': '20',
+  });
+});
+
+test('recordSellerPayout sends null when no reference is given', () async {
+  await admin.recordSellerPayout(42);
+
+  expect(calls.single.label, 'PUT /api/admin/transactions/42/payout');
+  expect(calls.single.body, {'transfer_ref': null});
+});
 }

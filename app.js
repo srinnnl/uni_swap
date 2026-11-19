@@ -471,6 +471,9 @@ app.get('/api/orders', auth, async (req, res) => {
             p.location_detail AS pickup_detail,b.display_name AS buyer_name,
             s.display_name AS seller_name,pay.payment_method,pay.payment_status,
             pay.transaction_ref,pay.paid_at AS payment_paid_at,
+            CASE WHEN o.seller_id=? THEN pay.seller_transfer_ref END AS seller_transfer_ref,
+            CASE WHEN o.seller_id=? THEN pay.seller_transfer_status END AS seller_transfer_status,
+            CASE WHEN o.seller_id=? THEN pay.seller_paid_at END AS seller_paid_at,
             (SELECT image_url FROM product_images
              WHERE product_id=o.product_id ORDER BY display_order,image_id LIMIT 1) AS image_url,
             CASE WHEN o.buyer_id=? THEN 'buying' ELSE 'selling' END AS perspective
@@ -482,7 +485,8 @@ app.get('/api/orders', auth, async (req, res) => {
             JOIN users s ON s.user_id=o.seller_id
             WHERE o.buyer_id=? OR o.seller_id=?
             ORDER BY o.updated_at DESC,o.order_id DESC LIMIT ? OFFSET ?`,
-        [req.user.user_id, req.user.user_id, req.user.user_id, paging.limit + 1, paging.offset]);
+        [req.user.user_id, req.user.user_id, req.user.user_id, req.user.user_id,
+            req.user.user_id, req.user.user_id, paging.limit + 1, paging.offset]);
         sendPage(res, rows, paging);
     } catch (err) {
         dbError(res, err);
@@ -594,6 +598,73 @@ app.get('/api/admin/dashboard', auth, adminOnly, async (_req, res) => {
         ]);
         res.json({ success: true, data: { overview: overview[0], pending_listings: listings, pending_location_requests: locations } });
     } catch (err) { dbError(res, err); }
+});
+app.get('/api/admin/transactions', auth, adminOnly, async (req, res) => {
+    const payoutStatus = req.query.payout_status || 'all';
+    const payoutStatuses = ['all', 'not_ready', 'held', 'pending', 'processing', 'paid', 'failed'];
+    if (!payoutStatuses.includes(payoutStatus)) return bad(res, 'Invalid payout_status');
+    const paging = getPaging(req, res);
+    if (!paging) return;
+    try {
+        const [summary, rows] = await Promise.all([
+            db(`SELECT COUNT(*) AS completed_sales,
+                COALESCE(SUM(o.total_amount),0) AS gross_sales,
+                COALESCE(SUM(o.commission_amount),0) AS commission_income,
+                COALESCE(SUM(CASE WHEN pay.seller_transfer_status IN ('pending','processing')
+                    THEN o.seller_payout ELSE 0 END),0) AS pending_seller_payouts
+                FROM orders o
+                LEFT JOIN payments pay ON pay.order_id=o.order_id
+                WHERE o.status='completed'`),
+            db(`SELECT o.order_id,o.product_id,o.buyer_id,o.seller_id,o.seller_price,
+                o.commission_rate,o.commission_amount,o.total_amount,o.seller_payout,
+                o.status,o.meetup_location,o.meetup_datetime,o.received_at,
+                o.payment_deadline,o.created_at,o.updated_at,p.title,
+                b.display_name AS buyer_name,s.display_name AS seller_name,
+                pay.payment_method,pay.payment_status,pay.transaction_ref,
+                pay.paid_at AS payment_paid_at,pay.seller_transfer_ref,
+                pay.seller_transfer_status,pay.seller_paid_at
+                FROM orders o
+                JOIN products p ON p.product_id=o.product_id
+                JOIN users b ON b.user_id=o.buyer_id
+                JOIN users s ON s.user_id=o.seller_id
+                LEFT JOIN payments pay ON pay.order_id=o.order_id
+                WHERE o.status='completed'${payoutStatus === 'all' ? '' : payoutStatus === 'pending'
+                    ? " AND pay.seller_transfer_status IN ('pending','processing')"
+                    : ' AND pay.seller_transfer_status=?'}
+                ORDER BY o.received_at DESC,o.order_id DESC LIMIT ? OFFSET ?`,
+                [...(payoutStatus === 'all' || payoutStatus === 'pending' ? [] : [payoutStatus]), paging.limit + 1, paging.offset])
+        ]);
+        res.json({
+            success: true,
+            data: rows.slice(0, paging.limit),
+            summary: summary[0],
+            page: paging.page,
+            limit: paging.limit,
+            has_more: rows.length > paging.limit
+        });
+    } catch (err) { dbError(res, err); }
+});
+app.put('/api/admin/transactions/:order_id/payout', auth, adminOnly, async (req, res) => {
+    const transferRef = req.body?.transfer_ref;
+    if (!validId(req.params.order_id) || !validText(transferRef, 150)) return bad(res, 'Invalid seller payout');
+    try {
+        await transaction(async query => {
+            const rows = await query(`SELECT o.order_id,pay.seller_transfer_status
+                FROM orders o JOIN payments pay ON pay.order_id=o.order_id
+                WHERE o.order_id=? AND o.status='completed' FOR UPDATE`,
+                [req.params.order_id]);
+            if (!rows.length) throw Object.assign(new Error('Completed sale not found'), { status: 404 });
+            if (!['pending', 'processing'].includes(rows[0].seller_transfer_status)) {
+                throw Object.assign(new Error('Seller payout is not awaiting confirmation'), { status: 409 });
+            }
+            await query(`UPDATE payments SET seller_transfer_status='paid',
+                seller_transfer_ref=?,seller_paid_at=UTC_TIMESTAMP() WHERE order_id=?`,
+                [transferRef?.trim() || null, req.params.order_id]);
+        });
+        res.json({ success: true, seller_transfer_status: 'paid' });
+    } catch (err) {
+        err.status ? res.status(err.status).json({ success: false, message: err.message }) : dbError(res, err);
+    }
 });
 app.get('/api/admin/users', auth, adminOnly, async (req, res) => { const status = req.query.status; if (status && !['pending', 'active', 'suspended', 'rejected'].includes(status)) return bad(res, 'Invalid status'); const paging = getPaging(req, res); if (!paging) return; try { const rows = await db(`SELECT user_id,student_id,username,email,display_name,residence_zone,residence_location_id,role,status,created_at FROM users${status ? ' WHERE status=?' : ''} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...(status ? [status] : []), paging.limit + 1, paging.offset]); sendPage(res, rows, paging); } catch (err) { dbError(res, err); } });
 app.put('/api/admin/users/:user_id/status', auth, adminOnly, async (req, res) => { const { status } = req.body || {}; if (!validId(req.params.user_id) || !['active', 'suspended', 'rejected'].includes(status)) return bad(res, 'Invalid user status'); try { const result = await db("UPDATE users SET status=?,verified_by=?,verified_at=UTC_TIMESTAMP() WHERE user_id=? AND role='member'", [status, req.user.user_id, req.params.user_id]); if (!result.affectedRows) return notFound(res, 'Member not found'); res.json({ success: true, status }); } catch (err) { dbError(res, err); } });

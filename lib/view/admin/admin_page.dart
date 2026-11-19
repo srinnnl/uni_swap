@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'admin_categories_page.dart';
 import 'admin_items_page.dart';
 import 'admin_locations_page.dart';
+import 'admin_transactions_page.dart';
 import 'admin_users_page.dart';
 import 'package:uni_swap/controller/api_client.dart';
 import 'package:uni_swap/controller/app_controllers.dart';
@@ -252,6 +253,38 @@ class _AdminPageState extends State<AdminPage> {
                       onTap: () => _open(const AdminCategoriesPage()),
                     ),
                   ],
+                ),
+
+                const SizedBox(height: 12),
+                _AppCard(
+                  onTap: () => _open(const AdminTransactionsPage()),
+                  child: const Row(
+                    children: [
+                      _IconBox(icon: Icons.receipt_long_outlined, size: 38),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Completed sales & seller payouts',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: _cInk,
+                              ),
+                            ),
+                            SizedBox(height: 3),
+                            Text(
+                              'Review sales history and record manual payouts',
+                              style: TextStyle(fontSize: 11, color: _cMuted),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right, color: _cMuted),
+                    ],
+                  ),
                 ),
 
                 const SizedBox(height: 28),

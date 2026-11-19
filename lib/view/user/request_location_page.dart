@@ -51,6 +51,7 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
     return showModalBottomSheet<T>(
       context: context,
       backgroundColor: _cBg,
+      constraints: const BoxConstraints(maxHeight: 220),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -72,6 +73,8 @@ class _RequestLocationPageState extends State<RequestLocationPage> {
             ),
             for (final o in options)
               ListTile(
+                dense: true,
+                visualDensity: const VisualDensity(vertical: -1),
                 title: Text(o.$2),
                 trailing: o.$1 == selected
                     ? const Icon(Icons.check, color: _cInk)
